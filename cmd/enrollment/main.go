@@ -1,1 +1,1 @@
-package enrollment
+package main

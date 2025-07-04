@@ -1,1 +1,1 @@
-package relay
+package main
