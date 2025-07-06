@@ -2,13 +2,13 @@
 syntax = "proto3";
 
 // Defines a package name to prevent name collisions between different projects.
-package enrollment;
+package enrollment.v1;
 
 // Import Google's well-known types for handling timestamps.
 import "google/protobuf/timestamp.proto";
 
-// Option for generating Go code.
-option go_package = "github.com/dense-identity/denseid/api/proto/enrollment";
+// Option for generating Go code. Set package name to enrollmentpb
+option go_package = "github.com/dense-identity/denseid/api/proto/enrollment/v1;enrollmentpb";
 
 // The EnrollmentService definition.
 service EnrollmentService {

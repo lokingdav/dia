@@ -4,11 +4,11 @@
 // versions:
 // 	protoc-gen-go v1.36.6
 // 	protoc        v6.31.1
-// source: enrollment/enrollment.proto
+// source: enrollment/v1/enrollment.proto
 
 // Defines a package name to prevent name collisions between different projects.
 
-package enrollment
+package enrollmentpb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -45,7 +45,7 @@ type DisplayInformation struct {
 
 func (x *DisplayInformation) Reset() {
 	*x = DisplayInformation{}
-	mi := &file_enrollment_enrollment_proto_msgTypes[0]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -57,7 +57,7 @@ func (x *DisplayInformation) String() string {
 func (*DisplayInformation) ProtoMessage() {}
 
 func (x *DisplayInformation) ProtoReflect() protoreflect.Message {
-	mi := &file_enrollment_enrollment_proto_msgTypes[0]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -70,7 +70,7 @@ func (x *DisplayInformation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisplayInformation.ProtoReflect.Descriptor instead.
 func (*DisplayInformation) Descriptor() ([]byte, []int) {
-	return file_enrollment_enrollment_proto_rawDescGZIP(), []int{0}
+	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *DisplayInformation) GetName() string {
@@ -131,7 +131,7 @@ type EnrollmentRequest struct {
 
 func (x *EnrollmentRequest) Reset() {
 	*x = EnrollmentRequest{}
-	mi := &file_enrollment_enrollment_proto_msgTypes[1]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -143,7 +143,7 @@ func (x *EnrollmentRequest) String() string {
 func (*EnrollmentRequest) ProtoMessage() {}
 
 func (x *EnrollmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_enrollment_enrollment_proto_msgTypes[1]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -156,7 +156,7 @@ func (x *EnrollmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollmentRequest.ProtoReflect.Descriptor instead.
 func (*EnrollmentRequest) Descriptor() ([]byte, []int) {
-	return file_enrollment_enrollment_proto_rawDescGZIP(), []int{1}
+	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *EnrollmentRequest) GetTn() string {
@@ -205,7 +205,7 @@ type Signatures struct {
 
 func (x *Signatures) Reset() {
 	*x = Signatures{}
-	mi := &file_enrollment_enrollment_proto_msgTypes[2]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -217,7 +217,7 @@ func (x *Signatures) String() string {
 func (*Signatures) ProtoMessage() {}
 
 func (x *Signatures) ProtoReflect() protoreflect.Message {
-	mi := &file_enrollment_enrollment_proto_msgTypes[2]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -230,7 +230,7 @@ func (x *Signatures) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Signatures.ProtoReflect.Descriptor instead.
 func (*Signatures) Descriptor() ([]byte, []int) {
-	return file_enrollment_enrollment_proto_rawDescGZIP(), []int{2}
+	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *Signatures) GetSig1() string {
@@ -264,7 +264,7 @@ type EnrollmentResponse struct {
 
 func (x *EnrollmentResponse) Reset() {
 	*x = EnrollmentResponse{}
-	mi := &file_enrollment_enrollment_proto_msgTypes[3]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -276,7 +276,7 @@ func (x *EnrollmentResponse) String() string {
 func (*EnrollmentResponse) ProtoMessage() {}
 
 func (x *EnrollmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_enrollment_enrollment_proto_msgTypes[3]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -289,7 +289,7 @@ func (x *EnrollmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollmentResponse.ProtoReflect.Descriptor instead.
 func (*EnrollmentResponse) Descriptor() ([]byte, []int) {
-	return file_enrollment_enrollment_proto_rawDescGZIP(), []int{3}
+	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *EnrollmentResponse) GetEid() string {
@@ -320,12 +320,11 @@ func (x *EnrollmentResponse) GetSigs() *Signatures {
 	return nil
 }
 
-var File_enrollment_enrollment_proto protoreflect.FileDescriptor
+var File_enrollment_v1_enrollment_proto protoreflect.FileDescriptor
 
-const file_enrollment_enrollment_proto_rawDesc = "" +
+const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"\n" +
-	"\x1benrollment/enrollment.proto\x12\n" +
-	"enrollment\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9f\x01\n" +
+	"\x1eenrollment/v1/enrollment.proto\x12\renrollment.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9f\x01\n" +
 	"\x12DisplayInformation\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
 	"\blogo_url\x18\x02 \x01(\tR\alogoUrl\x12\x1f\n" +
@@ -333,52 +332,52 @@ const file_enrollment_enrollment_proto_rawDesc = "" +
 	"websiteUrl\x12\x1f\n" +
 	"\vbrand_color\x18\x04 \x01(\tR\n" +
 	"brandColor\x12\x18\n" +
-	"\atagline\x18\x05 \x01(\tR\atagline\"\x9d\x01\n" +
+	"\atagline\x18\x05 \x01(\tR\atagline\"\xa0\x01\n" +
 	"\x11EnrollmentRequest\x12\x0e\n" +
 	"\x02tn\x18\x01 \x01(\tR\x02tn\x12\x1f\n" +
 	"\vpublic_keys\x18\x02 \x03(\tR\n" +
-	"publicKeys\x122\n" +
-	"\x04iden\x18\x03 \x01(\v2\x1e.enrollment.DisplayInformationR\x04iden\x12\x0f\n" +
+	"publicKeys\x125\n" +
+	"\x04iden\x18\x03 \x01(\v2!.enrollment.v1.DisplayInformationR\x04iden\x12\x0f\n" +
 	"\x03n_b\x18\x04 \x01(\rR\x02nB\x12\x12\n" +
 	"\x04sigs\x18\x05 \x03(\tR\x04sigs\"4\n" +
 	"\n" +
 	"Signatures\x12\x12\n" +
 	"\x04sig1\x18\x01 \x01(\tR\x04sig1\x12\x12\n" +
-	"\x04sig2\x18\x02 \x01(\tR\x04sig2\"\x92\x01\n" +
+	"\x04sig2\x18\x02 \x01(\tR\x04sig2\"\x95\x01\n" +
 	"\x12EnrollmentResponse\x12\x10\n" +
 	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
 	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +
-	"\x03usk\x18\x03 \x01(\tR\x03usk\x12*\n" +
-	"\x04sigs\x18\x04 \x01(\v2\x16.enrollment.SignaturesR\x04sigs2f\n" +
-	"\x11EnrollmentService\x12Q\n" +
-	"\x10EnrollSubscriber\x12\x1d.enrollment.EnrollmentRequest\x1a\x1e.enrollment.EnrollmentResponseB8Z6github.com/dense-identity/denseid/api/proto/enrollmentb\x06proto3"
+	"\x03usk\x18\x03 \x01(\tR\x03usk\x12-\n" +
+	"\x04sigs\x18\x04 \x01(\v2\x19.enrollment.v1.SignaturesR\x04sigs2l\n" +
+	"\x11EnrollmentService\x12W\n" +
+	"\x10EnrollSubscriber\x12 .enrollment.v1.EnrollmentRequest\x1a!.enrollment.v1.EnrollmentResponseBHZFgithub.com/dense-identity/denseid/api/proto/enrollment/v1;enrollmentpbb\x06proto3"
 
 var (
-	file_enrollment_enrollment_proto_rawDescOnce sync.Once
-	file_enrollment_enrollment_proto_rawDescData []byte
+	file_enrollment_v1_enrollment_proto_rawDescOnce sync.Once
+	file_enrollment_v1_enrollment_proto_rawDescData []byte
 )
 
-func file_enrollment_enrollment_proto_rawDescGZIP() []byte {
-	file_enrollment_enrollment_proto_rawDescOnce.Do(func() {
-		file_enrollment_enrollment_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_enrollment_enrollment_proto_rawDesc), len(file_enrollment_enrollment_proto_rawDesc)))
+func file_enrollment_v1_enrollment_proto_rawDescGZIP() []byte {
+	file_enrollment_v1_enrollment_proto_rawDescOnce.Do(func() {
+		file_enrollment_v1_enrollment_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_enrollment_v1_enrollment_proto_rawDesc), len(file_enrollment_v1_enrollment_proto_rawDesc)))
 	})
-	return file_enrollment_enrollment_proto_rawDescData
+	return file_enrollment_v1_enrollment_proto_rawDescData
 }
 
-var file_enrollment_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
-var file_enrollment_enrollment_proto_goTypes = []any{
-	(*DisplayInformation)(nil),    // 0: enrollment.DisplayInformation
-	(*EnrollmentRequest)(nil),     // 1: enrollment.EnrollmentRequest
-	(*Signatures)(nil),            // 2: enrollment.Signatures
-	(*EnrollmentResponse)(nil),    // 3: enrollment.EnrollmentResponse
+var file_enrollment_v1_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_enrollment_v1_enrollment_proto_goTypes = []any{
+	(*DisplayInformation)(nil),    // 0: enrollment.v1.DisplayInformation
+	(*EnrollmentRequest)(nil),     // 1: enrollment.v1.EnrollmentRequest
+	(*Signatures)(nil),            // 2: enrollment.v1.Signatures
+	(*EnrollmentResponse)(nil),    // 3: enrollment.v1.EnrollmentResponse
 	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
-var file_enrollment_enrollment_proto_depIdxs = []int32{
-	0, // 0: enrollment.EnrollmentRequest.iden:type_name -> enrollment.DisplayInformation
-	4, // 1: enrollment.EnrollmentResponse.exp:type_name -> google.protobuf.Timestamp
-	2, // 2: enrollment.EnrollmentResponse.sigs:type_name -> enrollment.Signatures
-	1, // 3: enrollment.EnrollmentService.EnrollSubscriber:input_type -> enrollment.EnrollmentRequest
-	3, // 4: enrollment.EnrollmentService.EnrollSubscriber:output_type -> enrollment.EnrollmentResponse
+var file_enrollment_v1_enrollment_proto_depIdxs = []int32{
+	0, // 0: enrollment.v1.EnrollmentRequest.iden:type_name -> enrollment.v1.DisplayInformation
+	4, // 1: enrollment.v1.EnrollmentResponse.exp:type_name -> google.protobuf.Timestamp
+	2, // 2: enrollment.v1.EnrollmentResponse.sigs:type_name -> enrollment.v1.Signatures
+	1, // 3: enrollment.v1.EnrollmentService.EnrollSubscriber:input_type -> enrollment.v1.EnrollmentRequest
+	3, // 4: enrollment.v1.EnrollmentService.EnrollSubscriber:output_type -> enrollment.v1.EnrollmentResponse
 	4, // [4:5] is the sub-list for method output_type
 	3, // [3:4] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -386,26 +385,26 @@ var file_enrollment_enrollment_proto_depIdxs = []int32{
 	0, // [0:3] is the sub-list for field type_name
 }
 
-func init() { file_enrollment_enrollment_proto_init() }
-func file_enrollment_enrollment_proto_init() {
-	if File_enrollment_enrollment_proto != nil {
+func init() { file_enrollment_v1_enrollment_proto_init() }
+func file_enrollment_v1_enrollment_proto_init() {
+	if File_enrollment_v1_enrollment_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_enrollment_enrollment_proto_rawDesc), len(file_enrollment_enrollment_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_enrollment_v1_enrollment_proto_rawDesc), len(file_enrollment_v1_enrollment_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_enrollment_enrollment_proto_goTypes,
-		DependencyIndexes: file_enrollment_enrollment_proto_depIdxs,
-		MessageInfos:      file_enrollment_enrollment_proto_msgTypes,
+		GoTypes:           file_enrollment_v1_enrollment_proto_goTypes,
+		DependencyIndexes: file_enrollment_v1_enrollment_proto_depIdxs,
+		MessageInfos:      file_enrollment_v1_enrollment_proto_msgTypes,
 	}.Build()
-	File_enrollment_enrollment_proto = out.File
-	file_enrollment_enrollment_proto_goTypes = nil
-	file_enrollment_enrollment_proto_depIdxs = nil
+	File_enrollment_v1_enrollment_proto = out.File
+	file_enrollment_v1_enrollment_proto_goTypes = nil
+	file_enrollment_v1_enrollment_proto_depIdxs = nil
 }

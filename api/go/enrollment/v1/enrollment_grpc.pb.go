@@ -4,11 +4,11 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.31.1
-// source: enrollment/enrollment.proto
+// source: enrollment/v1/enrollment.proto
 
 // Defines a package name to prevent name collisions between different projects.
 
-package enrollment
+package enrollmentpb
 
 import (
 	context "context"
@@ -23,7 +23,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	EnrollmentService_EnrollSubscriber_FullMethodName = "/enrollment.EnrollmentService/EnrollSubscriber"
+	EnrollmentService_EnrollSubscriber_FullMethodName = "/enrollment.v1.EnrollmentService/EnrollSubscriber"
 )
 
 // EnrollmentServiceClient is the client API for EnrollmentService service.
@@ -118,7 +118,7 @@ func _EnrollmentService_EnrollSubscriber_Handler(srv interface{}, ctx context.Co
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var EnrollmentService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "enrollment.EnrollmentService",
+	ServiceName: "enrollment.v1.EnrollmentService",
 	HandlerType: (*EnrollmentServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -127,5 +127,5 @@ var EnrollmentService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "enrollment/enrollment.proto",
+	Metadata: "enrollment/v1/enrollment.proto",
 }
