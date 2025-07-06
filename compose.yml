@@ -1,0 +1,11 @@
+services:
+  enrollment-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: enrollment-server
+    command: ["air", "--build.cmd", "go build -o /app/bin/enrollment /app/cmd/enrollment", "--build.bin", "/app/bin/enrollment"]
+    ports:
+      - "50051:50051"
+    volumes:
+      - .:/app

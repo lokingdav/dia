@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "bin"
+
+[build]
+include_ext = ["go", "tpl", "tmpl", "html"]
+exclude_dir = ["assets", "bin", "vendor"]
+log = "air_errors.log"
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = true

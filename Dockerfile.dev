@@ -1,0 +1,19 @@
+FROM golang:1.24-alpine
+
+# Set the working directory inside the container.
+WORKDIR /app
+
+# Install air for live-reloading.
+RUN go install github.com/air-verse/air@latest
+
+# Copy go.mod and go.sum files to leverage Docker cache.
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of your application's source code into the container.
+COPY . .
+
+# Expose the gRPC port.
+EXPOSE 50051
+
+CMD ["air"]
