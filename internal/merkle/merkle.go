@@ -86,7 +86,7 @@ func GenerateProof(data [][]string, item string) (*Proof, error) {
 	// Find the content object for the item we want to prove
 	itemContent := stringContent{value: item}
 
-	// GetMerklePath returns an error if the content is not found.
+	// Rely on the library to find the path. If it can't, it will return an error.
 	path, indexes, err := tree.GetMerklePath(itemContent)
 	if err != nil {
 		return nil, err
