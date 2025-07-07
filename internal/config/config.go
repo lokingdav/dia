@@ -17,8 +17,10 @@ func New[T any]() (*T, error) {
 }
 
 // LoadEnv loads content of ENV_FILE (e.g .env.{server}) into environment variables
-func LoadEnv() (error) {
-	envfile := os.Getenv("ENV_FILE")
+func LoadEnv(envfile string) (error) {
+	if envfile == "" {
+		envfile = os.Getenv("ENV_FILE")
+	}
 
 	if envfile == "" {
 		return godotenv.Load();

@@ -2,6 +2,7 @@ package signing
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 )
 
@@ -27,4 +28,12 @@ func Sign(privateKey []byte, message []byte) []byte {
 // It returns true if the signature is valid, and false otherwise.
 func Verify(publicKey []byte, message []byte, signature []byte) bool {
 	return ed25519.Verify(publicKey, message, signature)
+}
+
+func DecodeString(v string) ([]byte, error) {
+	return hex.DecodeString(v)
+}
+
+func EncodeToString(v []byte) (string) {
+	return hex.EncodeToString(v)
 }

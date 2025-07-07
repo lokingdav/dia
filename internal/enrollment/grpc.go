@@ -37,6 +37,8 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	if req.GetTn() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "telephone number (tn) is a required field")
 	}
+
+	log.Printf("Request: %v", req)
 	
 	// --- Response Step ---
 	enrollmentID := uuid.New().String()

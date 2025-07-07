@@ -2,56 +2,161 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"strings"
+	"sync"
 	"time"
 
 	// Import the generated protobuf code.
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
+
+	didconfig "github.com/dense-identity/denseid/internal/config"
+	"github.com/dense-identity/denseid/internal/signing"
 )
 
-const (
-	serverAddress = "localhost:50051"
-)
+// result holds the outcome of a single gRPC call.
+type result struct {
+	response *pb.EnrollmentResponse
+	err      error
+	server   string
+}
 
-func main() {
-	conn, err := grpc.NewClient(serverAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+type keypairs struct {
+	PublicKeys  []string
+	PrivateKeys []string
+}
+
+type config struct {
+	TN          string `env:"TN,required"`
+	NBio        uint32 `env:"N_BIO" envDefault:"0"`
+	PublicKeys  string `env:"PUBLIC_KEYS,required"`
+	PrivateKeys string `env:"PRIVATE_KEYS,required"`
+
+	DisplayName    string `env:"DISPLAY_NAME,required"`
+	DisplayLogoUrl string `env:"DISPLAY_LOGO_URL"`
+
+	EnrollmentServer1Url       string `env:"ENROLLMENT_SERVER_1_URL"`
+	EnrollmentServer1PublicKey string `env:"ENROLLMENT_SERVER_1_PUBLIC_KEY"`
+
+	EnrollmentServer2Url       string `env:"ENROLLMENT_SERVER_2_URL"`
+	EnrollmentServer2PublicKey string `env:"ENROLLMENT_SERVER_2_PUBLIC_KEY"`
+}
+
+func (c *config) getKeypairs() (keypairs, error) {
+	pks, sks := strings.Split(c.PublicKeys, ","), strings.Split(c.PrivateKeys, ",")
+	if len(pks) != len(sks) {
+		return keypairs{}, fmt.Errorf("Private-Public key lengths do not match")
 	}
-	defer conn.Close()
 
-	client := pb.NewEnrollmentServiceClient(conn)
+	publicKeys, privateKeys := []string{}, []string{}
+	for i := 0; i < len(pks); i++ {
+		if _, err := signing.DecodeString(sks[i]); err == nil {
+			if _, err := signing.DecodeString(pks[i]); err == nil {
+				privateKeys = append(privateKeys, sks[i])
+				publicKeys = append(publicKeys, pks[i])
+			}
+		}
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-	defer cancel()
+	return keypairs{PublicKeys: publicKeys, PrivateKeys: privateKeys}, nil
+}
 
-	log.Println("--- Calling EnrollSubscriber ---")
+func (cfg *config) newEnrollmentRequest() (*pb.EnrollmentRequest, error) {
+	kps, err := cfg.getKeypairs()
+	if err != nil {
+		return nil, fmt.Errorf("Private-Public key lengths do not match %v", err)
+	}
 
-	request := &pb.EnrollmentRequest{
-		Tn:          "+15551234567",
-		PublicKeys:  []string{"pubkey1_hex_value", "pubkey2_hex_value"},
-		AuthSigs:        []string{"sig1_hex_value", "sig2_hex_value"},
-		NBio:          2,
+	var data = &pb.EnrollmentRequest{
+		Tn:         cfg.TN,
+		PublicKeys: kps.PublicKeys,
+		NBio:       cfg.NBio,
 		Iden: &pb.DisplayInformation{
-			Name:       "John Doe Inc.",
-			LogoUrl:    "https://example.com/logo.png",
-			WebsiteUrl: "https://johndoe.com",
-			BrandColor: "#0A192F",
-			Tagline:    "Building the future.",
+			Name:    cfg.DisplayName,
+			LogoUrl: cfg.DisplayLogoUrl,
 		},
 	}
 
-	response, err := client.EnrollSubscriber(ctx, request)
+	dataBytes, err := proto.Marshal(data)
 	if err != nil {
-		log.Fatalf("could not enroll subscriber: %v", err)
+		return nil, err
+	}
+	authSigs := []string{}
+	for i := 0; i < len(kps.PrivateKeys); i++ {
+		sk, _ := signing.DecodeString(kps.PrivateKeys[i])
+		sig := signing.Sign(sk, dataBytes)
+		authSigs = append(authSigs, signing.EncodeToString(sig))
 	}
 
-	log.Printf("Enrollment Successful!")
-	log.Printf("  Enrollment ID (eid): %s", response.GetEid())
-	log.Printf("  User Secret Key (usk): %s", response.GetUsk())
-	log.Printf("  Expiration (exp): %s", response.GetExp().AsTime())
-	log.Printf("  Signature 1 (sig1): %s", response.GetSignatures().GetSig1())
-	log.Printf("  Signature 2 (sig2): %s", response.GetSignatures().GetSig2())
+	data.AuthSigs = authSigs
+
+	return data, nil
+}
+
+func main() {
+	didconfig.LoadEnv(".env.client")
+	cfg, err := didconfig.New[config]()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	request, err := cfg.newEnrollmentRequest()
+	if err != nil {
+		log.Fatalf("Failed to create enrollment request: %v", err)
+	}
+
+	var serverAddresses = []string{
+		cfg.EnrollmentServer1Url,
+		cfg.EnrollmentServer2Url,
+	}
+
+	var wg sync.WaitGroup
+	// Create a channel to receive results from the goroutines.
+	// The buffer size matches the number of requests.
+	resultsChan := make(chan result, len(serverAddresses))
+
+	for _, addr := range serverAddresses {
+		wg.Add(1)
+		go func(serverAddress string) {
+			defer wg.Done()
+
+			conn, err := grpc.NewClient(serverAddress, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				resultsChan <- result{err: err, server: serverAddress}
+				return
+			}
+			defer conn.Close()
+
+			client := pb.NewEnrollmentServiceClient(conn)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			defer cancel()
+
+			response, err := client.EnrollSubscriber(ctx, request)
+			// Send the outcome (success or error) to the channel.
+			resultsChan <- result{response: response, err: err, server: serverAddress}
+		}(addr)
+	}
+
+	// Wait for all goroutines to finish, then close the channel.
+	wg.Wait()
+	close(resultsChan)
+
+	// --- Process all results in the main goroutine ---
+	log.Println("--- Processing all server responses ---")
+	var successfulResponses []*pb.EnrollmentResponse
+	for res := range resultsChan {
+		if res.err != nil {
+			log.Printf("ERROR from %s: %v", res.server, res.err)
+		} else {
+			log.Printf("Success from %s: Enrollment ID = %s", res.server, res.response.GetEid())
+			successfulResponses = append(successfulResponses, res.response)
+		}
+	}
+
+	// Now you can work with the collected responses.
+	log.Printf("--- Finished. Received %d successful responses. ---", len(successfulResponses))
 }
