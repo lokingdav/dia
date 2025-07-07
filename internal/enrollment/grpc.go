@@ -19,11 +19,14 @@ import (
 // Server implements the pb.EnrollmentServiceServer interface.
 type Server struct {
 	pb.UnimplementedEnrollmentServiceServer
+	cfg *Config
 }
 
 // NewServer creates a new instance of our enrollment server.
-func NewServer() *Server {
-	return &Server{}
+func NewServer(cfg *Config) *Server {
+	return &Server{
+		cfg: cfg,
+	}
 }
 
 // EnrollSubscriber implements the RPC method for enrolling a new subscriber.

@@ -7,19 +7,24 @@ import (
 	"google.golang.org/grpc"
 
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
+	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/enrollment"
 )
 
 func main() {
-	port := ":50051"
-	lis, err := net.Listen("tcp", port)
+	cfg, err := config.New[enrollment.Config]()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+
+	lis, err := net.Listen("tcp", cfg.Port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
 	s := grpc.NewServer()
 
-	enrollmentServer := enrollment.NewServer()
+	enrollmentServer := enrollment.NewServer(cfg)
 
 	pb.RegisterEnrollmentServiceServer(s, enrollmentServer)
 

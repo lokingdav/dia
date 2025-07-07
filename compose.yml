@@ -1,11 +1,24 @@
+x-enrollment-server: &enrollment-server-base
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+  command: ["air", "--build.cmd", "go build -o /app/bin/enrollment /app/cmd/enrollment", "--build.bin", "/app/bin/enrollment"]
+  volumes:
+    - .:/app
+
 services:
-  enrollment-server:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    container_name: enrollment-server
-    command: ["air", "--build.cmd", "go build -o /app/bin/enrollment /app/cmd/enrollment", "--build.bin", "/app/bin/enrollment"]
+  enrollment-server-1:
+    <<: *enrollment-server-base
+    container_name: enrollment-server-1
     ports:
       - "50051:50051"
-    volumes:
-      - .:/app
+    env_file:
+      - .env.es1
+
+  enrollment-server-2:
+    <<: *enrollment-server-base
+    container_name: enrollment-server-2
+    ports:
+      - "50052:50051"
+    env_file:
+      - .env.es2
