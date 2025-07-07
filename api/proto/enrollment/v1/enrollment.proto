@@ -24,16 +24,12 @@ message EnrollmentRequest {
   DisplayInformation iden = 3;
   uint32 n_bio = 4;
   repeated string auth_sigs = 5;
-}
-
-message Signatures {
-  string sig1 = 1;
-  string sig2 = 2;
+  string nonce = 6;
 }
 
 message EnrollmentResponse {
   string eid = 1;
   google.protobuf.Timestamp exp = 2;
   string usk = 3;
-  Signatures signatures = 4;
+  string sigma = 4;
 }

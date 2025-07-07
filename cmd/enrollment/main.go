@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"log"
 	"net"
 
@@ -16,6 +17,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+
+	cfg.PrivateKeyBytes, _ = hex.DecodeString(cfg.PrivateKey)
 
 	lis, err := net.Listen("tcp", cfg.Port)
 	if err != nil {
