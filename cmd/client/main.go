@@ -32,8 +32,8 @@ func main() {
 	request := &pb.EnrollmentRequest{
 		Tn:          "+15551234567",
 		PublicKeys:  []string{"pubkey1_hex_value", "pubkey2_hex_value"},
-		Sigs:        []string{"sig1_hex_value", "sig2_hex_value"},
-		NB:          2,
+		AuthSigs:        []string{"sig1_hex_value", "sig2_hex_value"},
+		NBio:          2,
 		Iden: &pb.DisplayInformation{
 			Name:       "John Doe Inc.",
 			LogoUrl:    "https://example.com/logo.png",
@@ -52,6 +52,6 @@ func main() {
 	log.Printf("  Enrollment ID (eid): %s", response.GetEid())
 	log.Printf("  User Secret Key (usk): %s", response.GetUsk())
 	log.Printf("  Expiration (exp): %s", response.GetExp().AsTime())
-	log.Printf("  Signature 1 (sig1): %s", response.GetSigs().GetSig1())
-	log.Printf("  Signature 2 (sig2): %s", response.GetSigs().GetSig2())
+	log.Printf("  Signature 1 (sig1): %s", response.GetSignatures().GetSig1())
+	log.Printf("  Signature 2 (sig2): %s", response.GetSignatures().GetSig2())
 }

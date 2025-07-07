@@ -46,7 +46,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		Eid:  enrollmentID,
 		Exp:  timestamppb.New(expirationTime),
 		Usk:  usk,
-		Sigs: &pb.Signatures{
+		Signatures: &pb.Signatures{
 			Sig1: sig1,
 			Sig2: sig2,
 		},

@@ -1,69 +1,39 @@
-// Specifies that we are using the proto3 syntax.
 syntax = "proto3";
 
-// Defines a package name to prevent name collisions between different projects.
-package enrollment.v1;
+package denseid.enrollment.v1;
 
-// Import Google's well-known types for handling timestamps.
 import "google/protobuf/timestamp.proto";
 
-// Option for generating Go code. Set package name to enrollmentpb
-option go_package = "github.com/dense-identity/denseid/api/proto/enrollment/v1;enrollmentpb";
+option go_package = "github.com/dense-identity/denseid/api/go/enrollment/v1;enrollmentpb";
 
-// The EnrollmentService definition.
 service EnrollmentService {
-  // Enrolls a new subscriber into the system.
   rpc EnrollSubscriber(EnrollmentRequest) returns (EnrollmentResponse);
 }
 
-// --- Message Definitions ---
-
 message DisplayInformation {
-  // The primary name to be displayed for the entity (e.g., "Acme Corp" or "John Doe").
-  // VALIDATION: This field is required.
   string name = 1;
-  // A URL pointing to a logo image.
   string logo_url = 2;
-  // A URL for the entity's primary website.
   string website_url = 3;
-  // A primary brand color, represented as a hex string (e.g., "#FFFFFF").
   string brand_color = 4;
-  // A short description or tagline.
   string tagline = 5;
 }
 
-// The request message for enrolling a subscriber.
 message EnrollmentRequest {
-  // The telephone number for the subscriber.
-  // VALIDATION: This field is required.
   string tn = 1;
-  // A list of public keys in hex format.
-  // VALIDATION: Must contain at least one public key.
   repeated string public_keys = 2;
-  // An object containing display information like a name.
-  // VALIDATION: This field is required.
   DisplayInformation iden = 3;
-  // The number of biometric parameters provided. Can be 0 or more.
-  uint32 n_b = 4;
-  // A list of signatures.
-  // VALIDATION: The number of signatures must match the number of public keys.
-  repeated string sigs = 5;
+  uint32 n_bio = 4;
+  repeated string auth_sigs = 5;
 }
 
-// Nested message for the response signatures.
 message Signatures {
   string sig1 = 1;
   string sig2 = 2;
 }
 
-// The response message for an enrollment request.
 message EnrollmentResponse {
-  // The unique enrollment ID.
   string eid = 1;
-  // The expiration timestamp for the enrollment.
   google.protobuf.Timestamp exp = 2;
-  // The user secret key.
   string usk = 3;
-  // Signatures generated during the enrollment process.
-  Signatures sigs = 4;
+  Signatures signatures = 4;
 }
