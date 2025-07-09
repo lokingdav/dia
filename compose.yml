@@ -1,7 +1,5 @@
 x-enrollment-server: &enrollment-server-base
-  build:
-    context: .
-    dockerfile: Dockerfile.dev
+  image: denseid-dev
   command: ["air", "--build.cmd", "go build -o /app/bin/enrollment /app/cmd/enrollment", "--build.bin", "/app/bin/enrollment"]
   volumes:
     - .:/app

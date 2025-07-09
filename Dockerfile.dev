@@ -3,10 +3,16 @@ FROM golang:1.24-alpine
 # Set the working directory inside the container.
 WORKDIR /app
 
-RUN apk add --no-cache git
+# Turn off VCS stamping globally
+ENV GOFLAGS=-buildvcs=false
+
+RUN apk update
+
+RUN apk add --no-cache git build-base cmake gmp-dev
 
 RUN git clone https://github.com/dense-identity/bbsgroupsig.git && \
     cd bbsgroupsig && \
+    git checkout bindings/go/v1.0.3 && \
     chmod +x bindings/install.sh && \
     ./bindings/install.sh && \
     cd .. && \
