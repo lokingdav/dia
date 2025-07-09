@@ -2,8 +2,6 @@ package enrollment
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"time"
@@ -46,7 +44,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		failed := true
 		if pk, err := signing.DecodeString(req.PublicKeys[i]); err == nil {
 			if sig, err := signing.DecodeString(req.AuthSigs[i]); err == nil {
-				if signing.Verify(pk, dataBytes, sig) {
+				if signing.RegSigVerify(pk, dataBytes, sig) {
 					failed = false
 				}
 			}
@@ -73,26 +71,17 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	expirationTime := time.Now().Add(time.Hour * 24 * time.Duration(s.cfg.EnrollmentDurationDays))
 	expirationBytes, _ := expirationTime.MarshalBinary()
 	dataToSign := append(enrollmentID, expirationBytes...)
-	sigma := signing.Sign(s.cfg.PrivateKeyBytes, dataToSign)
+	sigma := signing.RegSigSign(s.cfg.PrivateKey, dataToSign)
 
-	usk, _ := generateRandomHex(32)
+	usk, _ := signing.GrpSigUserKeyGen(s.cfg.GPK, s.cfg.ISK)
 
 	response := &pb.EnrollmentResponse{
 		Eid:   signing.EncodeToString(enrollmentID),
 		Exp:   timestamppb.New(expirationTime),
-		Usk:   usk,
+		Usk:   signing.EncodeToString(usk),
 		Sigma: signing.EncodeToString(sigma),
 	}
 
 	log.Printf("Successfully processed enrollment for TN: %s. Enrollment ID: %x", req.GetTn(), enrollmentID)
 	return response, nil
-}
-
-// generateRandomHex is a helper function to create a random hex string.
-func generateRandomHex(n int) (string, error) {
-	bytes := make([]byte, n)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("could not generate random bytes: %w", err)
-	}
-	return hex.EncodeToString(bytes), nil
 }

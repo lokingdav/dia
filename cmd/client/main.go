@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log"
 	"strings"
 	"sync"
 	"time"
-	"crypto/rand"
 
 	// Import the generated protobuf code.
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
@@ -73,9 +73,9 @@ func (cfg *config) newEnrollmentRequest() (*pb.EnrollmentRequest, error) {
 	}
 
 	nonce := make([]byte, 32)
-    if _, err := rand.Read(nonce); err != nil {
-        return nil, fmt.Errorf("failed to generate nonce: %w", err)
-    }
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
 
 	var data = &pb.EnrollmentRequest{
 		Tn:         cfg.TN,
@@ -95,7 +95,7 @@ func (cfg *config) newEnrollmentRequest() (*pb.EnrollmentRequest, error) {
 	authSigs := []string{}
 	for i := 0; i < len(kps.PrivateKeys); i++ {
 		sk, _ := signing.DecodeString(kps.PrivateKeys[i])
-		sig := signing.Sign(sk, dataBytes)
+		sig := signing.RegSigSign(sk, dataBytes)
 		authSigs = append(authSigs, signing.EncodeToString(sig))
 	}
 
@@ -160,9 +160,9 @@ func main() {
 			log.Printf("ERROR from %s: %v", res.server, res.err)
 		} else {
 			log.Printf(
-				"\n\nSuccess from %s:\nEnrollment ID = %s\nExp = %v\nSigma = %s\n\n", 
-				res.server, 
-				res.response.GetEid(), 
+				"\n\nSuccess from %s:\nEnrollment ID = %s\nExp = %v\nSigma = %s\n\n",
+				res.server,
+				res.response.GetEid(),
 				res.response.GetExp(),
 				res.response.GetSigma())
 			successfulResponses = append(successfulResponses, res.response)

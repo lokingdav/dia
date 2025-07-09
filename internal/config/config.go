@@ -1,9 +1,9 @@
 package config
 
 import (
-	"os"
 	"github.com/caarlos0/env/v11"
 	"github.com/joho/godotenv"
+	"os"
 )
 
 // New loads configuration from environment variables into any given struct type.
@@ -17,14 +17,14 @@ func New[T any]() (*T, error) {
 }
 
 // LoadEnv loads content of ENV_FILE (e.g .env.{server}) into environment variables
-func LoadEnv(envfile string) (error) {
+func LoadEnv(envfile string) error {
 	if envfile == "" {
 		envfile = os.Getenv("ENV_FILE")
 	}
 
 	if envfile == "" {
-		return godotenv.Load();
+		return godotenv.Load()
 	}
 
-	return godotenv.Load(envfile);
+	return godotenv.Load(envfile)
 }

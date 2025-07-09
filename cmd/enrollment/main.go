@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"log"
 	"net"
 
@@ -17,14 +16,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	cfg.ParseKeysAsBytes()
 
-	cfg.PrivateKeyBytes, _ = hex.DecodeString(cfg.PrivateKey)
-
+	// Start listening on cfg.Port
 	lis, err := net.Listen("tcp", cfg.Port)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	// Create new enrollment gRPC server and register the service
 	s := grpc.NewServer()
 
 	enrollmentServer := enrollment.NewServer(cfg)
