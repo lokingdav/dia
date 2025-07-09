@@ -29,6 +29,10 @@ func NewServer(cfg *Config) *Server {
 	}
 }
 
+func InitGroupSignatures() {
+	signing.InitGroupSignatures()
+}
+
 // EnrollSubscriber implements the RPC method for enrolling a new subscriber.
 func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest) (*pb.EnrollmentResponse, error) {
 	log.Printf("Received enrollment request for TN: %s", req.GetTn())

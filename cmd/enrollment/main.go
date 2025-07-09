@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	// init pairing based operations for group signatures
+	enrollment.InitGroupSignatures()
+
 	cfg, err := config.New[enrollment.Config]()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)

@@ -42,6 +42,11 @@ func RegSigVerify(publicKey []byte, message []byte, signature []byte) bool {
 	return ed25519.Verify(publicKey, message, signature)
 }
 
+// InitGroupSignatures inits pairing operations for group signatures
+func InitGroupSignatures() {
+	bbsgs.InitPairing()	
+}
+
 // GrpSigUserKeyGen generates a unique user secret key given gpk and isk.
 func GrpSigUserKeyGen(gpk, isk []byte) (usk []byte, err error) {
 	usk, err = bbsgs.UserKeygen(gpk, isk)

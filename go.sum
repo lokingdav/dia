@@ -2,8 +2,8 @@ github.com/caarlos0/env/v11 v11.3.1 h1:cArPWC15hWmEt+gWk7YBi7lEXTXCvpaSdCiZE2X5m
 github.com/caarlos0/env/v11 v11.3.1/go.mod h1:qupehSf/Y0TUTsxKywqRt/vJjN5nz6vauiYEUUr8P4U=
 github.com/cbergoon/merkletree v0.2.0 h1:Bttqr3OuoiZEo4ed1L7fTasHka9II+BF9fhBfbNEEoQ=
 github.com/cbergoon/merkletree v0.2.0/go.mod h1:5c15eckUgiucMGDOCanvalj/yJnD+KAZj1qyJtRW5aM=
-github.com/dense-identity/bbsgroupsig/bindings/go v1.0.0 h1:T716e9qZx5Is+NQJHUddUm7XqTuWj4eN+OSRrcnzzgU=
-github.com/dense-identity/bbsgroupsig/bindings/go v1.0.0/go.mod h1:1QFQISTpNYXGn3SyUz2NyZawIRPVS1hzla2rUYLV9Yo=
+github.com/dense-identity/bbsgroupsig/bindings/go v1.0.4 h1:7+b9KarV4xAFId10mX3BrjYuAFORzS3t5mf3t9jNopg=
+github.com/dense-identity/bbsgroupsig/bindings/go v1.0.4/go.mod h1:1QFQISTpNYXGn3SyUz2NyZawIRPVS1hzla2rUYLV9Yo=
 github.com/go-logr/logr v1.4.2 h1:6pFjapn8bFcIbiKo3XT4j/BhANplGihG6tvd+8rYgrY=
 github.com/go-logr/logr v1.4.2/go.mod h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=
 github.com/go-logr/stdr v1.2.2 h1:hSWxHoqTgW2S2qGc0LTAI563KZ5YKYRhT3MFKZMbjag=

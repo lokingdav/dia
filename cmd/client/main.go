@@ -160,11 +160,12 @@ func main() {
 			log.Printf("ERROR from %s: %v", res.server, res.err)
 		} else {
 			log.Printf(
-				"\n\nSuccess from %s:\nEnrollment ID = %s\nExp = %v\nSigma = %s\n\n",
+				"\n\nSuccess from %s:\nEnrollment ID = %s\nExp = %v\nSigma = %s\nUSK = %s\n\n",
 				res.server,
 				res.response.GetEid(),
 				res.response.GetExp(),
-				res.response.GetSigma())
+				res.response.GetSigma(),
+				res.response.GetUsk())
 			successfulResponses = append(successfulResponses, res.response)
 		}
 	}

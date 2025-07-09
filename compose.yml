@@ -1,6 +1,5 @@
 x-enrollment-server: &enrollment-server-base
   image: denseid-dev
-  command: ["air", "--build.cmd", "go build -o /app/bin/enrollment /app/cmd/enrollment", "--build.bin", "/app/bin/enrollment"]
   volumes:
     - .:/app
 
@@ -8,6 +7,7 @@ services:
   enrollment-server-1:
     <<: *enrollment-server-base
     container_name: enrollment-server-1
+    command: ["air", "--build.cmd", "go build -o /app/bin/es1 /app/cmd/enrollment", "--build.bin", "/app/bin/es1"]
     ports:
       - "50051:50051"
     env_file:
@@ -16,6 +16,7 @@ services:
   enrollment-server-2:
     <<: *enrollment-server-base
     container_name: enrollment-server-2
+    command: ["air", "--build.cmd", "go build -o /app/bin/es2 /app/cmd/enrollment", "--build.bin", "/app/bin/es2"]
     ports:
       - "50052:50051"
     env_file:
