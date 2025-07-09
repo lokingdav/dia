@@ -1,91 +1,105 @@
 package enrollment
 
 import (
-	"context"
-	"fmt"
-	"log"
-	"time"
+    "context"
+    "fmt"
+    "log"
+    "time"
 
-	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
-
-	"github.com/dense-identity/denseid/internal/merkle"
-	"github.com/dense-identity/denseid/internal/signing"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
+    "github.com/dense-identity/denseid/internal/merkle"
+    "github.com/dense-identity/denseid/internal/signing"
+    "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/status"
+    "google.golang.org/protobuf/proto"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// Server implements the pb.EnrollmentServiceServer interface.
+// Server implements pb.EnrollmentServiceServer.
 type Server struct {
-	pb.UnimplementedEnrollmentServiceServer
-	cfg *Config
+    pb.UnimplementedEnrollmentServiceServer
+    cfg *Config
 }
 
-// NewServer creates a new instance of our enrollment server.
+// NewServer constructs a new enrollment server.
 func NewServer(cfg *Config) *Server {
-	return &Server{
-		cfg: cfg,
-	}
+    signing.InitGroupSignatures()
+    return &Server{cfg: cfg}
 }
 
-func InitGroupSignatures() {
-	signing.InitGroupSignatures()
-}
-
-// EnrollSubscriber implements the RPC method for enrolling a new subscriber.
+// EnrollSubscriber verifies each RegSig on the request, builds a Merkle root,
+// signs it (with expiry), generates a BBS04 user key, and returns all three.
 func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest) (*pb.EnrollmentResponse, error) {
-	log.Printf("Received enrollment request for TN: %s", req.GetTn())
+    log.Printf("[Enroll] TN=%s, #pubkeys=%d", req.GetTn(), len(req.PublicKeys))
 
-	reqClone := proto.Clone(req).(*pb.EnrollmentRequest)
-	reqClone.AuthSigs = nil
-	dataBytes, err := proto.Marshal(reqClone)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "error processing request")
-	}
+    // 1) Basic length check
+    if len(req.PublicKeys) != len(req.AuthSigs) {
+        return nil, status.Error(codes.InvalidArgument, "public_keys and auth_sigs count mismatch")
+    }
 
-	for i := 0; i < len(req.PublicKeys); i++ {
-		failed := true
-		if pk, err := signing.DecodeString(req.PublicKeys[i]); err == nil {
-			if sig, err := signing.DecodeString(req.AuthSigs[i]); err == nil {
-				if signing.RegSigVerify(pk, dataBytes, sig) {
-					failed = false
-				}
-			}
-		}
-		if failed {
-			return nil, status.Errorf(codes.InvalidArgument, "failed to prove possesion of public key %d", i)
-		}
-	}
+    // 2) Clone & zero out the AuthSigs for deterministic marshaling
+    reqClone := proto.Clone(req).(*pb.EnrollmentRequest)
+    reqClone.AuthSigs = nil
 
-	// --- Response Step ---
-	enrollmentID, err := merkle.CreateRoot([][]string{
-		{req.Tn},
-		{req.GetIden().Name, req.GetIden().LogoUrl},
-		req.PublicKeys,
-		req.AuthSigs,
-		{fmt.Sprintf("%d", req.NBio)},
-		{req.Nonce},
-	})
+    data, err := proto.MarshalOptions{Deterministic: true}.Marshal(reqClone)
+    if err != nil {
+        return nil, status.Errorf(codes.InvalidArgument, "failed to marshal request: %v", err)
+    }
 
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to generate your enrollment record: %v", err)
-	}
+    // 3) Verify every RegSig
+    for i := range req.PublicKeys {
+        pkBytes, err := signing.DecodeString(req.PublicKeys[i])
+        if err != nil {
+            return nil, status.Errorf(codes.InvalidArgument, "invalid public_key[%d]: %v", i, err)
+        }
+        sigBytes, err := signing.DecodeString(req.AuthSigs[i])
+        if err != nil {
+            return nil, status.Errorf(codes.InvalidArgument, "invalid auth_sig[%d]: %v", i, err)
+        }
+        if ok := signing.RegSigVerify(pkBytes, data, sigBytes); !ok {
+            return nil, status.Errorf(codes.Unauthenticated, "signature verification failed for key %d", i)
+        }
+    }
 
-	expirationTime := time.Now().Add(time.Hour * 24 * time.Duration(s.cfg.EnrollmentDurationDays))
-	expirationBytes, _ := expirationTime.MarshalBinary()
-	dataToSign := append(enrollmentID, expirationBytes...)
-	sigma := signing.RegSigSign(s.cfg.PrivateKey, dataToSign)
+    // 4) Build a Merkle root over all identity fields
+    leaves := [][]string{
+        {req.Tn},
+        {req.GetIden().Name, req.GetIden().LogoUrl},
+        req.PublicKeys,
+        req.AuthSigs,
+        {fmt.Sprintf("%d", req.NBio)},
+        {req.Nonce},
+    }
+    enrollmentID, err := merkle.CreateRoot(leaves)
+    if err != nil {
+        return nil, status.Errorf(codes.Internal, "failed to build Merkle root: %v", err)
+    }
 
-	usk, _ := signing.GrpSigUserKeyGen(s.cfg.GPK, s.cfg.ISK)
+    // 5) Compute expiration and sign (enrollmentID || expiry)
+    expiry := time.Now().Add(time.Duration(s.cfg.EnrollmentDurationDays) * 24 * time.Hour)
+    expiryPb := timestamppb.New(expiry)
+    expiryBytes, err := expiry.MarshalBinary()
+    if err != nil {
+        return nil, status.Errorf(codes.Internal, "failed to encode expiry: %v", err)
+    }
 
-	response := &pb.EnrollmentResponse{
-		Eid:   signing.EncodeToString(enrollmentID),
-		Exp:   timestamppb.New(expirationTime),
-		Usk:   signing.EncodeToString(usk),
-		Sigma: signing.EncodeToString(sigma),
-	}
+    msgToSign := append(enrollmentID, expiryBytes...)
+    enrollmentSig := signing.RegSigSign(s.cfg.PrivateKey, msgToSign)
 
-	log.Printf("Successfully processed enrollment for TN: %s. Enrollment ID: %x", req.GetTn(), enrollmentID)
-	return response, nil
+    // 6) Generate the user secret key (BBS04)
+    usk, err := signing.GrpSigUserKeyGen(s.cfg.GPK, s.cfg.ISK)
+    if err != nil {
+        return nil, status.Errorf(codes.Internal, "failed to generate user key: %v", err)
+    }
+
+    // 7) Build response
+    resp := &pb.EnrollmentResponse{
+        Eid:   signing.EncodeToString(enrollmentID),
+        Exp:   expiryPb,
+        Usk:   signing.EncodeToString(usk),
+        Sigma: signing.EncodeToString(enrollmentSig),
+    }
+
+    log.Printf("[Enroll] Success TN=%s EID=%s", req.GetTn(), resp.Eid)
+    return resp, nil
 }
