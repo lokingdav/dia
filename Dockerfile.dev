@@ -12,11 +12,12 @@ RUN apk add --no-cache git build-base cmake gmp-dev
 
 RUN git clone https://github.com/dense-identity/bbsgroupsig.git && \
     cd bbsgroupsig && \
-    git checkout main && \
-    chmod +x bindings/install.sh && \
-    ./bindings/install.sh && \
-    cd .. && \
-    rm -rf bbsgroupsig
+    git checkout bindings/go/v1.0.5 && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release .. && \
+    cmake --build . --target install && \
+    cd ../.. && \
+    rm -rf bbsgroupsig 
 
 # Install air for live-reloading.
 RUN go install github.com/air-verse/air@latest

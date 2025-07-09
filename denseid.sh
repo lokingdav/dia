@@ -1,1 +1,1 @@
-docker image build -t denseid-dev -f Dockerfile.dev . --no-cache
+docker image build -t denseid-dev -f Dockerfile.dev . #--no-cache
