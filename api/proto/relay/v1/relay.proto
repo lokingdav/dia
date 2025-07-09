@@ -1,0 +1,28 @@
+syntax = "proto3";
+package denseid.relay.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/dense-identity/denseid/api/go/relay/v1;relaypb";
+
+// single bidi-stream for send & receive
+service RelayService {
+  rpc Subscribe(stream RelayMessage) returns (stream RelayMessage);
+}
+
+message RelayMessage {
+  // unique message identifier
+  string id  = 1;
+
+  // logical topic/room
+  string channel  = 2;
+
+  // the raw payload (could be JSON, protobuf, whatever)
+  bytes  payload  = 3;
+
+  // when it was sent (ordering / staleness)
+  google.protobuf.Timestamp sent_at = 4;
+
+  // signature / MAC / auth tag
+  bytes  sigma    = 5;
+}

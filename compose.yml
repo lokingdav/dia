@@ -1,23 +1,60 @@
-x-enrollment-server: &enrollment-server-base
+x-denseid-server: &denseid-server-base
   image: denseid-dev
+  working_dir: /app
+  entrypoint: ["air"]
   volumes:
     - .:/app
+    - go-mod-cache:/go/pkg/mod
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "sh", "-c", "nc -z localhost 50051"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+  deploy:
+    resources:
+      limits:
+        cpus: '1.0'
+        memory: 500M
 
 services:
   enrollment-server-1:
-    <<: *enrollment-server-base
+    <<: *denseid-server-base
     container_name: enrollment-server-1
-    command: ["air", "--build.cmd", "go build -o /app/bin/es1 /app/cmd/enrollment", "--build.bin", "/app/bin/es1"]
+    command:
+      - "--build.cmd=go build -o /app/bin/es1 /app/cmd/enrollment"
+      - "--build.bin=/app/bin/es1"
     ports:
       - "50051:50051"
-    env_file:
-      - .env.es1
+    env_file: .env.es1
+    profiles: [enrollment]
 
   enrollment-server-2:
-    <<: *enrollment-server-base
+    <<: *denseid-server-base
     container_name: enrollment-server-2
-    command: ["air", "--build.cmd", "go build -o /app/bin/es2 /app/cmd/enrollment", "--build.bin", "/app/bin/es2"]
+    command:
+      - "--build.cmd=go build -o /app/bin/es2 /app/cmd/enrollment"
+      - "--build.bin=/app/bin/es2"
     ports:
       - "50052:50051"
-    env_file:
-      - .env.es2
+    env_file: .env.es2
+    profiles: [enrollment]
+
+  relay-server:
+    <<: *denseid-server-base
+    container_name: relay-server
+    command:
+      - "--build.cmd=go build -o /app/bin/relserv /app/cmd/relay"
+      - "--build.bin=/app/bin/relserv"
+    ports:
+      - "50053:50051"
+    env_file: .env.relay
+    profiles: [relay]
+
+volumes:
+  go-mod-cache:
