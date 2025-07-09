@@ -5,24 +5,38 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/dense-identity/denseid/api/go/relay/v1;relaypb";
 
-// single bidi-stream for send & receive
-service RelayService {
-  rpc Subscribe(stream RelayMessage) returns (stream RelayMessage);
+// When subscribing, clients must present a signature so only authorized members can listen.
+message SubscribeRequest {
+  string channel     = 1;
+  string sender_id   = 2;
+  google.protobuf.Timestamp timestamp = 3;
+  bytes sigma        = 4;
 }
 
 message RelayMessage {
-  // unique message identifier
-  string id  = 1;
+  // client‐assigned
+  string id         = 1;
+  string channel    = 2;
+  bytes  payload    = 3;
 
-  // logical topic/room
-  string channel  = 2;
-
-  // the raw payload (could be JSON, protobuf, whatever)
-  bytes  payload  = 3;
-
-  // when it was sent (ordering / staleness)
+  // client’s own send timestamp (included in the signature)
   google.protobuf.Timestamp sent_at = 4;
 
-  // signature / MAC / auth tag
-  bytes  sigma    = 5;
+  // signature over (id,channel,payload,sent_at,sender_id)
+  bytes  sigma      = 5;
+
+  string sender_id  = 6;
+
+  // server’s relay timestamp (NOT covered by the signature)
+  google.protobuf.Timestamp relay_at = 7;
+}
+
+message PublishResponse {
+  // just echo back the server’s relay timestamp
+  google.protobuf.Timestamp relay_at = 1;
+}
+
+service RelayService {
+  rpc Subscribe(SubscribeRequest) returns (stream RelayMessage);
+  rpc Publish  (RelayMessage)       returns (PublishResponse);
 }

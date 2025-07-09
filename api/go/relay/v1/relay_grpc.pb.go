@@ -20,15 +20,15 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	RelayService_Subscribe_FullMethodName = "/denseid.relay.v1.RelayService/Subscribe"
+	RelayService_Publish_FullMethodName   = "/denseid.relay.v1.RelayService/Publish"
 )
 
 // RelayServiceClient is the client API for RelayService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// single bidi-stream for send & receive
 type RelayServiceClient interface {
-	Subscribe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[RelayMessage, RelayMessage], error)
+	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RelayMessage], error)
+	Publish(ctx context.Context, in *RelayMessage, opts ...grpc.CallOption) (*PublishResponse, error)
 }
 
 type relayServiceClient struct {
@@ -39,26 +39,41 @@ func NewRelayServiceClient(cc grpc.ClientConnInterface) RelayServiceClient {
 	return &relayServiceClient{cc}
 }
 
-func (c *relayServiceClient) Subscribe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[RelayMessage, RelayMessage], error) {
+func (c *relayServiceClient) Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RelayMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &RelayService_ServiceDesc.Streams[0], RelayService_Subscribe_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &grpc.GenericClientStream[RelayMessage, RelayMessage]{ClientStream: stream}
+	x := &grpc.GenericClientStream[SubscribeRequest, RelayMessage]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
 	return x, nil
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type RelayService_SubscribeClient = grpc.BidiStreamingClient[RelayMessage, RelayMessage]
+type RelayService_SubscribeClient = grpc.ServerStreamingClient[RelayMessage]
+
+func (c *relayServiceClient) Publish(ctx context.Context, in *RelayMessage, opts ...grpc.CallOption) (*PublishResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishResponse)
+	err := c.cc.Invoke(ctx, RelayService_Publish_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 // RelayServiceServer is the server API for RelayService service.
 // All implementations must embed UnimplementedRelayServiceServer
 // for forward compatibility.
-//
-// single bidi-stream for send & receive
 type RelayServiceServer interface {
-	Subscribe(grpc.BidiStreamingServer[RelayMessage, RelayMessage]) error
+	Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[RelayMessage]) error
+	Publish(context.Context, *RelayMessage) (*PublishResponse, error)
 	mustEmbedUnimplementedRelayServiceServer()
 }
 
@@ -69,8 +84,11 @@ type RelayServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRelayServiceServer struct{}
 
-func (UnimplementedRelayServiceServer) Subscribe(grpc.BidiStreamingServer[RelayMessage, RelayMessage]) error {
+func (UnimplementedRelayServiceServer) Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[RelayMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
+}
+func (UnimplementedRelayServiceServer) Publish(context.Context, *RelayMessage) (*PublishResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Publish not implemented")
 }
 func (UnimplementedRelayServiceServer) mustEmbedUnimplementedRelayServiceServer() {}
 func (UnimplementedRelayServiceServer) testEmbeddedByValue()                      {}
@@ -94,11 +112,33 @@ func RegisterRelayServiceServer(s grpc.ServiceRegistrar, srv RelayServiceServer)
 }
 
 func _RelayService_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(RelayServiceServer).Subscribe(&grpc.GenericServerStream[RelayMessage, RelayMessage]{ServerStream: stream})
+	m := new(SubscribeRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(RelayServiceServer).Subscribe(m, &grpc.GenericServerStream[SubscribeRequest, RelayMessage]{ServerStream: stream})
 }
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type RelayService_SubscribeServer = grpc.BidiStreamingServer[RelayMessage, RelayMessage]
+type RelayService_SubscribeServer = grpc.ServerStreamingServer[RelayMessage]
+
+func _RelayService_Publish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RelayMessage)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RelayServiceServer).Publish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RelayService_Publish_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RelayServiceServer).Publish(ctx, req.(*RelayMessage))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 // RelayService_ServiceDesc is the grpc.ServiceDesc for RelayService service.
 // It's only intended for direct use with grpc.RegisterService,
@@ -106,13 +146,17 @@ type RelayService_SubscribeServer = grpc.BidiStreamingServer[RelayMessage, Relay
 var RelayService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "denseid.relay.v1.RelayService",
 	HandlerType: (*RelayServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Publish",
+			Handler:    _RelayService_Publish_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Subscribe",
 			Handler:       _RelayService_Subscribe_Handler,
 			ServerStreams: true,
-			ClientStreams: true,
 		},
 	},
 	Metadata: "relay/v1/relay.proto",
