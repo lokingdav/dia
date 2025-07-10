@@ -37,7 +37,7 @@ func Finalize(blind, evaluatedElement []byte) (result []byte, err error) {
 	if err != nil {
 		return
 	}
-	
+
 	result, err = bbsgs.G1Mul(evaluatedElement, blindInv)
 	return
 }
