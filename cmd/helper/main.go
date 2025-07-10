@@ -8,12 +8,7 @@ import (
 
 	"github.com/dense-identity/bbsgroupsig/bindings/go"
 	"github.com/dense-identity/denseid/internal/signing"
-)
-
-var (
-	isKeygen *bool   = flag.Bool("keygen", false, "Generate ed25519 Keypair")
-	count    *int    = flag.Int("count", 1, "Number of keypairs to generate")
-	sigType  *string = flag.String("type", "rs", "Whether rs or gs")
+	"github.com/dense-identity/denseid/internal/voprf"
 )
 
 func generateRsKeys(count int) {
@@ -46,7 +41,21 @@ func generateGsKeys() {
 		signing.EncodeToString(isk))
 }
 
+func generateOprfSk() {
+	bbsgs.InitPairing()
+	sk, err := voprf.KeyGen()
+	if err != nil {
+		log.Fatalf("failed to generate OPRF secret key: %v", err)
+	}
+	log.Printf("Generated OPRF Secret Key:\n\nOPRF_SK=%s\n", signing.EncodeToString(sk))
+}
+
 func main() {
+	var (
+		isKeygen *bool   = flag.Bool("keygen", false, "Generate ed25519 Keypair")
+		count    *int    = flag.Int("count", 1, "Number of keypairs to generate")
+		sigType  *string = flag.String("type", "rs", "Whether rs or gs or oprf")
+	)
 	flag.Parse()
 
 	if *isKeygen {
@@ -55,6 +64,8 @@ func main() {
 			generateRsKeys(*count)
 		case "gs":
 			generateGsKeys()
+		case "oprf":
+			generateOprfSk()
 		default:
 			log.Fatal("Please specify --type either rs or gs")
 		}
