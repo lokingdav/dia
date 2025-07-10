@@ -1,0 +1,27 @@
+syntax = "proto3";
+package denseid.keyderivation.v1;
+
+option go_package = "github.com/dense-identity/denseid/api/go/keyderivation/v1;keyderivationpb";
+
+// Request for a single-round OPRF evaluation.
+// Client sends a blinded element plus a group signature for authentication.
+message EvaluateRequest {
+  // The blinded input B = Blind(x).
+  bytes blinded_element = 1;
+
+  // BBS04 group signature over blinded_element, to authenticate the request.
+  bytes sigma           = 2;
+}
+
+// Response to an OPRF evaluation.
+// Server returns the evaluated element R = Eval(B).
+message EvaluateResponse {
+  // The server’s PRF output on the blinded element.
+  bytes evaluated_element = 1;
+}
+
+// Service for one-round OPRF evaluations.
+service KeyDerivationService {
+  // Evaluate a single blinded element and return the PRF output.
+  rpc Evaluate(EvaluateRequest) returns (EvaluateResponse);
+}
