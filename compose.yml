@@ -45,15 +45,37 @@ services:
     env_file: .env.es2
     profiles: [enrollment]
 
-  relay-server:
+  key-derivation-1:
     <<: *denseid-server-base
-    container_name: relay-server
+    container_name: key-derivation-1
     command:
-      - "--build.cmd=go build -o /app/bin/relserv /app/cmd/relay"
-      - "--build.bin=/app/bin/relserv"
+      - "--build.cmd=go build -o /app/bin/kd1 /app/cmd/keyderivation"
+      - "--build.bin=/app/bin/kd1"
     ports:
       - "50053:50051"
-    env_file: .env.relay
+    env_file: .env.kd1
+    profiles: [keyderiv]
+
+  key-derivation-2:
+    <<: *denseid-server-base
+    container_name: key-derivation-2
+    command:
+      - "--build.cmd=go build -o /app/bin/kd2 /app/cmd/keyderivation"
+      - "--build.bin=/app/bin/kd2"
+    ports:
+      - "50054:50051"
+    env_file: .env.kd2
+    profiles: [keyderiv]
+
+  relay-server-1:
+    <<: *denseid-server-base
+    container_name: relay-server-1
+    command:
+      - "--build.cmd=go build -o /app/bin/rel1 /app/cmd/relay"
+      - "--build.bin=/app/bin/rel1"
+    ports:
+      - "50060:50051"
+    env_file: .env.rs1
     profiles: [relay]
 
 volumes:
