@@ -14,7 +14,7 @@ type Config struct {
 	GPK    []byte
 
 	OprfSKStr string `env:"OPRF_SK,required"`
-	OprfVKStr string `env:"OPRF_VK,required"`
+	OprfVKStr string `env:"OPRF_VK"`
 	OprfSK    []byte
 	OprfVK    []byte
 }
@@ -26,7 +26,10 @@ func (cfg *Config) ParseKeysAsBytes() error {
 
 	cfg.GPK, _ = signing.DecodeString(cfg.GPKStr)
 	cfg.OprfSK, _ = signing.DecodeString(cfg.OprfSKStr)
-	cfg.OprfVK, _ = signing.DecodeString(cfg.OprfVKStr)
+
+	if cfg.OprfVKStr == "" {
+		cfg.OprfVK, _ = signing.DecodeString(cfg.OprfVKStr)
+	}
 
 	return nil
 }
