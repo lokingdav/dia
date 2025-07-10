@@ -44,22 +44,7 @@ func (c *clientConfig) ParseKeysAsBytes() error {
     return nil
 }
 
-func main() {
-    // Flags
-    serverAddr := flag.String("server", "localhost:50051", "relay server address")
-    channel := flag.String("channel", "", "channel/topic to join")
-    senderID := flag.String("id", "", "unique client ID (randomized if empty)")
-    flag.Parse()
-
-    if *channel == "" {
-        fmt.Fprintln(os.Stderr, "-channel is required")
-        os.Exit(1)
-    }
-    if *senderID == "" {
-        *senderID = uuid.NewString()
-    }
-
-    // Load env and config
+func loadConfig() *clientConfig {
     if err := configpkg.LoadEnv(".env.client"); err != nil {
         log.Printf("warning loading .env.client: %v", err)
     }
@@ -70,84 +55,83 @@ func main() {
     if err := cfg.ParseKeysAsBytes(); err != nil {
         log.Fatalf("parsing keys: %v", err)
     }
+    return cfg
+}
 
-    // Init group sig scheme (pairings, etc.)
-    signing.InitGroupSignatures()
-
+func createGRPCClient(addr string) relaypb.RelayServiceClient {
     conn, err := grpc.NewClient(
-        *serverAddr,
+        addr,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
     )
     if err != nil {
-        log.Fatalf("grpc.NewClient(%q): %v", *serverAddr, err)
+        log.Fatalf("grpc.NewClient(%q): %v", addr, err)
     }
-    defer conn.Close()
-    client := relaypb.NewRelayServiceClient(conn)
-
-    // Subscribe in background
-    var wg sync.WaitGroup
-    wg.Add(1)
+    // Close on program exit
     go func() {
-        defer wg.Done()
-
-        // Build request
-        req := &relaypb.SubscribeRequest{
-            Channel:   *channel,
-            SenderId:  *senderID,
-            Timestamp: timestamppb.Now(),
-        }
-        // Sign it
-        cloneReq := proto.Clone(req).(*relaypb.SubscribeRequest)
-        cloneReq.Sigma = nil
-        data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
-        if err != nil {
-            log.Fatalf("marshal subscribe req: %v", err)
-        }
-        sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
-        if err != nil {
-            log.Fatalf("sign subscribe req: %v", err)
-        }
-        req.Sigma = sig
-
-        // Open stream
-        stream, err := client.Subscribe(context.Background(), req)
-        if err != nil {
-            log.Fatalf("Subscribe RPC error: %v", err)
-        }
-        log.Printf("Subscribed to %q as %s", *channel, *senderID)
-
-        // Read loop
-        for {
-            msg, err := stream.Recv()
-            if err == io.EOF {
-                log.Println("server closed subscribe stream")
-                return
-            }
-            if err != nil {
-                log.Fatalf("stream.Recv(): %v", err)
-            }
-            fmt.Printf(
-                "[%s @ %s → %s] %q\n",
-                msg.SenderId,
-                msg.SentAt.AsTime().Format(time.RFC3339),
-                msg.RelayAt.AsTime().Format(time.RFC3339),
-                string(msg.Payload),
-            )
-        }
+        <-context.Background().Done()
+        conn.Close()
     }()
+    return relaypb.NewRelayServiceClient(conn)
+}
 
-    // Publish loop
+func subscribeLoop(client relaypb.RelayServiceClient, channel, senderID string, cfg *clientConfig, wg *sync.WaitGroup) {
+    defer wg.Done()
+
+    req := &relaypb.SubscribeRequest{
+        Channel:   channel,
+        SenderId:  senderID,
+        Timestamp: timestamppb.Now(),
+    }
+    // Sign
+    cloneReq := proto.Clone(req).(*relaypb.SubscribeRequest)
+    cloneReq.Sigma = nil
+    data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
+    if err != nil {
+        log.Fatalf("marshal subscribe req: %v", err)
+    }
+    sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
+    if err != nil {
+        log.Fatalf("sign subscribe req: %v", err)
+    }
+    req.Sigma = sig
+
+    stream, err := client.Subscribe(context.Background(), req)
+    if err != nil {
+        log.Fatalf("Subscribe RPC error: %v", err)
+    }
+    log.Printf("Subscribed to %q as %s", channel, senderID)
+
+    for {
+        msg, err := stream.Recv()
+        if err == io.EOF {
+            log.Println("server closed subscribe stream")
+            return
+        }
+        if err != nil {
+            log.Fatalf("stream.Recv(): %v", err)
+        }
+        fmt.Printf("[%s @ %s → %s] %q\n",
+            msg.SenderId,
+            msg.SentAt.AsTime().Format(time.RFC3339),
+            msg.RelayAt.AsTime().Format(time.RFC3339),
+            string(msg.Payload),
+        )
+    }
+}
+
+func publishLoop(client relaypb.RelayServiceClient, channel, senderID string, cfg *clientConfig) {
     scanner := bufio.NewScanner(os.Stdin)
     fmt.Println("Type messages to publish (Ctrl+D to exit):")
     for scanner.Scan() {
         text := scanner.Text()
         msg := &relaypb.RelayMessage{
             Id:       uuid.NewString(),
-            Channel:  *channel,
+            Channel:  channel,
             Payload:  []byte(text),
             SentAt:   timestamppb.Now(),
-            SenderId: *senderID,
+            SenderId: senderID,
         }
+        // Sign
         cloneMsg := proto.Clone(msg).(*relaypb.RelayMessage)
         cloneMsg.Sigma = nil
         cloneMsg.RelayAt = nil
@@ -173,7 +157,26 @@ func main() {
     if err := scanner.Err(); err != nil {
         log.Printf("stdin error: %v", err)
     }
+}
 
-    log.Println("Shutting down client…")
+func main() {
+    // Flags
+    serverAddr := flag.String("server", "localhost:50053", "relay server address")
+    channel := flag.String("channel", "test-topic", "channel/topic to join")
+    senderID := flag.String("id", uuid.NewString(), "unique client ID (randomized if empty)")
+    flag.Parse()
+
+    // Load and init
+    cfg := loadConfig()
+    signing.InitGroupSignatures()
+    client := createGRPCClient(*serverAddr)
+
+    // Run both loops
+    var wg sync.WaitGroup
+    wg.Add(1)
+    go subscribeLoop(client, *channel, *senderID, cfg, &wg)
+    publishLoop(client, *channel, *senderID, cfg)
+
+    // Wait for subscribe loop to finish
     wg.Wait()
 }
