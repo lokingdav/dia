@@ -10,7 +10,6 @@ import (
 	keyderivationpb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/keyderivation"
-	"github.com/dense-identity/denseid/internal/signing"
 )
 
 func main() {
@@ -23,9 +22,6 @@ func main() {
 	if err := cfg.ParseKeysAsBytes(); err != nil {
 		log.Fatalf("failed to parse group keys: %v", err)
 	}
-
-	// Initialize BBS04 group signature pairing parameters
-	signing.InitGroupSignatures()
 
 	// Ensure port has leading ':'
 	addr := cfg.Port

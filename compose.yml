@@ -54,7 +54,7 @@ services:
     ports:
       - "50053:50051"
     env_file: .env.kd1
-    profiles: [keyderiv]
+    profiles: [keyderivation]
 
   key-derivation-2:
     <<: *denseid-server-base
@@ -65,7 +65,18 @@ services:
     ports:
       - "50054:50051"
     env_file: .env.kd2
-    profiles: [keyderiv]
+    profiles: [keyderivation]
+
+  revocation-server:
+    <<: *denseid-server-base
+    container_name: revocation-server
+    command:
+      - "--build.cmd=go build -o /app/bin/rev /app/cmd/revocation"
+      - "--build.bin=/app/bin/rev"
+    ports:
+      - "50055:50051"
+    env_file: .env.rev
+    profiles: [revocation]
 
   relay-server-1:
     <<: *denseid-server-base

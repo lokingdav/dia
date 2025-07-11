@@ -1,0 +1,17 @@
+syntax = "proto3";
+package denseid.revocation.v1;
+
+option go_package = "github.com/dense-identity/denseid/api/go/revocation/v1;revocationpb";
+
+message QueryRequest {
+  bytes query = 1;
+  bytes sigma = 2;
+}
+
+message QueryResponse {
+  bool is_revoked = 1;
+}
+
+service RevocationService {
+  rpc Query(QueryRequest) returns (QueryResponse);
+}
