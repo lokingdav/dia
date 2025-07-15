@@ -1,2 +1,2 @@
-docker compose --profile enrollment --profile keyderivation --profile revocation --profile relay down
-# docker compose --profile enrollment --profile keyderivation --profile revocation --profile relay up -d
+docker compose --profile enrollment down
+docker compose --profile enrollment up -d

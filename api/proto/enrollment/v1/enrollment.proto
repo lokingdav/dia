@@ -20,16 +20,16 @@ message DisplayInformation {
 
 message EnrollmentRequest {
   string tn = 1;
-  repeated string public_keys = 2;
+  repeated bytes public_keys = 2;
   DisplayInformation iden = 3;
   uint32 n_bio = 4;
-  repeated string auth_sigs = 5;
+  repeated bytes auth_sigs = 5;
   string nonce = 6;
 }
 
 message EnrollmentResponse {
   string eid = 1;
   google.protobuf.Timestamp exp = 2;
-  string usk = 3;
-  string sigma = 4;
+  bytes usk = 3;
+  bytes sigma = 4;
 }

@@ -27,8 +27,8 @@ type result struct {
 }
 
 type keypairs struct {
-	PublicKeys  []string
-	PrivateKeys []string
+	PublicKeys  [][]byte
+	PrivateKeys [][]byte
 }
 
 type config struct {
@@ -53,12 +53,13 @@ func (c *config) getKeypairs() (keypairs, error) {
 		return keypairs{}, fmt.Errorf("Private-Public key lengths do not match")
 	}
 
-	publicKeys, privateKeys := []string{}, []string{}
+	publicKeys, privateKeys := [][]byte{}, [][]byte{}
+
 	for i := 0; i < len(pks); i++ {
-		if _, err := signing.DecodeString(sks[i]); err == nil {
-			if _, err := signing.DecodeString(pks[i]); err == nil {
-				privateKeys = append(privateKeys, sks[i])
-				publicKeys = append(publicKeys, pks[i])
+		if skBytes, err := signing.DecodeString(sks[i]); err == nil {
+			if pkBytes, err := signing.DecodeString(pks[i]); err == nil {
+				privateKeys = append(privateKeys, skBytes)
+				publicKeys = append(publicKeys, pkBytes)
 			}
 		}
 	}
@@ -92,11 +93,10 @@ func (cfg *config) newEnrollmentRequest() (*pb.EnrollmentRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	authSigs := []string{}
+	authSigs := [][]byte{}
 	for i := 0; i < len(kps.PrivateKeys); i++ {
-		sk, _ := signing.DecodeString(kps.PrivateKeys[i])
-		sig := signing.RegSigSign(sk, dataBytes)
-		authSigs = append(authSigs, signing.EncodeToString(sig))
+		sig := signing.RegSigSign(kps.PrivateKeys[i], dataBytes)
+		authSigs = append(authSigs, sig)
 	}
 
 	data.AuthSigs = authSigs

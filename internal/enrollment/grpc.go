@@ -48,25 +48,23 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 
 	// 3) Verify every RegSig
 	for i := range req.PublicKeys {
-		pkBytes, err := signing.DecodeString(req.PublicKeys[i])
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid public_key[%d]: %v", i, err)
-		}
-		sigBytes, err := signing.DecodeString(req.AuthSigs[i])
-		if err != nil {
-			return nil, status.Errorf(codes.InvalidArgument, "invalid auth_sig[%d]: %v", i, err)
-		}
-		if ok := signing.RegSigVerify(pkBytes, data, sigBytes); !ok {
+		if ok := signing.RegSigVerify(req.PublicKeys[i], data, req.AuthSigs[i]); !ok {
 			return nil, status.Errorf(codes.Unauthenticated, "signature verification failed for key %d", i)
 		}
+	}
+
+	pkStrs, sigStrs := []string{}, []string{}
+	for i := 0; i < len(req.PublicKeys); i++ {
+		pkStrs = append(pkStrs, signing.EncodeToString(req.PublicKeys[i]))
+		sigStrs = append(sigStrs, signing.EncodeToString(req.AuthSigs[i]))
 	}
 
 	// 4) Build a Merkle root over all identity fields
 	leaves := [][]string{
 		{req.Tn},
 		{req.GetIden().Name, req.GetIden().LogoUrl},
-		req.PublicKeys,
-		req.AuthSigs,
+		pkStrs,
+		sigStrs,
 		{fmt.Sprintf("%d", req.NBio)},
 		{req.Nonce},
 	}
@@ -96,8 +94,8 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	resp := &pb.EnrollmentResponse{
 		Eid:   signing.EncodeToString(enrollmentID),
 		Exp:   expiryPb,
-		Usk:   signing.EncodeToString(usk),
-		Sigma: signing.EncodeToString(enrollmentSig),
+		Usk:   usk,
+		Sigma: enrollmentSig,
 	}
 
 	log.Printf("[Enroll] Success TN=%s EID=%s", req.GetTn(), resp.Eid)

@@ -101,10 +101,10 @@ func (x *DisplayInformation) GetTagline() string {
 type EnrollmentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tn            string                 `protobuf:"bytes,1,opt,name=tn,proto3" json:"tn,omitempty"`
-	PublicKeys    []string               `protobuf:"bytes,2,rep,name=public_keys,json=publicKeys,proto3" json:"public_keys,omitempty"`
+	PublicKeys    [][]byte               `protobuf:"bytes,2,rep,name=public_keys,json=publicKeys,proto3" json:"public_keys,omitempty"`
 	Iden          *DisplayInformation    `protobuf:"bytes,3,opt,name=iden,proto3" json:"iden,omitempty"`
 	NBio          uint32                 `protobuf:"varint,4,opt,name=n_bio,json=nBio,proto3" json:"n_bio,omitempty"`
-	AuthSigs      []string               `protobuf:"bytes,5,rep,name=auth_sigs,json=authSigs,proto3" json:"auth_sigs,omitempty"`
+	AuthSigs      [][]byte               `protobuf:"bytes,5,rep,name=auth_sigs,json=authSigs,proto3" json:"auth_sigs,omitempty"`
 	Nonce         string                 `protobuf:"bytes,6,opt,name=nonce,proto3" json:"nonce,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -147,7 +147,7 @@ func (x *EnrollmentRequest) GetTn() string {
 	return ""
 }
 
-func (x *EnrollmentRequest) GetPublicKeys() []string {
+func (x *EnrollmentRequest) GetPublicKeys() [][]byte {
 	if x != nil {
 		return x.PublicKeys
 	}
@@ -168,7 +168,7 @@ func (x *EnrollmentRequest) GetNBio() uint32 {
 	return 0
 }
 
-func (x *EnrollmentRequest) GetAuthSigs() []string {
+func (x *EnrollmentRequest) GetAuthSigs() [][]byte {
 	if x != nil {
 		return x.AuthSigs
 	}
@@ -186,8 +186,8 @@ type EnrollmentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Eid           string                 `protobuf:"bytes,1,opt,name=eid,proto3" json:"eid,omitempty"`
 	Exp           *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=exp,proto3" json:"exp,omitempty"`
-	Usk           string                 `protobuf:"bytes,3,opt,name=usk,proto3" json:"usk,omitempty"`
-	Sigma         string                 `protobuf:"bytes,4,opt,name=sigma,proto3" json:"sigma,omitempty"`
+	Usk           []byte                 `protobuf:"bytes,3,opt,name=usk,proto3" json:"usk,omitempty"`
+	Sigma         []byte                 `protobuf:"bytes,4,opt,name=sigma,proto3" json:"sigma,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -236,18 +236,18 @@ func (x *EnrollmentResponse) GetExp() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *EnrollmentResponse) GetUsk() string {
+func (x *EnrollmentResponse) GetUsk() []byte {
 	if x != nil {
 		return x.Usk
 	}
-	return ""
+	return nil
 }
 
-func (x *EnrollmentResponse) GetSigma() string {
+func (x *EnrollmentResponse) GetSigma() []byte {
 	if x != nil {
 		return x.Sigma
 	}
-	return ""
+	return nil
 }
 
 var File_enrollment_v1_enrollment_proto protoreflect.FileDescriptor
@@ -265,17 +265,17 @@ const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"\atagline\x18\x05 \x01(\tR\atagline\"\xcb\x01\n" +
 	"\x11EnrollmentRequest\x12\x0e\n" +
 	"\x02tn\x18\x01 \x01(\tR\x02tn\x12\x1f\n" +
-	"\vpublic_keys\x18\x02 \x03(\tR\n" +
+	"\vpublic_keys\x18\x02 \x03(\fR\n" +
 	"publicKeys\x12=\n" +
 	"\x04iden\x18\x03 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
 	"\x05n_bio\x18\x04 \x01(\rR\x04nBio\x12\x1b\n" +
-	"\tauth_sigs\x18\x05 \x03(\tR\bauthSigs\x12\x14\n" +
+	"\tauth_sigs\x18\x05 \x03(\fR\bauthSigs\x12\x14\n" +
 	"\x05nonce\x18\x06 \x01(\tR\x05nonce\"|\n" +
 	"\x12EnrollmentResponse\x12\x10\n" +
 	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
 	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +
-	"\x03usk\x18\x03 \x01(\tR\x03usk\x12\x14\n" +
-	"\x05sigma\x18\x04 \x01(\tR\x05sigma2|\n" +
+	"\x03usk\x18\x03 \x01(\fR\x03usk\x12\x14\n" +
+	"\x05sigma\x18\x04 \x01(\fR\x05sigma2|\n" +
 	"\x11EnrollmentService\x12g\n" +
 	"\x10EnrollSubscriber\x12(.denseid.enrollment.v1.EnrollmentRequest\x1a).denseid.enrollment.v1.EnrollmentResponseBEZCgithub.com/dense-identity/denseid/api/go/enrollment/v1;enrollmentpbb\x06proto3"
 
