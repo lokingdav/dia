@@ -1,127 +1,170 @@
-// Package merkle provides a wrapper around the cbergoon/merkletree library
-// to handle slices of strings by building a single Merkle tree.
 package merkle
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"errors"
-
-	"github.com/cbergoon/merkletree"
+    "bytes"
+    "crypto/sha256"
+    "crypto/subtle"
+    "encoding/base64"
+    "encoding/gob"
+    "errors"
 )
 
-// stringContent implements the merkletree.Content interface for a simple string.
-type stringContent struct {
-	value string
+// domain separation markers
+const (
+    leafPrefix byte = 0x00
+    nodePrefix byte = 0x01
+)
+
+// CreateRoot computes the Merkle root of the given non-empty slice of UTF-8 strings.
+func CreateRoot(items []string) ([]byte, error) {
+    if len(items) == 0 {
+        return nil, errors.New("item list cannot be empty")
+    }
+    leaves := make([][]byte, len(items))
+    for i, s := range items {
+        leaves[i] = leafHash([]byte(s))
+    }
+    return buildTree(leaves), nil
 }
 
-// CalculateHash hashes the data of a stringContent object.
-func (s stringContent) CalculateHash() ([]byte, error) {
-	h := sha256.New()
-	if _, err := h.Write([]byte(s.value)); err != nil {
-		return nil, err
-	}
-	return h.Sum(nil), nil
+// GenerateProof builds an inclusion proof for `item` within `items`.
+// Returns (proof, nil) if found, or (nil, nil) if item ∉ items.
+func GenerateProof(items []string, item string) (*MerkleProof, error) {
+    var index = -1
+    for i, s := range items {
+        if s == item {
+            index = i
+            break
+        }
+    }
+    if index < 0 {
+        return nil, nil
+    }
+
+    level := make([][]byte, len(items))
+    for i, s := range items {
+        level[i] = leafHash([]byte(s))
+    }
+
+    hashes := make([][]byte, 0, 32)
+    dirs   := make([]bool, 0, 32)
+    idx := index
+
+    for len(level) > 1 {
+        pairIndex := idx ^ 1 // flip last bit: even→odd, odd→even
+        var sibling []byte
+        if pairIndex < len(level) {
+            sibling = level[pairIndex]
+        } else {
+            sibling = level[idx] // duplicate when odd-length
+        }
+        isLeft := pairIndex < idx
+        hashes = append(hashes, sibling)
+        dirs   = append(dirs, isLeft)
+
+        level = nextLevel(level)
+        idx   = idx / 2
+    }
+
+    return &MerkleProof{
+        Hashes:     hashes,
+        Directions: dirs,
+    }, nil
 }
 
-// Equals tests for equality of two stringContent objects.
-func (s stringContent) Equals(other merkletree.Content) (bool, error) {
-	// Type assert the other content to stringContent
-	otherContent, ok := other.(stringContent)
-	if !ok {
-		return false, errors.New("value is not of type stringContent")
-	}
-	return s.value == otherContent.value, nil
+// VerifyProof checks that `proof` shows membership of `item` under `root`.
+func VerifyProof(root []byte, item string, proof *MerkleProof) bool {
+    // start from the leaf hash
+    computed := leafHash([]byte(item))
+    for i, sibling := range proof.Hashes {
+        if proof.Directions[i] {
+            computed = nodeHash(sibling, computed)
+        } else {
+            computed = nodeHash(computed, sibling)
+        }
+    }
+    return subtle.ConstantTimeCompare(root, computed) == 1
 }
 
-// Proof is a simple struct to hold the components of a Merkle inclusion proof.
-type Proof struct {
-	// Path contains the sibling hashes from the leaf to the root.
-	Path [][]byte
-	// Index indicates the position of each sibling hash (0 for left, 1 for right).
-	Index []int64
+func leafHash(data []byte) []byte {
+    h := sha256.New()
+    h.Write([]byte{leafPrefix})
+    h.Write(data)
+    return h.Sum(nil)
 }
 
-// flattenAndConvert takes a 2D string slice, flattens it into a 1D slice,
-// and converts each string into a merkletree.Content object.
-func flattenAndConvert(data [][]string) []merkletree.Content {
-	var contentList []merkletree.Content
-	for _, innerSlice := range data {
-		for _, item := range innerSlice {
-			contentList = append(contentList, stringContent{value: item})
-		}
-	}
-	return contentList
+func nodeHash(left, right []byte) []byte {
+    h := sha256.New()
+    h.Write([]byte{nodePrefix})
+    h.Write(left)
+    h.Write(right)
+    return h.Sum(nil)
 }
 
-// CreateRoot calculates the Merkle root for a 2D slice of strings.
-// It flattens the data into a single list before building the tree.
-func CreateRoot(data [][]string) ([]byte, error) {
-	contentList := flattenAndConvert(data)
-	if len(contentList) == 0 {
-		return nil, errors.New("cannot create root from empty data")
-	}
-
-	tree, err := merkletree.NewTree(contentList)
-	if err != nil {
-		return nil, err
-	}
-
-	return tree.MerkleRoot(), nil
+func buildTree(level [][]byte) []byte {
+    if len(level) == 1 {
+        return level[0]
+    }
+    return buildTree(nextLevel(level))
 }
 
-// GenerateProof generates an inclusion proof for a single item within the 2D slice.
-// Note: To get proofs for multiple items, call this function for each item.
-func GenerateProof(data [][]string, item string) (*Proof, error) {
-	contentList := flattenAndConvert(data)
-	if len(contentList) == 0 {
-		return nil, errors.New("cannot generate proof from empty data")
-	}
-
-	tree, err := merkletree.NewTree(contentList)
-	if err != nil {
-		return nil, err
-	}
-
-	// Find the content object for the item we want to prove
-	itemContent := stringContent{value: item}
-
-	// Rely on the library to find the path. If it can't, it will return an error.
-	path, indexes, err := tree.GetMerklePath(itemContent)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Proof{Path: path, Index: indexes}, nil
+func nextLevel(nodes [][]byte) [][]byte {
+    n := (len(nodes) + 1) / 2
+    out := make([][]byte, 0, n)
+    for i := 0; i < len(nodes); i += 2 {
+        left := nodes[i]
+        var right []byte
+        if i+1 < len(nodes) {
+            right = nodes[i+1]
+        } else {
+            right = left
+        }
+        out = append(out, nodeHash(left, right))
+    }
+    return out
 }
 
-// VerifyProof verifies an inclusion proof for a single item against a known root hash.
-// This function implements the verification logic manually by reconstructing the
-// root from the leaf hash and the proof path.
-func VerifyProof(rootHash []byte, proof *Proof, item string) (bool, error) {
-	itemContent := stringContent{value: item}
-	itemHash, err := itemContent.CalculateHash()
-	if err != nil {
-		return false, err
-	}
+// MerkleProof is a typed inclusion proof.
+type MerkleProof struct {
+    Hashes     [][]byte // sibling hashes along the path
+    Directions []bool   // true=that sibling is to the left
+}
 
-	computedHash := itemHash
-	h := sha256.New()
+// ToBytes serializes the proof using encoding/gob.
+func (p *MerkleProof) ToBytes() ([]byte, error) {
+    var buf bytes.Buffer
+    enc := gob.NewEncoder(&buf)
+    if err := enc.Encode(p); err != nil {
+        return nil, err
+    }
+    return buf.Bytes(), nil
+}
 
-	for i := 0; i < len(proof.Path); i++ {
-		h.Reset()
-		siblingHash := proof.Path[i]
-		siblingIndex := proof.Index[i]
+// ToBase64 returns a Base64-encoded gob serialization, suitable for JSON strings.
+func (p *MerkleProof) ToBase64() (string, error) {
+    b, err := p.ToBytes()
+    if err != nil {
+        return "", err
+    }
+    return base64.StdEncoding.EncodeToString(b), nil
+}
 
-		if siblingIndex == 0 { // Sibling is on the left, so current hash is on the right.
-			h.Write(siblingHash)
-			h.Write(computedHash)
-		} else { // Sibling is on the right, so current hash is on the left.
-			h.Write(computedHash)
-			h.Write(siblingHash)
-		}
-		computedHash = h.Sum(nil)
-	}
+// ProofFromBytes deserializes a gob-encoded proof.
+func ProofFromBytes(data []byte) (*MerkleProof, error) {
+    buf := bytes.NewBuffer(data)
+    dec := gob.NewDecoder(buf)
+    var p MerkleProof
+    if err := dec.Decode(&p); err != nil {
+        return nil, err
+    }
+    return &p, nil
+}
 
-	return bytes.Equal(computedHash, rootHash), nil
+// ProofFromBase64 decodes Base64 then gob-unmarshals a MerkleProof.
+func ProofFromBase64(str string) (*MerkleProof, error) {
+    data, err := base64.StdEncoding.DecodeString(str)
+    if err != nil {
+        return nil, err
+    }
+    return ProofFromBytes(data)
 }
