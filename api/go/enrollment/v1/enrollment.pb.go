@@ -187,7 +187,9 @@ type EnrollmentResponse struct {
 	Eid           string                 `protobuf:"bytes,1,opt,name=eid,proto3" json:"eid,omitempty"`
 	Exp           *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=exp,proto3" json:"exp,omitempty"`
 	Usk           []byte                 `protobuf:"bytes,3,opt,name=usk,proto3" json:"usk,omitempty"`
-	Sigma         []byte                 `protobuf:"bytes,4,opt,name=sigma,proto3" json:"sigma,omitempty"`
+	Gpk           []byte                 `protobuf:"bytes,4,opt,name=gpk,proto3" json:"gpk,omitempty"`
+	PublicKey     []byte                 `protobuf:"bytes,5,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	Sigma         []byte                 `protobuf:"bytes,6,opt,name=sigma,proto3" json:"sigma,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -243,6 +245,20 @@ func (x *EnrollmentResponse) GetUsk() []byte {
 	return nil
 }
 
+func (x *EnrollmentResponse) GetGpk() []byte {
+	if x != nil {
+		return x.Gpk
+	}
+	return nil
+}
+
+func (x *EnrollmentResponse) GetPublicKey() []byte {
+	if x != nil {
+		return x.PublicKey
+	}
+	return nil
+}
+
 func (x *EnrollmentResponse) GetSigma() []byte {
 	if x != nil {
 		return x.Sigma
@@ -270,12 +286,15 @@ const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"\x04iden\x18\x03 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
 	"\x05n_bio\x18\x04 \x01(\rR\x04nBio\x12\x1b\n" +
 	"\tauth_sigs\x18\x05 \x03(\fR\bauthSigs\x12\x14\n" +
-	"\x05nonce\x18\x06 \x01(\tR\x05nonce\"|\n" +
+	"\x05nonce\x18\x06 \x01(\tR\x05nonce\"\xad\x01\n" +
 	"\x12EnrollmentResponse\x12\x10\n" +
 	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
 	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +
-	"\x03usk\x18\x03 \x01(\fR\x03usk\x12\x14\n" +
-	"\x05sigma\x18\x04 \x01(\fR\x05sigma2|\n" +
+	"\x03usk\x18\x03 \x01(\fR\x03usk\x12\x10\n" +
+	"\x03gpk\x18\x04 \x01(\fR\x03gpk\x12\x1d\n" +
+	"\n" +
+	"public_key\x18\x05 \x01(\fR\tpublicKey\x12\x14\n" +
+	"\x05sigma\x18\x06 \x01(\fR\x05sigma2|\n" +
 	"\x11EnrollmentService\x12g\n" +
 	"\x10EnrollSubscriber\x12(.denseid.enrollment.v1.EnrollmentRequest\x1a).denseid.enrollment.v1.EnrollmentResponseBEZCgithub.com/dense-identity/denseid/api/go/enrollment/v1;enrollmentpbb\x06proto3"
 

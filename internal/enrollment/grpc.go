@@ -56,14 +56,13 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	// 4) Build a Merkle root over all enrollment records
 	leaves := []string{
 		req.Tn, // Telephone number
-		req.GetIden().Name, req.GetIden().LogoUrl, // Display information related
+		req.GetIden().Name, 
+		req.GetIden().LogoUrl, // Display information related
 		fmt.Sprintf("%d", req.NBio), // biometric count
 		req.Nonce, // Nonce
 	}
 	for i := 0; i < len(req.PublicKeys); i++ {
-		leaves = append(leaves,
-			signing.EncodeToString(req.PublicKeys[i]),
-			signing.EncodeToString(req.AuthSigs[i]))
+		leaves = append(leaves, signing.EncodeToString(req.PublicKeys[i]))
 	}
 
 	enrollmentID, err := merkle.CreateRoot(leaves)
@@ -98,7 +97,9 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		Eid:   eid,
 		Exp:   expiryPb,
 		Usk:   usk,
+		Gpk: s.cfg.GPK,
 		Sigma: enrollmentSig,
+		PublicKey: s.cfg.PublicKey,
 	}
 
 	log.Printf("[Enroll] Success TN=%s EID=%s", req.GetTn(), resp.Eid)

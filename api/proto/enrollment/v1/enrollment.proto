@@ -31,5 +31,7 @@ message EnrollmentResponse {
   string eid = 1;
   google.protobuf.Timestamp exp = 2;
   bytes usk = 3;
-  bytes sigma = 4;
+  bytes gpk = 4;
+  bytes public_key = 5;
+  bytes sigma = 6;
 }
