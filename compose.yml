@@ -31,7 +31,7 @@ services:
       - "--build.bin=/app/bin/es1"
     ports:
       - "50051:50051"
-    env_file: .env.es1
+    env_file: env/.env.es1
     profiles: [enrollment]
 
   enrollment-server-2:
@@ -42,7 +42,7 @@ services:
       - "--build.bin=/app/bin/es2"
     ports:
       - "50052:50051"
-    env_file: .env.es2
+    env_file: env/.env.es2
     profiles: [enrollment]
 
   key-derivation-1:
@@ -53,7 +53,7 @@ services:
       - "--build.bin=/app/bin/kd1"
     ports:
       - "50053:50051"
-    env_file: .env.kd1
+    env_file: env/.env.kd1
     profiles: [keyderivation]
 
   key-derivation-2:
@@ -64,7 +64,7 @@ services:
       - "--build.bin=/app/bin/kd2"
     ports:
       - "50054:50051"
-    env_file: .env.kd2
+    env_file: env/.env.kd2
     profiles: [keyderivation]
 
   revocation-server:
@@ -75,7 +75,7 @@ services:
       - "--build.bin=/app/bin/rev"
     ports:
       - "50055:50051"
-    env_file: .env.rev
+    env_file: env/.env.rev
     profiles: [revocation]
 
   relay-server-1:
@@ -86,7 +86,7 @@ services:
       - "--build.bin=/app/bin/rel1"
     ports:
       - "50060:50051"
-    env_file: .env.rs1
+    env_file: env/.env.rs1
     profiles: [relay]
 
 volumes:
