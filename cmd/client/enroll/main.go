@@ -105,7 +105,7 @@ func (cfg *config) newEnrollmentRequest() (*pb.EnrollmentRequest, error) {
 }
 
 func main() {
-	didconfig.LoadEnv(".env.client")
+	didconfig.LoadEnv("env/.env.client")
 	cfg, err := didconfig.New[config]()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -160,7 +160,7 @@ func main() {
 			log.Printf("ERROR from %s: %v", res.server, res.err)
 		} else {
 			log.Printf(
-				"\n\nSuccess from %s:\nEnrollment ID = %s\nExp = %v\nSigma = %s\nUSK = %s\n\n",
+				"\n\nSuccess from %s:\nEnrollment ID = %s\nExp = %v\nSigma = %x\nUSK = %x\n\n",
 				res.server,
 				res.response.GetEid(),
 				res.response.GetExp(),

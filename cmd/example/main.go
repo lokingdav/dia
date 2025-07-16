@@ -3,18 +3,15 @@ package main
 import (
 	"fmt"
 	"log"
-
-	// Replace 'your-module' with your actual Go module path if it's different.
-	// This assumes the merkle package is located at 'your-module/internal/merkle'.
 	"github.com/dense-identity/denseid/internal/merkle"
 )
 
 func main() {
 	// 1. Define your 2D data.
-	data := [][]string{
-		{"apple", "banana", "cherry"},
-		{"date", "elderberry"},
-		{"fig", "grape", "honeydew", "kiwi"},
+	data := []string{
+		"apple", "banana", "cherry",
+		"date", "elderberry",
+		"fig", "grape", "honeydew", "kiwi",
 	}
 
 	// 2. Create the Merkle root for the entire dataset.
@@ -34,10 +31,7 @@ func main() {
 	}
 	fmt.Printf("Proof generated successfully.\n")
 
-	isValid, err := merkle.VerifyProof(root, proof, itemToProve)
-	if err != nil {
-		log.Fatalf("Error during verification: %v", err)
-	}
+	isValid := merkle.VerifyProof(root, itemToProve, proof)
 	fmt.Printf("Verification result: %t\n\n", isValid) // Should be true
 
 	// --- Test Case 2: An invalid item ---
@@ -51,8 +45,8 @@ func main() {
 		fmt.Printf("Correctly failed to generate proof: %v\n\n", err)
 	} else {
 		// If a proof was somehow generated, we MUST ensure it fails verification.
-		log.Println("Warning: Proof was generated for a non-existent item. Verifying it must fail.")
-		isValid, _ := merkle.VerifyProof(root, invalidProof, invalidItem)
+		fmt.Println("Warning: Proof was generated for a non-existent item. Verifying it must fail.")
+		isValid := merkle.VerifyProof(root, invalidItem, invalidProof)
 		fmt.Printf("Verification result: %t\n\n", isValid)
 		if isValid {
 			log.Fatalf("CRITICAL SECURITY FLAW: A proof for a non-existent item was successfully verified.")
@@ -60,13 +54,10 @@ func main() {
 	}
 
 	// --- Test Case 3: A valid proof with the wrong item ---
-	fmt.Printf("--- Verifying a valid proof with the wrong item: '%s' ---\n", "apple")
+	fmt.Printf("--- Verifying a valid proof for '%s' with the wrong item: '%s' ---\n", "elderberry", "apple")
 
 	// Use the valid proof from 'elderberry' to try to verify 'apple'.
-	isTamperedValid, err := merkle.VerifyProof(root, proof, "apple")
-	if err != nil {
-		log.Fatalf("Error during verification: %v", err)
-	}
+	isTamperedValid := merkle.VerifyProof(root, "apple", proof)
 	// This should be false because the proof for 'elderberry' is not valid for 'apple'.
 	fmt.Printf("Verification result: %t\n", isTamperedValid)
 }

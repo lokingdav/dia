@@ -7,6 +7,7 @@ import (
     "encoding/base64"
     "encoding/gob"
     "errors"
+    "fmt"
 )
 
 // domain separation markers
@@ -28,53 +29,54 @@ func CreateRoot(items []string) ([]byte, error) {
 }
 
 // GenerateProof builds an inclusion proof for `item` within `items`.
-// Returns (proof, nil) if found, or (nil, nil) if item ∉ items.
+// Returns (proof, nil) if found, or (nil, error) if item ∉ items.
 func GenerateProof(items []string, item string) (*MerkleProof, error) {
-    var index = -1
+    idx := -1
     for i, s := range items {
         if s == item {
-            index = i
+            idx = i
             break
         }
     }
-    if index < 0 {
-        return nil, nil
+    if idx < 0 {
+        return nil, fmt.Errorf("item %q not found in list", item)
     }
 
+    // compute leaf hashes for this level
     level := make([][]byte, len(items))
     for i, s := range items {
         level[i] = leafHash([]byte(s))
     }
 
+    // collect proof path
     hashes := make([][]byte, 0, 32)
-    dirs   := make([]bool, 0, 32)
-    idx := index
+    dirs   := make([]bool,   0, 32)
+    index  := idx
 
     for len(level) > 1 {
-        pairIndex := idx ^ 1 // flip last bit: even→odd, odd→even
+        pairIndex := index ^ 1 // flip last bit: even→odd, odd→even
         var sibling []byte
         if pairIndex < len(level) {
             sibling = level[pairIndex]
         } else {
-            sibling = level[idx] // duplicate when odd-length
+            sibling = level[index] // duplicate when odd-length
         }
-        isLeft := pairIndex < idx
+        isLeft := pairIndex < index
         hashes = append(hashes, sibling)
         dirs   = append(dirs, isLeft)
 
         level = nextLevel(level)
-        idx   = idx / 2
+        index /= 2
     }
 
-    return &MerkleProof{
-        Hashes:     hashes,
-        Directions: dirs,
-    }, nil
+    return &MerkleProof{Hashes: hashes, Directions: dirs}, nil
 }
 
 // VerifyProof checks that `proof` shows membership of `item` under `root`.
 func VerifyProof(root []byte, item string, proof *MerkleProof) bool {
-    // start from the leaf hash
+    if proof == nil {
+        return false
+    }
     computed := leafHash([]byte(item))
     for i, sibling := range proof.Hashes {
         if proof.Directions[i] {
@@ -109,8 +111,7 @@ func buildTree(level [][]byte) []byte {
 }
 
 func nextLevel(nodes [][]byte) [][]byte {
-    n := (len(nodes) + 1) / 2
-    out := make([][]byte, 0, n)
+    out := make([][]byte, 0, (len(nodes)+1)/2)
     for i := 0; i < len(nodes); i += 2 {
         left := nodes[i]
         var right []byte
@@ -127,7 +128,7 @@ func nextLevel(nodes [][]byte) [][]byte {
 // MerkleProof is a typed inclusion proof.
 type MerkleProof struct {
     Hashes     [][]byte // sibling hashes along the path
-    Directions []bool   // true=that sibling is to the left
+    Directions []bool   // true if the sibling is to the left
 }
 
 // ToBytes serializes the proof using encoding/gob.

@@ -53,21 +53,19 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		}
 	}
 
-	pkStrs, sigStrs := []string{}, []string{}
+	// 4) Build a Merkle root over all enrollment records
+	leaves := []string{
+		req.Tn, // Telephone number
+		req.GetIden().Name, req.GetIden().LogoUrl, // Display information related
+		fmt.Sprintf("%d", req.NBio), // biometric count
+		req.Nonce, // Nonce
+	}
 	for i := 0; i < len(req.PublicKeys); i++ {
-		pkStrs = append(pkStrs, signing.EncodeToString(req.PublicKeys[i]))
-		sigStrs = append(sigStrs, signing.EncodeToString(req.AuthSigs[i]))
+		leaves = append(leaves,
+			signing.EncodeToString(req.PublicKeys[i]),
+			signing.EncodeToString(req.AuthSigs[i]))
 	}
 
-	// 4) Build a Merkle root over all identity fields
-	leaves := [][]string{
-		{req.Tn},
-		{req.GetIden().Name, req.GetIden().LogoUrl},
-		pkStrs,
-		sigStrs,
-		{fmt.Sprintf("%d", req.NBio)},
-		{req.Nonce},
-	}
 	enrollmentID, err := merkle.CreateRoot(leaves)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to build Merkle root: %v", err)
@@ -76,12 +74,17 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	// 5) Compute expiration and sign (enrollmentID || expiry)
 	expiry := time.Now().Add(time.Duration(s.cfg.EnrollmentDurationDays) * 24 * time.Hour)
 	expiryPb := timestamppb.New(expiry)
-	expiryBytes, err := expiry.MarshalBinary()
+
+	eid := signing.EncodeToString(enrollmentID)
+
+	msgToSign, err := proto.MarshalOptions{Deterministic: true}.Marshal(&pb.EnrollmentResponse{
+		Eid: eid,
+		Exp: expiryPb,
+	})
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to encode expiry: %v", err)
+		status.Errorf(codes.Internal, "failed to sign enrollment: %v", err)
 	}
 
-	msgToSign := append(enrollmentID, expiryBytes...)
 	enrollmentSig := signing.RegSigSign(s.cfg.PrivateKey, msgToSign)
 
 	// 6) Generate the user secret key (BBS04)
@@ -92,7 +95,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 
 	// 7) Build response
 	resp := &pb.EnrollmentResponse{
-		Eid:   signing.EncodeToString(enrollmentID),
+		Eid:   eid,
 		Exp:   expiryPb,
 		Usk:   usk,
 		Sigma: enrollmentSig,
