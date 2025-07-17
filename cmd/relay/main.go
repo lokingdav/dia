@@ -19,7 +19,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 	// 2) Parse any key‐material out of the loaded strings
-	cfg.ParseKeysAsBytes()
+	err = cfg.ParseKeysAsBytes()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
 
 	// 3) Make sure the port has a leading “:”
 	//    (e.g. if cfg.Port == "50051", this becomes ":50051")

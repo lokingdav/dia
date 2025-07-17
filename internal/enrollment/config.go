@@ -13,6 +13,7 @@ type Config struct {
 
 	PrivateKey []byte
 	PublicKey  []byte
+	PublicKeyDER []byte
 
 	// Group Signatures
 	GPKStr string `env:"GROUP_PK,required"`
@@ -29,10 +30,37 @@ func (cfg *Config) ParseKeysAsBytes() error {
 		return errors.New("failed to parse keys as bytes")
 	}
 
-	cfg.PrivateKey, _ = signing.DecodeString(cfg.PrivateKeyStr)
-	cfg.GPK, _ = signing.DecodeString(cfg.GPKStr)
-	cfg.ISK, _ = signing.DecodeString(cfg.ISKStr)
-	cfg.OSK, _ = signing.DecodeString(cfg.OSKStr)
+	var err error
+
+	cfg.PrivateKey, err = signing.DecodeString(cfg.PrivateKeyStr)
+	if err != nil {
+		return err
+	}
+
+	cfg.PublicKey, err = signing.DecodeString(cfg.PublicKeyStr)
+	if err != nil {
+		return err
+	}
+	
+	cfg.PublicKeyDER, err = signing.ExportPublicKeyToDER(cfg.PublicKey)
+	if err != nil {
+		return err
+	}
+
+	cfg.GPK, err = signing.DecodeString(cfg.GPKStr)
+	if err != nil {
+		return err
+	}
+
+	cfg.ISK, err = signing.DecodeString(cfg.ISKStr)
+	if err != nil {
+		return err
+	}
+
+	cfg.OSK, err = signing.DecodeString(cfg.OSKStr)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

@@ -4,15 +4,14 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"time"
 
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
 	"github.com/dense-identity/denseid/internal/merkle"
 	"github.com/dense-identity/denseid/internal/signing"
+	"github.com/dense-identity/denseid/internal/datetime"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Server implements pb.EnrollmentServiceServer.
@@ -48,7 +47,13 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 
 	// 3) Verify every RegSig
 	for i := range req.PublicKeys {
-		if ok := signing.RegSigVerify(req.PublicKeys[i], data, req.AuthSigs[i]); !ok {
+		clientPk, err := signing.ImportPublicKeyFromDER(req.PublicKeys[i])
+
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "public key malformed. DER expected")
+		}
+
+		if ok := signing.RegSigVerify(clientPk, data, req.AuthSigs[i]); !ok {
 			return nil, status.Errorf(codes.Unauthenticated, "signature verification failed for key %d", i)
 		}
 	}
@@ -71,9 +76,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	}
 
 	// 5) Compute expiration and sign (enrollmentID || expiry)
-	expiry := time.Now().Add(time.Duration(s.cfg.EnrollmentDurationDays) * 24 * time.Hour)
-	expiryPb := timestamppb.New(expiry)
-
+	expiryPb := datetime.MakeExpiration(s.cfg.EnrollmentDurationDays)
 	eid := signing.EncodeToString(enrollmentID)
 
 	msgToSign, err := proto.MarshalOptions{Deterministic: true}.Marshal(&pb.EnrollmentResponse{
@@ -87,6 +90,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	enrollmentSig := signing.RegSigSign(s.cfg.PrivateKey, msgToSign)
 
 	// 6) Generate the user secret key (BBS04)
+	log.Printf("Running USK KEYGEN\nGPK=%x\nISK=%x",s.cfg.GPK, s.cfg.ISK)
 	usk, err := signing.GrpSigUserKeyGen(s.cfg.GPK, s.cfg.ISK)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate user key: %v", err)
@@ -99,7 +103,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		Usk:   usk,
 		Gpk: s.cfg.GPK,
 		Sigma: enrollmentSig,
-		PublicKey: s.cfg.PublicKey,
+		PublicKey: s.cfg.PublicKeyDER,
 	}
 
 	log.Printf("[Enroll] Success TN=%s EID=%s", req.GetTn(), resp.Eid)

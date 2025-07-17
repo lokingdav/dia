@@ -2,6 +2,7 @@ package signing
 
 import (
 	"crypto/ed25519"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 
@@ -58,6 +59,7 @@ func GrpSigUserKeyGen(gpk, isk []byte) (usk []byte, err error) {
 
 // GrpSigSign signs a given message into a signature
 func GrpSigSign(gpk, usk, msg []byte) ([]byte, error) {
+
 	sig, err := bbsgs.Sign(gpk, usk, msg)
 	if err != nil {
 		return nil, err
@@ -77,4 +79,24 @@ func GrpSigOpenSig(gpk, osk, sig []byte) ([]byte, error) {
 		return nil, err
 	}
 	return faulter, nil
+}
+
+func ImportPublicKeyFromDER(der []byte) (ed25519.PublicKey, error) {
+	pubIfc, err := x509.ParsePKIXPublicKey(der)
+	if err != nil {
+		return nil, err
+	}
+	pub, ok := pubIfc.(ed25519.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("not an Ed25519 public key")
+	}
+	return pub, nil
+}
+
+func ExportPublicKeyToDER(publicKey ed25519.PublicKey) ([]byte, error) {
+	pk, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("exportPublicKeyToDER:: %v", err)
+	}
+	return pk, nil
 }

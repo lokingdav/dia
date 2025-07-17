@@ -16,7 +16,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	cfg.ParseKeysAsBytes()
+
+	err = cfg.ParseKeysAsBytes()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
 
 	// Start listening on cfg.Port
 	lis, err := net.Listen("tcp", cfg.Port)
