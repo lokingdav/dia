@@ -2,6 +2,7 @@ package keyderivation
 
 import (
 	"context"
+	"log"
 
 	keyderivationpb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
 	"github.com/dense-identity/denseid/internal/signing"
@@ -30,6 +31,8 @@ func (s *Server) Evaluate(
 	ctx context.Context,
 	req *keyderivationpb.EvaluateRequest,
 ) (*keyderivationpb.EvaluateResponse, error) {
+	log.Printf("[Evaluate] blindedElement=%x", req.BlindedElement)
+
 	// 1) Verify group signature over the blinded element
 	clone := proto.Clone(req).(*keyderivationpb.EvaluateRequest)
 	clone.Sigma = nil
