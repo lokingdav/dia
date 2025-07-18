@@ -18,6 +18,6 @@ func (cfg *Config) ParseKeysAsBytes() error {
 	if cfg == nil {
 		return errors.New("failed to parse keys as bytes")
 	}
-	cfg.GPK, _ = signing.DecodeString(cfg.GPKStr)
+	cfg.GPK, _ = signing.DecodeHex(cfg.GPKStr)
 	return nil
 }

@@ -32,12 +32,12 @@ func (cfg *Config) ParseKeysAsBytes() error {
 
 	var err error
 
-	cfg.PrivateKey, err = signing.DecodeString(cfg.PrivateKeyStr)
+	cfg.PrivateKey, err = signing.DecodeHex(cfg.PrivateKeyStr)
 	if err != nil {
 		return err
 	}
 
-	cfg.PublicKey, err = signing.DecodeString(cfg.PublicKeyStr)
+	cfg.PublicKey, err = signing.DecodeHex(cfg.PublicKeyStr)
 	if err != nil {
 		return err
 	}
@@ -47,17 +47,17 @@ func (cfg *Config) ParseKeysAsBytes() error {
 		return err
 	}
 
-	cfg.GPK, err = signing.DecodeString(cfg.GPKStr)
+	cfg.GPK, err = signing.DecodeHex(cfg.GPKStr)
 	if err != nil {
 		return err
 	}
 
-	cfg.ISK, err = signing.DecodeString(cfg.ISKStr)
+	cfg.ISK, err = signing.DecodeHex(cfg.ISKStr)
 	if err != nil {
 		return err
 	}
 
-	cfg.OSK, err = signing.DecodeString(cfg.OSKStr)
+	cfg.OSK, err = signing.DecodeHex(cfg.OSKStr)
 	if err != nil {
 		return err
 	}

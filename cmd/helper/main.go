@@ -6,7 +6,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/dense-identity/bbsgroupsig/bindings/go"
+	bbsgs "github.com/dense-identity/bbsgroupsig/bindings/go"
 	"github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
 )
@@ -36,9 +36,9 @@ func generateGsKeys() {
 	}
 
 	log.Printf("Generated Group Parameters:\n\nGROUP_PK=%s\nGROUP_OSK=%s\nGROUP_ISK=%s\n",
-		signing.EncodeToString(gpk),
-		signing.EncodeToString(osk),
-		signing.EncodeToString(isk))
+		signing.EncodeToHex(gpk),
+		signing.EncodeToHex(osk),
+		signing.EncodeToHex(isk))
 }
 
 func generateOprfSk() {
@@ -47,7 +47,7 @@ func generateOprfSk() {
 	if err != nil {
 		log.Fatalf("failed to generate OPRF secret key: %v", err)
 	}
-	log.Printf("Generated OPRF Secret Key:\n\nOPRF_SK=%s\n", signing.EncodeToString(sk))
+	log.Printf("Generated OPRF Secret Key:\n\nOPRF_SK=%s\n", signing.EncodeToHex(sk))
 }
 
 func main() {

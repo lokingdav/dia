@@ -6,9 +6,9 @@ import (
 	"log"
 
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
+	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/merkle"
 	"github.com/dense-identity/denseid/internal/signing"
-	"github.com/dense-identity/denseid/internal/datetime"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -61,13 +61,13 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	// 4) Build a Merkle root over all enrollment records
 	leaves := []string{
 		req.Tn, // Telephone number
-		req.GetIden().Name, 
-		req.GetIden().LogoUrl, // Display information related
+		req.GetIden().Name,
+		req.GetIden().LogoUrl,       // Display information related
 		fmt.Sprintf("%d", req.NBio), // biometric count
-		req.Nonce, // Nonce
+		req.Nonce,                   // Nonce
 	}
 	for i := 0; i < len(req.PublicKeys); i++ {
-		leaves = append(leaves, signing.EncodeToString(req.PublicKeys[i]))
+		leaves = append(leaves, signing.EncodeToHex(req.PublicKeys[i]))
 	}
 
 	enrollmentID, err := merkle.CreateRoot(leaves)
@@ -77,7 +77,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 
 	// 5) Compute expiration and sign (enrollmentID || expiry)
 	expiryPb := datetime.MakeExpiration(s.cfg.EnrollmentDurationDays)
-	eid := signing.EncodeToString(enrollmentID)
+	eid := signing.EncodeToHex(enrollmentID)
 
 	msgToSign, err := proto.MarshalOptions{Deterministic: true}.Marshal(&pb.EnrollmentResponse{
 		Eid: eid,
@@ -90,7 +90,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	enrollmentSig := signing.RegSigSign(s.cfg.PrivateKey, msgToSign)
 
 	// 6) Generate the user secret key (BBS04)
-	log.Printf("Running USK KEYGEN\nGPK=%x\nISK=%x",s.cfg.GPK, s.cfg.ISK)
+	log.Printf("Running USK KEYGEN\nGPK=%x\nISK=%x", s.cfg.GPK, s.cfg.ISK)
 	usk, err := signing.GrpSigUserKeyGen(s.cfg.GPK, s.cfg.ISK)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate user key: %v", err)
@@ -98,11 +98,11 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 
 	// 7) Build response
 	resp := &pb.EnrollmentResponse{
-		Eid:   eid,
-		Exp:   expiryPb,
-		Usk:   usk,
-		Gpk: s.cfg.GPK,
-		Sigma: enrollmentSig,
+		Eid:       eid,
+		Exp:       expiryPb,
+		Usk:       usk,
+		Gpk:       s.cfg.GPK,
+		Sigma:     enrollmentSig,
 		PublicKey: s.cfg.PublicKeyDER,
 	}
 

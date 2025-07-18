@@ -56,8 +56,8 @@ func (c *config) getKeypairs() (keypairs, error) {
 	publicKeys, privateKeys := [][]byte{}, [][]byte{}
 
 	for i := 0; i < len(pks); i++ {
-		if skBytes, err := signing.DecodeString(sks[i]); err == nil {
-			if pkBytes, err := signing.DecodeString(pks[i]); err == nil {
+		if skBytes, err := signing.DecodeHex(sks[i]); err == nil {
+			if pkBytes, err := signing.DecodeHex(pks[i]); err == nil {
 				privateKeys = append(privateKeys, skBytes)
 				publicKeys = append(publicKeys, pkBytes)
 			}
@@ -86,7 +86,7 @@ func (cfg *config) newEnrollmentRequest() (*pb.EnrollmentRequest, error) {
 			Name:    cfg.DisplayName,
 			LogoUrl: cfg.DisplayLogoUrl,
 		},
-		Nonce: signing.EncodeToString(nonce),
+		Nonce: signing.EncodeToHex(nonce),
 	}
 
 	dataBytes, err := proto.Marshal(data)

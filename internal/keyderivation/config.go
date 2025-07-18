@@ -24,11 +24,11 @@ func (cfg *Config) ParseKeysAsBytes() error {
 		return errors.New("failed to parse keys as bytes")
 	}
 
-	cfg.GPK, _ = signing.DecodeString(cfg.GPKStr)
-	cfg.OprfSK, _ = signing.DecodeString(cfg.OprfSKStr)
+	cfg.GPK, _ = signing.DecodeHex(cfg.GPKStr)
+	cfg.OprfSK, _ = signing.DecodeHex(cfg.OprfSKStr)
 
 	if cfg.OprfVKStr == "" {
-		cfg.OprfVK, _ = signing.DecodeString(cfg.OprfVKStr)
+		cfg.OprfVK, _ = signing.DecodeHex(cfg.OprfVKStr)
 	}
 
 	return nil

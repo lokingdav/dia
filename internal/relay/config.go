@@ -19,7 +19,7 @@ func (cfg *Config) ParseKeysAsBytes() error {
 	}
 	
 	var err error
-	cfg.GPK, err = signing.DecodeString(cfg.GPKStr)
+	cfg.GPK, err = signing.DecodeHex(cfg.GPKStr)
 
 	return err
 }

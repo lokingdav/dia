@@ -9,13 +9,13 @@ import (
 	"github.com/dense-identity/bbsgroupsig/bindings/go"
 )
 
-// EncodeToString encodes a given byte slice into hex string
-func EncodeToString(v []byte) string {
+// EncodeToHex encodes a given byte slice into hex string
+func EncodeToHex(v []byte) string {
 	return hex.EncodeToString(v)
 }
 
-// DecodeString decodes a hex string into byte slice
-func DecodeString(v string) ([]byte, error) {
+// DecodeHex decodes a hex string into byte slice
+func DecodeHex(v string) ([]byte, error) {
 	return hex.DecodeString(v)
 }
 

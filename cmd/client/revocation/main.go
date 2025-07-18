@@ -28,10 +28,10 @@ func (c *clientConfig) ParseKeysAsBytes() error {
 		return errors.New("config is nil")
 	}
 	var err error
-	if c.GPK, err = signing.DecodeString(c.GPKStr); err != nil {
+	if c.GPK, err = signing.DecodeHex(c.GPKStr); err != nil {
 		return fmt.Errorf("decoding GROUP_PK: %w", err)
 	}
-	if c.USK, err = signing.DecodeString(c.USKStr); err != nil {
+	if c.USK, err = signing.DecodeHex(c.USKStr); err != nil {
 		return fmt.Errorf("decoding GROUP_USK: %w", err)
 	}
 	return nil
