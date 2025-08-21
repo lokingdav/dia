@@ -6,9 +6,9 @@ toolchain go1.23.10
 
 require (
 	github.com/caarlos0/env/v11 v11.3.1
-	github.com/dense-identity/bbsgroupsig/bindings/go v1.1.0
 	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
+	github.com/lokingdav/libdia/bindings/go v1.0.1
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 )

@@ -70,7 +70,8 @@ func main() {
 
 	// Load config and init signing
 	cfg := loadConfig()
-	signing.InitGroupSignatures()
+	fmt.Printf("cfg: %v", cfg)
+	// signing.InitGroupSignatures()
 
 	// Create gRPC client
 	client := createGRPCClient(*serverAddr)
@@ -82,15 +83,15 @@ func main() {
 	// Sign request
 	cloneReq := proto.Clone(req).(*revocationpb.QueryRequest)
 	cloneReq.Sigma = nil
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
-	if err != nil {
-		log.Fatalf("marshal request: %v", err)
-	}
-	sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
-	if err != nil {
-		log.Fatalf("sign request: %v", err)
-	}
-	req.Sigma = sig
+	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
+	// if err != nil {
+	// 	log.Fatalf("marshal request: %v", err)
+	// }
+	// sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
+	// if err != nil {
+	// 	log.Fatalf("sign request: %v", err)
+	// }
+	// req.Sigma = sig
 
 	// Call Query
 	response, err := client.Query(context.Background(), req)

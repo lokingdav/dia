@@ -5,8 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
-
-	"github.com/dense-identity/bbsgroupsig/bindings/go"
 )
 
 // EncodeToHex encodes a given byte slice into hex string
@@ -22,12 +20,12 @@ func DecodeHex(v string) ([]byte, error) {
 // KeyGen generates a new Ed25519 key pair.
 // It returns the public key and the private key as byte slices.
 // An error is returned if the cryptographic random number generator fails.
-func RegSigKeyGen() (publicKey []byte, privateKey []byte, err error) {
-	pub, priv, err := ed25519.GenerateKey(nil)
+func RegSigKeyGen() (privateKey []byte, publicKey []byte, err error) {
+	publicKey, privateKey, err = ed25519.GenerateKey(nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate ed25519 key pair: %w", err)
 	}
-	return pub, priv, nil
+	return privateKey, publicKey, nil
 }
 
 // Sign creates a cryptographic signature for a given message using a private key.
@@ -41,44 +39,6 @@ func RegSigSign(privateKey []byte, message []byte) []byte {
 // It returns true if the signature is valid, and false otherwise.
 func RegSigVerify(publicKey []byte, message []byte, signature []byte) bool {
 	return ed25519.Verify(publicKey, message, signature)
-}
-
-// InitGroupSignatures inits pairing operations for group signatures
-func InitGroupSignatures() {
-	bbsgs.InitPairing()
-}
-
-// GrpSigUserKeyGen generates a unique user secret key given gpk and isk.
-func GrpSigUserKeyGen(gpk, isk []byte) (usk []byte, err error) {
-	usk, err = bbsgs.UserKeygen(gpk, isk)
-	if err != nil {
-		return nil, err
-	}
-	return usk, nil
-}
-
-// GrpSigSign signs a given message into a signature
-func GrpSigSign(gpk, usk, msg []byte) ([]byte, error) {
-
-	sig, err := bbsgs.Sign(gpk, usk, msg)
-	if err != nil {
-		return nil, err
-	}
-	return sig, nil
-}
-
-// GrpSigVerify verifies a given signature and message under the common gpk
-func GrpSigVerify(gpk, sig, msg []byte) bool {
-	return bbsgs.Verify(gpk, sig, msg)
-}
-
-// GrpSigOpenSig deanonymizes a given signture to reveal the signer
-func GrpSigOpenSig(gpk, osk, sig []byte) ([]byte, error) {
-	faulter, err := bbsgs.Open(gpk, osk, sig)
-	if err != nil {
-		return nil, err
-	}
-	return faulter, nil
 }
 
 func ImportPublicKeyFromDER(der []byte) (ed25519.PublicKey, error) {

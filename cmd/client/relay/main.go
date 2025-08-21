@@ -85,15 +85,15 @@ func subscribeLoop(client relaypb.RelayServiceClient, channel, senderID string, 
 	// Sign
 	cloneReq := proto.Clone(req).(*relaypb.SubscribeRequest)
 	cloneReq.Sigma = nil
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
-	if err != nil {
-		log.Fatalf("marshal subscribe req: %v", err)
-	}
-	sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
-	if err != nil {
-		log.Fatalf("sign subscribe req: %v", err)
-	}
-	req.Sigma = sig
+	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
+	// if err != nil {
+	// 	log.Fatalf("marshal subscribe req: %v", err)
+	// }
+	// sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
+	// if err != nil {
+	// 	log.Fatalf("sign subscribe req: %v", err)
+	// }
+	// req.Sigma = sig
 
 	stream, err := client.Subscribe(context.Background(), req)
 	if err != nil {
@@ -135,17 +135,17 @@ func publishLoop(client relaypb.RelayServiceClient, channel, senderID string, cf
 		cloneMsg := proto.Clone(msg).(*relaypb.RelayMessage)
 		cloneMsg.Sigma = nil
 		cloneMsg.RelayAt = nil
-		data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneMsg)
-		if err != nil {
-			log.Printf("marshal publish msg: %v", err)
-			continue
-		}
-		sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
-		if err != nil {
-			log.Printf("sign publish msg: %v", err)
-			continue
-		}
-		msg.Sigma = sig
+		// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneMsg)
+		// if err != nil {
+		// 	log.Printf("marshal publish msg: %v", err)
+		// 	continue
+		// }
+		// sig, err := signing.GrpSigSign(cfg.GPK, cfg.USK, data)
+		// if err != nil {
+		// 	log.Printf("sign publish msg: %v", err)
+		// 	continue
+		// }
+		// msg.Sigma = sig
 
 		resp, err := client.Publish(context.Background(), msg)
 		if err != nil {
@@ -168,7 +168,7 @@ func main() {
 
 	// Load and init
 	cfg := loadConfig()
-	signing.InitGroupSignatures()
+	// signing.InitGroupSignatures()
 	client := createGRPCClient(*serverAddr)
 
 	// Run both loops

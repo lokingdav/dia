@@ -23,70 +23,48 @@ x-denseid-server: &denseid-server-base
         memory: 500M
 
 services:
-  enrollment-server-1:
+  enrollment-server:
     <<: *denseid-server-base
-    container_name: enrollment-server-1
+    container_name: enrollment-server
     command:
-      - "--build.cmd=go build -o /app/bin/es1 /app/cmd/enrollment"
-      - "--build.bin=/app/bin/es1"
+      - "--build.cmd=go build -o /app/bin/es /app/cmd/enrollment"
+      - "--build.bin=/app/bin/es"
     ports:
       - "50051:50051"
-    env_file: env/.env.es1
+    env_file: .env
     profiles: [enrollment]
 
-  enrollment-server-2:
+  key-derivation:
     <<: *denseid-server-base
-    container_name: enrollment-server-2
+    container_name: key-derivation
     command:
-      - "--build.cmd=go build -o /app/bin/es2 /app/cmd/enrollment"
-      - "--build.bin=/app/bin/es2"
+      - "--build.cmd=go build -o /app/bin/kd /app/cmd/keyderivation"
+      - "--build.bin=/app/bin/kd"
     ports:
       - "50052:50051"
-    env_file: env/.env.es2
-    profiles: [enrollment]
-
-  key-derivation-1:
-    <<: *denseid-server-base
-    container_name: key-derivation-1
-    command:
-      - "--build.cmd=go build -o /app/bin/kd1 /app/cmd/keyderivation"
-      - "--build.bin=/app/bin/kd1"
-    ports:
-      - "50053:50051"
-    env_file: env/.env.kd1
-    profiles: [keyderivation]
-
-  key-derivation-2:
-    <<: *denseid-server-base
-    container_name: key-derivation-2
-    command:
-      - "--build.cmd=go build -o /app/bin/kd2 /app/cmd/keyderivation"
-      - "--build.bin=/app/bin/kd2"
-    ports:
-      - "50054:50051"
-    env_file: env/.env.kd2
+    env_file: .env
     profiles: [keyderivation]
 
   revocation-server:
     <<: *denseid-server-base
     container_name: revocation-server
     command:
-      - "--build.cmd=go build -o /app/bin/rev /app/cmd/revocation"
-      - "--build.bin=/app/bin/rev"
+      - "--build.cmd=go build -o /app/bin/rv /app/cmd/revocation"
+      - "--build.bin=/app/bin/rv"
     ports:
-      - "50055:50051"
-    env_file: env/.env.rev
+      - "50053:50051"
+    env_file: .env
     profiles: [revocation]
 
-  relay-server-1:
+  relay-server:
     <<: *denseid-server-base
-    container_name: relay-server-1
+    container_name: relay-server
     command:
-      - "--build.cmd=go build -o /app/bin/rel1 /app/cmd/relay"
-      - "--build.bin=/app/bin/rel1"
+      - "--build.cmd=go build -o /app/bin/rs /app/cmd/relay"
+      - "--build.bin=/app/bin/rs"
     ports:
-      - "50060:50051"
-    env_file: env/.env.rs1
+      - "50054:50051"
+    env_file: .env
     profiles: [relay]
 
 volumes:

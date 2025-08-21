@@ -22,7 +22,7 @@ type Server struct {
 
 // NewServer constructs a new enrollment server.
 func NewServer(cfg *Config) *Server {
-	signing.InitGroupSignatures()
+	// signing.InitGroupSignatures()
 	return &Server{cfg: cfg}
 }
 
@@ -91,7 +91,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 
 	// 6) Generate the user secret key (BBS04)
 	log.Printf("Running USK KEYGEN\nGPK=%x\nISK=%x", s.cfg.GPK, s.cfg.ISK)
-	usk, err := signing.GrpSigUserKeyGen(s.cfg.GPK, s.cfg.ISK)
+	// usk, err := signing.GrpSigUserKeyGen(s.cfg.GPK, s.cfg.ISK)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate user key: %v", err)
 	}
@@ -100,7 +100,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	resp := &pb.EnrollmentResponse{
 		Eid:       eid,
 		Exp:       expiryPb,
-		Usk:       usk,
+		// Usk:       usk,
 		Gpk:       s.cfg.GPK,
 		Sigma:     enrollmentSig,
 		PublicKey: s.cfg.PublicKeyDER,

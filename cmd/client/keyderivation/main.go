@@ -78,15 +78,15 @@ func runOPRF(client keyderivationpb.KeyDerivationServiceClient, inputMsg, GPK, U
 	// Sign request
 	cloneReq := proto.Clone(req).(*keyderivationpb.EvaluateRequest)
 	cloneReq.Sigma = nil
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
-	if err != nil {
-		return "", fmt.Errorf("marshal request: %v", err)
-	}
-	sig, err := signing.GrpSigSign(GPK, USK, data)
-	if err != nil {
-		return "", fmt.Errorf("sign request: %v", err)
-	}
-	req.Sigma = sig
+	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
+	// if err != nil {
+	// 	return "", fmt.Errorf("marshal request: %v", err)
+	// }
+	// sig, err := signing.GrpSigSign(GPK, USK, data)
+	// if err != nil {
+	// 	return "", fmt.Errorf("sign request: %v", err)
+	// }
+	// req.Sigma = sig
 
 	// Call Evaluate
 	response, err := client.Evaluate(context.Background(), req)
@@ -95,7 +95,7 @@ func runOPRF(client keyderivationpb.KeyDerivationServiceClient, inputMsg, GPK, U
 	}
 
 	// Finalize the result
-	result, err := voprf.Finalize(blind, response.EvaluatedElement)
+	result, err := voprf.Finalize(response.EvaluatedElement, blind)
 	if err != nil {
 		return "", fmt.Errorf("error finalizing: %v", err)
 	}
@@ -111,7 +111,7 @@ func main() {
 
 	// Load config and init signing
 	cfg := loadConfig()
-	signing.InitGroupSignatures()
+	// signing.InitGroupSignatures()
 
 	// Create gRPC client
 	client := createGRPCClient(*serverAddr)

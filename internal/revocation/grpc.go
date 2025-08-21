@@ -4,9 +4,9 @@ import (
 	"context"
 
 	revocationpb "github.com/dense-identity/denseid/api/go/revocation/v1"
-	"github.com/dense-identity/denseid/internal/signing"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	// "github.com/dense-identity/denseid/internal/signing"
+	// "google.golang.org/grpc/codes"
+	// "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -19,7 +19,6 @@ type Server struct {
 // NewServer creates a new RevocationService server.
 func NewServer(cfg *Config) *Server {
 	// Initialize pairing for BBS04 group signatures
-	signing.InitGroupSignatures()
 	return &Server{cfg: cfg}
 }
 
@@ -32,13 +31,13 @@ func (s *Server) Query(
 	// 1) Verify group signature over the blinded element
 	clone := proto.Clone(req).(*revocationpb.QueryRequest)
 	clone.Sigma = nil
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "bad request encoding: %v", err)
-	}
-	if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
-		return nil, status.Error(codes.Unauthenticated, "invalid signature")
-	}
+	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
+	// if err != nil {
+	// 	return nil, status.Errorf(codes.InvalidArgument, "bad request encoding: %v", err)
+	// }
+	// if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
+	// 	return nil, status.Error(codes.Unauthenticated, "invalid signature")
+	// }
 
 	// process revocation
 

@@ -5,7 +5,7 @@ import (
 	"log"
 
 	keyderivationpb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
-	"github.com/dense-identity/denseid/internal/signing"
+	// "github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -21,7 +21,7 @@ type Server struct {
 // NewServer creates a new KeyDerivationService server.
 func NewServer(cfg *Config) *Server {
 	// Initialize pairing for BBS04 group signatures
-	signing.InitGroupSignatures()
+	// signing.InitGroupSignatures()
 	return &Server{cfg: cfg}
 }
 
@@ -36,13 +36,13 @@ func (s *Server) Evaluate(
 	// 1) Verify group signature over the blinded element
 	clone := proto.Clone(req).(*keyderivationpb.EvaluateRequest)
 	clone.Sigma = nil
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "bad request encoding: %v", err)
-	}
-	if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
-		return nil, status.Error(codes.Unauthenticated, "invalid signature")
-	}
+	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
+	// if err != nil {
+	// 	return nil, status.Errorf(codes.InvalidArgument, "bad request encoding: %v", err)
+	// }
+	// if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
+	// 	return nil, status.Error(codes.Unauthenticated, "invalid signature")
+	// }
 
 	// 2) Perform the OPRF evaluation (implementation in Config)
 	evaluated, err := voprf.Evaluate(s.cfg.OprfSK, req.BlindedElement)

@@ -1,73 +1,89 @@
 package main
 
 import (
-	"encoding/hex"
 	"flag"
+	"fmt"
 	"log"
-	"strings"
 
-	bbsgs "github.com/dense-identity/bbsgroupsig/bindings/go"
 	"github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
 )
 
-func generateRsKeys(count int) {
-	publicKeys, privateKeys := []string{}, []string{}
+func registrationAuthoritySetup() ([]string) {
+	var env = make([]string, 0, 12)
 
-	log.Printf("Generating %d public-private keypairs...\n", count)
-	for i := 0; i < count; i++ {
-		pk, sk, err := signing.RegSigKeyGen()
-		if err == nil {
-			publicKeys = append(publicKeys, hex.EncodeToString(pk))
-			privateKeys = append(privateKeys, hex.EncodeToString(sk))
-		} else {
-			log.Fatalf("Failed to Generate ed25519 Keypairs: %v", err)
-		}
+	// 1. Generate BBS keypair
+	bbsSk, bbsPk, err := signing.BbsKeygen()
+	if err != nil {
+		log.Fatalf("CI Keygen failed: %v", err)
 	}
+	env = append(env, "# Credential Issuing", 
+		fmt.Sprintf("CI_SK=%s", signing.EncodeToHex(bbsSk)), 
+		fmt.Sprintf("CI_PK=%s", signing.EncodeToHex(bbsPk)))
 
-	log.Printf("Generated Keypairs\n\nPUBLIC_KEY=%s\nPRIVATE_KEY=%s\n\n", strings.Join(publicKeys, ","), strings.Join(privateKeys, ","))
+	// 2. Generate OPRF keypair for access throttling
+	atSk, atPk, err := voprf.Keygen()
+	if err != nil {
+		log.Fatalf("Access Throttling Keygen failed: %v", err)
+	}
+	env = append(env, 
+		"# Access Throttling",
+		fmt.Sprintf("AT_SK=%s", signing.EncodeToHex(atSk)), 
+		fmt.Sprintf("AT_PK=%s", signing.EncodeToHex(atPk)))
+
+	// 3. Generate OPRF keypair for Key Derivation
+	ksSk, ksPk, err := voprf.Keygen()
+	if err != nil {
+		log.Fatalf("Key Derivation Keygen failed: %v", err)
+	}
+	env = append(env, 
+		"# Key Server", 
+		fmt.Sprintf("KS_SK=%s", signing.EncodeToHex(ksSk)),
+		fmt.Sprintf("KS_PK=%s", signing.EncodeToHex(ksPk)))
+
+	// 4. Generate AMF keypair for Moderation
+	amfSk, amfPk, err := voprf.Keygen()
+	if err != nil {
+		log.Fatalf("AMF Keygen failed: %v", err)
+	}
+	env = append(env, "# Moderation", 
+		fmt.Sprintf("AMF_SK=%s", signing.EncodeToHex(amfSk)), 
+		fmt.Sprintf("AMF_PK=%s", signing.EncodeToHex(amfPk)))
+
+	return env
 }
 
-func generateGsKeys() {
-	bbsgs.InitPairing()
-	gpk, osk, isk, err := bbsgs.Setup()
+func subscriberSetup() ([]string) {
+	var env = make([]string, 0, 2)
+	sk, pk, err := signing.RegSigKeyGen()
 	if err != nil {
-		log.Fatalf("Failed to setup group parameters: %v", err)
+		log.Fatalf("Subscriber (ISK, IPK) gen failed: %v", err)
 	}
+	env = append(env, "# Identity Key with RA", 
+	fmt.Sprintf("S_ISK=%s", signing.EncodeToHex(sk)), 
+	fmt.Sprintf("S_IPK=%s", signing.EncodeToHex(pk)))
 
-	log.Printf("Generated Group Parameters:\n\nGROUP_PK=%s\nGROUP_OSK=%s\nGROUP_ISK=%s\n",
-		signing.EncodeToHex(gpk),
-		signing.EncodeToHex(osk),
-		signing.EncodeToHex(isk))
-}
-
-func generateOprfSk() {
-	bbsgs.InitPairing()
-	sk, err := voprf.KeyGen()
-	if err != nil {
-		log.Fatalf("failed to generate OPRF secret key: %v", err)
-	}
-	log.Printf("Generated OPRF Secret Key:\n\nOPRF_SK=%s\n", signing.EncodeToHex(sk))
+	return env
 }
 
 func main() {
-	var (
-		isKeygen *bool   = flag.Bool("keygen", false, "Generate ed25519 Keypair")
-		count    *int    = flag.Int("count", 1, "Number of keypairs to generate")
-		sigType  *string = flag.String("type", "rs", "Whether rs or gs or oprf")
-	)
+	var (party  *string = flag.String("type", "", "Allowed values are RA or S"))
 	flag.Parse()
 
-	if *isKeygen {
-		switch *sigType {
-		case "rs":
-			generateRsKeys(*count)
-		case "gs":
-			generateGsKeys()
-		case "oprf":
-			generateOprfSk()
-		default:
-			log.Fatal("Please specify --type either rs or gs")
+	var env []string
+
+	switch *party {
+	case "RA":
+		env = registrationAuthoritySetup()
+	case "S":
+		env = subscriberSetup()
+	}
+
+	if env == nil {
+		log.Fatal("Please specify --type either RA or S")
+	} else {
+		for _,v := range env {
+			fmt.Println(v)
 		}
 	}
 }

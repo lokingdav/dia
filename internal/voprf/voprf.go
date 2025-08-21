@@ -1,43 +1,28 @@
 package voprf
 
 import (
-	"github.com/dense-identity/bbsgroupsig/bindings/go"
+	"github.com/lokingdav/libdia/bindings/go"
 )
 
-func KeyGen() ([]byte, error) {
-	return bbsgs.ScalarRandom()
+func Keygen() ([]byte, []byte, error) {
+	sk, pk, err := dia.VOPRFKeygen()
+	return sk, pk, err
 }
 
-func Blind(input []byte) (blind, blindedElement []byte, err error) {
-	var point []byte
-	blind, err = KeyGen()
+func Blind(input []byte) (blindedElement, blind []byte, err error) {
+	blindedElement, blind, err = dia.VOPRFBlind(input)
 	if err != nil {
-		return
+		return nil, nil, err
 	}
-	point, err = bbsgs.G1HashToPoint(input)
-	if err != nil {
-		return
-	}
-	blindedElement, err = bbsgs.G1Mul(point, blind)
-	if err != nil {
-		return
-	}
-	return
+	return blindedElement, blind, nil
 }
 
 func Evaluate(privateKeyBytes, blindedElement []byte) (evaluatedElement []byte, err error) {
-	evaluatedElement, err = bbsgs.G1Mul(blindedElement, privateKeyBytes)
+	evaluatedElement, err = dia.VOPRFEvaluate(blindedElement, privateKeyBytes)
 	return
 }
 
-func Finalize(blind, evaluatedElement []byte) (result []byte, err error) {
-	var blindInv []byte
-
-	blindInv, err = bbsgs.ScalarInverse(blind)
-	if err != nil {
-		return
-	}
-
-	result, err = bbsgs.G1Mul(evaluatedElement, blindInv)
-	return
+func Finalize(evaluatedElement, blind []byte) (result []byte, err error) {
+	result, err = dia.VOPRFUnblind(evaluatedElement, blind)
+	return result, err
 }

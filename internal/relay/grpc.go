@@ -5,9 +5,9 @@ import (
 	"sync"
 
 	pb "github.com/dense-identity/denseid/api/go/relay/v1"
-	"github.com/dense-identity/denseid/internal/signing"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	// "github.com/dense-identity/denseid/internal/signing"
+	// "google.golang.org/grpc/codes"
+	// "google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -31,7 +31,7 @@ type Server struct {
 }
 
 func NewServer(cfg *Config) *Server {
-	signing.InitGroupSignatures()
+	// signing.InitGroupSignatures()
 	return &Server{
 		cfg:        cfg,
 		clients:    make(map[string]map[*subscriber]struct{}),
@@ -51,13 +51,13 @@ func (s *Server) Publish(
 	clone.Sigma = nil
 	clone.RelayAt = nil
 
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "bad encoding: %v", err)
-	}
-	if !signing.GrpSigVerify(s.cfg.GPK, msg.Sigma, data) {
-		return nil, status.Error(codes.Unauthenticated, "invalid signature")
-	}
+	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
+	// if err != nil {
+	// 	return nil, status.Errorf(codes.InvalidArgument, "bad encoding: %v", err)
+	// }
+	// if !signing.GrpSigVerify(s.cfg.GPK, msg.Sigma, data) {
+	// 	return nil, status.Error(codes.Unauthenticated, "invalid signature")
+	// }
 
 	// ———— 2) Stamp with the server’s time (into relay_at) ————
 	now := timestamppb.Now()
@@ -101,13 +101,13 @@ func (s *Server) Subscribe(
 	// ———— 0) Verify subscribe signature ————
 	cloneReq := proto.Clone(req).(*pb.SubscribeRequest)
 	cloneReq.Sigma = nil
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
-	if err != nil {
-		return status.Errorf(codes.InvalidArgument, "bad subscribe encoding: %v", err)
-	}
-	if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
-		return status.Error(codes.Unauthenticated, "invalid subscribe signature")
-	}
+	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
+	// if err != nil {
+	// 	return status.Errorf(codes.InvalidArgument, "bad subscribe encoding: %v", err)
+	// }
+	// if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
+	// 	return status.Error(codes.Unauthenticated, "invalid subscribe signature")
+	// }
 
 	// ———— 1) Register the new subscriber ————
 	sub := &subscriber{
