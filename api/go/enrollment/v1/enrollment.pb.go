@@ -101,11 +101,12 @@ func (x *DisplayInformation) GetTagline() string {
 type EnrollmentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tn            string                 `protobuf:"bytes,1,opt,name=tn,proto3" json:"tn,omitempty"`
-	PublicKeys    [][]byte               `protobuf:"bytes,2,rep,name=public_keys,json=publicKeys,proto3" json:"public_keys,omitempty"`
-	Iden          *DisplayInformation    `protobuf:"bytes,3,opt,name=iden,proto3" json:"iden,omitempty"`
-	NBio          uint32                 `protobuf:"varint,4,opt,name=n_bio,json=nBio,proto3" json:"n_bio,omitempty"`
-	AuthSigs      [][]byte               `protobuf:"bytes,5,rep,name=auth_sigs,json=authSigs,proto3" json:"auth_sigs,omitempty"`
-	Nonce         string                 `protobuf:"bytes,6,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	Iden          *DisplayInformation    `protobuf:"bytes,2,opt,name=iden,proto3" json:"iden,omitempty"`
+	NBio          uint32                 `protobuf:"varint,3,opt,name=n_bio,json=nBio,proto3" json:"n_bio,omitempty"`
+	Nonce         string                 `protobuf:"bytes,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	Pk            []byte                 `protobuf:"bytes,5,opt,name=pk,proto3" json:"pk,omitempty"`
+	Ipk           []byte                 `protobuf:"bytes,6,opt,name=ipk,proto3" json:"ipk,omitempty"`
+	Sigma         []byte                 `protobuf:"bytes,7,opt,name=sigma,proto3" json:"sigma,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -147,13 +148,6 @@ func (x *EnrollmentRequest) GetTn() string {
 	return ""
 }
 
-func (x *EnrollmentRequest) GetPublicKeys() [][]byte {
-	if x != nil {
-		return x.PublicKeys
-	}
-	return nil
-}
-
 func (x *EnrollmentRequest) GetIden() *DisplayInformation {
 	if x != nil {
 		return x.Iden
@@ -168,13 +162,6 @@ func (x *EnrollmentRequest) GetNBio() uint32 {
 	return 0
 }
 
-func (x *EnrollmentRequest) GetAuthSigs() [][]byte {
-	if x != nil {
-		return x.AuthSigs
-	}
-	return nil
-}
-
 func (x *EnrollmentRequest) GetNonce() string {
 	if x != nil {
 		return x.Nonce
@@ -182,14 +169,33 @@ func (x *EnrollmentRequest) GetNonce() string {
 	return ""
 }
 
+func (x *EnrollmentRequest) GetPk() []byte {
+	if x != nil {
+		return x.Pk
+	}
+	return nil
+}
+
+func (x *EnrollmentRequest) GetIpk() []byte {
+	if x != nil {
+		return x.Ipk
+	}
+	return nil
+}
+
+func (x *EnrollmentRequest) GetSigma() []byte {
+	if x != nil {
+		return x.Sigma
+	}
+	return nil
+}
+
 type EnrollmentResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Eid           string                 `protobuf:"bytes,1,opt,name=eid,proto3" json:"eid,omitempty"`
 	Exp           *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=exp,proto3" json:"exp,omitempty"`
-	Usk           []byte                 `protobuf:"bytes,3,opt,name=usk,proto3" json:"usk,omitempty"`
-	Gpk           []byte                 `protobuf:"bytes,4,opt,name=gpk,proto3" json:"gpk,omitempty"`
-	PublicKey     []byte                 `protobuf:"bytes,5,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
-	Sigma         []byte                 `protobuf:"bytes,6,opt,name=sigma,proto3" json:"sigma,omitempty"`
+	Epk           []byte                 `protobuf:"bytes,3,opt,name=epk,proto3" json:"epk,omitempty"`
+	Sigma         []byte                 `protobuf:"bytes,4,opt,name=sigma,proto3" json:"sigma,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -238,23 +244,9 @@ func (x *EnrollmentResponse) GetExp() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *EnrollmentResponse) GetUsk() []byte {
+func (x *EnrollmentResponse) GetEpk() []byte {
 	if x != nil {
-		return x.Usk
-	}
-	return nil
-}
-
-func (x *EnrollmentResponse) GetGpk() []byte {
-	if x != nil {
-		return x.Gpk
-	}
-	return nil
-}
-
-func (x *EnrollmentResponse) GetPublicKey() []byte {
-	if x != nil {
-		return x.PublicKey
+		return x.Epk
 	}
 	return nil
 }
@@ -278,23 +270,20 @@ const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"websiteUrl\x12\x1f\n" +
 	"\vbrand_color\x18\x04 \x01(\tR\n" +
 	"brandColor\x12\x18\n" +
-	"\atagline\x18\x05 \x01(\tR\atagline\"\xcb\x01\n" +
+	"\atagline\x18\x05 \x01(\tR\atagline\"\xc5\x01\n" +
 	"\x11EnrollmentRequest\x12\x0e\n" +
-	"\x02tn\x18\x01 \x01(\tR\x02tn\x12\x1f\n" +
-	"\vpublic_keys\x18\x02 \x03(\fR\n" +
-	"publicKeys\x12=\n" +
-	"\x04iden\x18\x03 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
-	"\x05n_bio\x18\x04 \x01(\rR\x04nBio\x12\x1b\n" +
-	"\tauth_sigs\x18\x05 \x03(\fR\bauthSigs\x12\x14\n" +
-	"\x05nonce\x18\x06 \x01(\tR\x05nonce\"\xad\x01\n" +
+	"\x02tn\x18\x01 \x01(\tR\x02tn\x12=\n" +
+	"\x04iden\x18\x02 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
+	"\x05n_bio\x18\x03 \x01(\rR\x04nBio\x12\x14\n" +
+	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12\x0e\n" +
+	"\x02pk\x18\x05 \x01(\fR\x02pk\x12\x10\n" +
+	"\x03ipk\x18\x06 \x01(\fR\x03ipk\x12\x14\n" +
+	"\x05sigma\x18\a \x01(\fR\x05sigma\"|\n" +
 	"\x12EnrollmentResponse\x12\x10\n" +
 	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
 	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +
-	"\x03usk\x18\x03 \x01(\fR\x03usk\x12\x10\n" +
-	"\x03gpk\x18\x04 \x01(\fR\x03gpk\x12\x1d\n" +
-	"\n" +
-	"public_key\x18\x05 \x01(\fR\tpublicKey\x12\x14\n" +
-	"\x05sigma\x18\x06 \x01(\fR\x05sigma2|\n" +
+	"\x03epk\x18\x03 \x01(\fR\x03epk\x12\x14\n" +
+	"\x05sigma\x18\x04 \x01(\fR\x05sigma2|\n" +
 	"\x11EnrollmentService\x12g\n" +
 	"\x10EnrollSubscriber\x12(.denseid.enrollment.v1.EnrollmentRequest\x1a).denseid.enrollment.v1.EnrollmentResponseBEZCgithub.com/dense-identity/denseid/api/go/enrollment/v1;enrollmentpbb\x06proto3"
 

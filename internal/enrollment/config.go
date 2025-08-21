@@ -8,21 +8,17 @@ type Config struct {
 	IsProduction           bool   `env:"IS_PRODUCTION" envDefault:"false"`
 	EnrollmentDurationDays int    `env:"ENROLLMENT_DURATION_DAYS" envDefault:"30"`
 
-	PublicKeyStr  string `env:"PUBLIC_KEY,required"`
-	PrivateKeyStr string `env:"PRIVATE_KEY,required"`
+	// Credential issuance keypair
+	CiSkStr string `env:"CI_SK,required"`
+	CiPkStr  string `env:"CI_PK,required"`
+	CiPrivateKey []byte
+	CiPublicKey  []byte
 
-	PrivateKey []byte
-	PublicKey  []byte
-	PublicKeyDER []byte
-
-	// Group Signatures
-	GPKStr string `env:"GROUP_PK,required"`
-	ISKStr string `env:"GROUP_ISK,required"`
-	OSKStr string `env:"GROUP_OSK,required"`
-
-	GPK []byte
-	OSK []byte
-	ISK []byte
+	// Access Throttling keypair
+	AtSkStr string `env:"AT_SK,required"`
+	AtPkStr  string `env:"AT_PK,required"`
+	AtPrivateKey []byte
+	AtPublicKey  []byte
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {
@@ -32,32 +28,22 @@ func (cfg *Config) ParseKeysAsBytes() error {
 
 	var err error
 
-	cfg.PrivateKey, err = signing.DecodeHex(cfg.PrivateKeyStr)
+	cfg.CiPrivateKey, err = signing.DecodeHex(cfg.CiSkStr)
 	if err != nil {
 		return err
 	}
 
-	cfg.PublicKey, err = signing.DecodeHex(cfg.PublicKeyStr)
-	if err != nil {
-		return err
-	}
-	
-	cfg.PublicKeyDER, err = signing.ExportPublicKeyToDER(cfg.PublicKey)
+	cfg.CiPublicKey, err = signing.DecodeHex(cfg.CiPkStr)
 	if err != nil {
 		return err
 	}
 
-	cfg.GPK, err = signing.DecodeHex(cfg.GPKStr)
+	cfg.AtPrivateKey, err = signing.DecodeHex(cfg.AtSkStr)
 	if err != nil {
 		return err
 	}
 
-	cfg.ISK, err = signing.DecodeHex(cfg.ISKStr)
-	if err != nil {
-		return err
-	}
-
-	cfg.OSK, err = signing.DecodeHex(cfg.OSKStr)
+	cfg.AtPublicKey, err = signing.DecodeHex(cfg.AtPkStr)
 	if err != nil {
 		return err
 	}
