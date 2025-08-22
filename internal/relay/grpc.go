@@ -1,3 +1,4 @@
+// FILE: relay/server.go
 package relay
 
 import (
@@ -5,33 +6,35 @@ import (
 	"sync"
 
 	pb "github.com/dense-identity/denseid/api/go/relay/v1"
-	// "github.com/dense-identity/denseid/internal/signing"
-	// "google.golang.org/grpc/codes"
-	// "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
+	"github.com/dense-identity/denseid/internal/voprf"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// subscriber holds each client’s stream and its sender ID
+// subscriber holds each client’s stream and its sender ID, plus a single-writer queue.
 type subscriber struct {
-	stream   pb.RelayService_SubscribeServer
-	ctx      context.Context
-	senderID string
+	stream    pb.RelayService_SubscribeServer
+	ctx       context.Context
+	senderId  string
+	sendQ     chan *pb.RelayMessage
+	closeOnce sync.Once
 }
 
-// Server implements RelayServiceServer
+func (s *subscriber) closeQ() { s.closeOnce.Do(func() { close(s.sendQ) }) }
+
+// Server implements RelayServiceServer.
 type Server struct {
 	pb.UnimplementedRelayServiceServer
 
 	cfg        *Config
 	mu         sync.RWMutex
-	clients    map[string]map[*subscriber]struct{} // channel → set of subs
-	history    map[string][]*pb.RelayMessage       // channel → last N msgs
+	clients    map[string]map[*subscriber]struct{} // topic → set(subscribers)
+	history    map[string][]*pb.RelayMessage       // topic → last N msgs
 	maxHistory int
 }
 
 func NewServer(cfg *Config) *Server {
-	// signing.InitGroupSignatures()
 	return &Server{
 		cfg:        cfg,
 		clients:    make(map[string]map[*subscriber]struct{}),
@@ -40,110 +43,135 @@ func NewServer(cfg *Config) *Server {
 	}
 }
 
-// Publish handles one signed message, stamps it, stores it, and broadcasts.
-func (s *Server) Publish(
-	ctx context.Context,
-	msg *pb.RelayMessage,
-) (*pb.PublishResponse, error) {
-	// ———— 1) Verify the client’s signature ————
-	clone := proto.Clone(msg).(*pb.RelayMessage)
-	// remove anything not part of the original signature
-	clone.Sigma = nil
-	clone.RelayAt = nil
-
-	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
-	// if err != nil {
-	// 	return nil, status.Errorf(codes.InvalidArgument, "bad encoding: %v", err)
-	// }
-	// if !signing.GrpSigVerify(s.cfg.GPK, msg.Sigma, data) {
-	// 	return nil, status.Error(codes.Unauthenticated, "invalid signature")
-	// }
-
-	// ———— 2) Stamp with the server’s time (into relay_at) ————
-	now := timestamppb.Now()
-	msg.RelayAt = now
-
+// removeSubscriber is idempotent: detaches sub from topic set and closes its queue.
+func (s *Server) removeSubscriber(topic string, sub *subscriber) {
 	s.mu.Lock()
-	// — append to history (ring‐buffer style)
-	hist := append(s.history[msg.Channel], msg)
-	if len(hist) > s.maxHistory {
-		hist = hist[len(hist)-s.maxHistory:]
-	}
-	s.history[msg.Channel] = hist
-
-	// — broadcast to all except the originator
-	for sub := range s.clients[msg.Channel] {
-		if sub.senderID == msg.SenderId {
-			continue
-		}
-		go func(sb *subscriber, m *pb.RelayMessage) {
-			if err := sb.stream.Send(m); err != nil {
-				// clean up dead subscriber
-				s.mu.Lock()
-				delete(s.clients[m.Channel], sb)
-				if len(s.clients[m.Channel]) == 0 {
-					delete(s.clients, m.Channel)
-				}
-				s.mu.Unlock()
+	defer s.mu.Unlock()
+	if subs, ok := s.clients[topic]; ok {
+		if _, ok := subs[sub]; ok {
+			delete(subs, sub)
+			if len(subs) == 0 {
+				// No more subscribers → topic ceases to "exist" for unauthenticated publishers.
+				delete(s.clients, topic)
 			}
-		}(sub, msg)
+		}
 	}
+	sub.closeQ()
+}
+
+// startWriter launches the sole goroutine allowed to call stream.Send for this subscriber.
+func (s *Server) startWriter(topic string, sub *subscriber) {
+	go func() {
+		for m := range sub.sendQ {
+			if err := sub.stream.Send(m); err != nil {
+				// Stream is broken; remove subscriber and stop the writer.
+				s.removeSubscriber(topic, sub)
+				return
+			}
+		}
+	}()
+}
+
+// Publish handles a message and broadcasts it to existing topic subscribers (except originator).
+// Anyone may publish, BUT ONLY if the topic already exists (created by a prior Subscribe).
+func (s *Server) Publish(ctx context.Context, msg *pb.RelayMessage) (*pb.PublishResponse, error) {
+	now := timestamppb.Now()
+	topic := msg.GetTopic()
+
+	// Topic must already exist (Subscribe creates it). Otherwise reject.
+	s.mu.RLock()
+	_, exists := s.clients[topic]
+	s.mu.RUnlock()
+	if !exists {
+		return nil, status.Error(codes.NotFound, "topic does not exist")
+	}
+
+	// Snapshot recipients (except the originator) WITHOUT holding the lock during sends.
+	var recipients []*subscriber
+	s.mu.RLock()
+	if subs, ok := s.clients[topic]; ok {
+		for sub := range subs {
+			if sub.senderId == msg.GetSenderId() {
+				continue
+			}
+			recipients = append(recipients, sub)
+		}
+	}
+	s.mu.RUnlock()
+
+	// Append to history (ring-buffer style).
+	s.mu.Lock()
+	h := append(s.history[topic], msg)
+	if len(h) > s.maxHistory {
+		h = h[len(h)-s.maxHistory:]
+	}
+	s.history[topic] = h
 	s.mu.Unlock()
+
+	// Enqueue to each subscriber's writer queue.
+	// Drop if their queue is full or already closed (POC-friendly semantics).
+	for _, sub := range recipients {
+		func(sb *subscriber) {
+			defer func() { _ = recover() }() // handle send on closed chan (race-safe)
+			select {
+			case sb.sendQ <- msg:
+			default:
+				// Backpressure policy for POC: drop instead of blocking publisher.
+			}
+		}(sub)
+	}
 
 	return &pb.PublishResponse{RelayAt: now}, nil
 }
 
-// Subscribe authenticates, replays history, then serves live messages.
-func (s *Server) Subscribe(
-	req *pb.SubscribeRequest,
-	stream pb.RelayService_SubscribeServer,
-) error {
-	// ———— 0) Verify subscribe signature ————
-	cloneReq := proto.Clone(req).(*pb.SubscribeRequest)
-	cloneReq.Sigma = nil
-	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(cloneReq)
-	// if err != nil {
-	// 	return status.Errorf(codes.InvalidArgument, "bad subscribe encoding: %v", err)
-	// }
-	// if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
-	// 	return status.Error(codes.Unauthenticated, "invalid subscribe signature")
-	// }
+// Subscribe authenticates, creates/opens the topic, replays history, then joins live delivery.
+func (s *Server) Subscribe(req *pb.SubscribeRequest, stream pb.RelayService_SubscribeServer) error {
+	// 1) Verify ticket (binds authorization to open the channel).
+	ok, err := voprf.VerifyTicket(req.GetTicket(), s.cfg.AtVerifyKey)
+	if err != nil {
+		return status.Errorf(codes.Internal, "Unauthorized: %v", err)
+	}
+	if !ok {
+		return status.Error(codes.InvalidArgument, "Invalid ticket")
+	}
 
-	// ———— 1) Register the new subscriber ————
+	topic := req.GetTopic()
 	sub := &subscriber{
 		stream:   stream,
 		ctx:      stream.Context(),
-		senderID: req.SenderId,
+		senderId: req.GetSenderId(),
+		sendQ:    make(chan *pb.RelayMessage, 128),
 	}
-	s.mu.Lock()
-	if s.clients[req.Channel] == nil {
-		s.clients[req.Channel] = make(map[*subscriber]struct{})
-	}
-	s.clients[req.Channel][sub] = struct{}{}
 
-	// snapshot & replay history
-	histCopy := append([]*pb.RelayMessage(nil), s.history[req.Channel]...)
+	// 2) Ensure the topic "exists" immediately (so unauthenticated Publish sees it),
+	//    but DO NOT join live delivery yet (avoid interleaving during replay).
+	s.mu.Lock()
+	if _, present := s.clients[topic]; !present {
+		s.clients[topic] = make(map[*subscriber]struct{})
+	}
+	// Snapshot history now; we'll replay it before joining live.
+	histCopy := append([]*pb.RelayMessage(nil), s.history[topic]...)
 	s.mu.Unlock()
 
+	// 3) Replay history to this subscriber (skip their own past messages if desired).
 	for _, m := range histCopy {
-		// skip their own past messages, if desired
-		if m.SenderId == sub.senderID {
+		if m.GetSenderId() == sub.senderId {
 			continue
 		}
 		if err := stream.Send(m); err != nil {
+			// Stream failed during replay; nothing to clean (not added to clients yet).
 			return err
 		}
 	}
 
-	// ———— 2) Wait for disconnect ————
-	<-sub.ctx.Done()
-
-	// ———— 3) Clean up ————
+	// 4) Join live delivery and start the dedicated writer.
 	s.mu.Lock()
-	delete(s.clients[req.Channel], sub)
-	if len(s.clients[req.Channel]) == 0 {
-		delete(s.clients, req.Channel)
-	}
+	s.clients[topic][sub] = struct{}{}
 	s.mu.Unlock()
+	s.startWriter(topic, sub)
+
+	// 5) Block until the client disconnects; then cleanup.
+	<-sub.ctx.Done()
+	s.removeSubscriber(topic, sub)
 	return nil
 }
