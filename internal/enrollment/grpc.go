@@ -8,6 +8,7 @@ import (
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/signing"
+	"github.com/dense-identity/denseid/internal/voprf"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -76,11 +77,19 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		return nil, status.Errorf(codes.Internal, "failed to generate credential: %v", err)
 	}
 
+	evaluatedTickets, err := voprf.BulkEvaluate(s.cfg.AtPrivateKey, req.BlindedTickets)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to generate tickets: %v", err)
+	}
+
 	resp := &pb.EnrollmentResponse{
 		Eid:       eid,
 		Exp:       expiryPb,
 		Epk:       s.cfg.CiPublicKey,
 		Sigma:     Sigma,
+		Mpk: s.cfg.AmfPublicKey,
+		Avk: s.cfg.AtPublicKey,
+		EvaluatedTickets: evaluatedTickets,
 	}
 
 	log.Printf("[Enroll] Success TN=%s EID=%s", req.GetTn(), resp.Eid)

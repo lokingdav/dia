@@ -9,7 +9,6 @@ import (
 	"github.com/dense-identity/denseid/internal/voprf"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // Server implements the KeyDerivationServiceServer interface.
@@ -33,19 +32,17 @@ func (s *Server) Evaluate(
 ) (*keyderivationpb.EvaluateResponse, error) {
 	log.Printf("[Evaluate] blindedElement=%x", req.BlindedElement)
 
-	// 1) Verify group signature over the blinded element
-	clone := proto.Clone(req).(*keyderivationpb.EvaluateRequest)
-	clone.Sigma = nil
-	// data, err := proto.MarshalOptions{Deterministic: true}.Marshal(clone)
-	// if err != nil {
-	// 	return nil, status.Errorf(codes.InvalidArgument, "bad request encoding: %v", err)
-	// }
-	// if !signing.GrpSigVerify(s.cfg.GPK, req.Sigma, data) {
-	// 	return nil, status.Error(codes.Unauthenticated, "invalid signature")
-	// }
+	// Verify ticket
+	ticketIsValid, err := voprf.VerifyTicket(req.Ticket, s.cfg.AtVerifyKey)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "Unauthorized: %v", err)
+	}
+	if !ticketIsValid {
+		return nil, status.Error(codes.InvalidArgument, "Invalid ticket")
+	}
 
-	// 2) Perform the OPRF evaluation (implementation in Config)
-	evaluated, err := voprf.Evaluate(s.cfg.OprfSK, req.BlindedElement)
+	// Perform the OPRF evaluation
+	evaluated, err := voprf.Evaluate(s.cfg.KsPrivateKey, req.BlindedElement)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "OPRF evaluation failed: %v", err)
 	}

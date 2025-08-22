@@ -5,7 +5,7 @@ cmd=${1:-}
 profile=${2:-}
 
 # list of valid profiles
-PROFILES=(enrollment keyderivation revocation relay)
+PROFILES=(es ks rv rs)
 
 usage() {
   echo "Usage: $0 {up|down} [all|${PROFILES[*]}]"

@@ -25,10 +25,7 @@ const (
 // KeyDerivationServiceClient is the client API for KeyDerivationService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// Service for one-round OPRF evaluations.
 type KeyDerivationServiceClient interface {
-	// Evaluate a single blinded element and return the PRF output.
 	Evaluate(ctx context.Context, in *EvaluateRequest, opts ...grpc.CallOption) (*EvaluateResponse, error)
 }
 
@@ -53,10 +50,7 @@ func (c *keyDerivationServiceClient) Evaluate(ctx context.Context, in *EvaluateR
 // KeyDerivationServiceServer is the server API for KeyDerivationService service.
 // All implementations must embed UnimplementedKeyDerivationServiceServer
 // for forward compatibility.
-//
-// Service for one-round OPRF evaluations.
 type KeyDerivationServiceServer interface {
-	// Evaluate a single blinded element and return the PRF output.
 	Evaluate(context.Context, *EvaluateRequest) (*EvaluateResponse, error)
 	mustEmbedUnimplementedKeyDerivationServiceServer()
 }

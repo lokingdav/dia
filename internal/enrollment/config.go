@@ -1,7 +1,10 @@
 package enrollment
 
-import "errors"
-import "github.com/dense-identity/denseid/internal/signing"
+import (
+	"errors"
+
+	"github.com/dense-identity/denseid/internal/signing"
+)
 
 type Config struct {
 	Port                   string `env:"PORT" envDefault:":50051"`
@@ -9,16 +12,20 @@ type Config struct {
 	EnrollmentDurationDays int    `env:"ENROLLMENT_DURATION_DAYS" envDefault:"30"`
 
 	// Credential issuance keypair
-	CiSkStr string `env:"CI_SK,required"`
-	CiPkStr  string `env:"CI_PK,required"`
+	CiSkStr      string `env:"CI_SK,required"`
+	CiPkStr      string `env:"CI_PK,required"`
 	CiPrivateKey []byte
 	CiPublicKey  []byte
 
 	// Access Throttling keypair
-	AtSkStr string `env:"AT_SK,required"`
-	AtPkStr  string `env:"AT_PK,required"`
+	AtSkStr      string `env:"AT_SK,required"`
+	AtPkStr      string `env:"AT_VK,required"`
 	AtPrivateKey []byte
 	AtPublicKey  []byte
+
+	// Moderation public key
+	AmfPkStr     string `env:"AMF_PK,required"`
+	AmfPublicKey	[]byte
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {
@@ -44,6 +51,11 @@ func (cfg *Config) ParseKeysAsBytes() error {
 	}
 
 	cfg.AtPublicKey, err = signing.DecodeHex(cfg.AtPkStr)
+	if err != nil {
+		return err
+	}
+
+	cfg.AmfPublicKey, err = signing.DecodeHex(cfg.AmfPkStr)
 	if err != nil {
 		return err
 	}

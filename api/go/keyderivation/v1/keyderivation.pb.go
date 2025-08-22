@@ -21,16 +21,12 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-// Request for a single-round OPRF evaluation.
-// Client sends a blinded element plus a group signature for authentication.
 type EvaluateRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// The blinded input B = Blind(x).
-	BlindedElement []byte `protobuf:"bytes,1,opt,name=blinded_element,json=blindedElement,proto3" json:"blinded_element,omitempty"`
-	// BBS04 group signature over blinded_element, to authenticate the request.
-	Sigma         []byte `protobuf:"bytes,2,opt,name=sigma,proto3" json:"sigma,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	BlindedElement []byte                 `protobuf:"bytes,1,opt,name=blinded_element,json=blindedElement,proto3" json:"blinded_element,omitempty"`
+	Ticket         []byte                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *EvaluateRequest) Reset() {
@@ -70,19 +66,16 @@ func (x *EvaluateRequest) GetBlindedElement() []byte {
 	return nil
 }
 
-func (x *EvaluateRequest) GetSigma() []byte {
+func (x *EvaluateRequest) GetTicket() []byte {
 	if x != nil {
-		return x.Sigma
+		return x.Ticket
 	}
 	return nil
 }
 
-// Response to an OPRF evaluation.
-// Server returns the evaluated element R = Eval(B).
 type EvaluateResponse struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// The server’s PRF output on the blinded element.
-	EvaluatedElement []byte `protobuf:"bytes,1,opt,name=evaluated_element,json=evaluatedElement,proto3" json:"evaluated_element,omitempty"`
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	EvaluatedElement []byte                 `protobuf:"bytes,1,opt,name=evaluated_element,json=evaluatedElement,proto3" json:"evaluated_element,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -128,10 +121,10 @@ var File_keyderivation_v1_keyderivation_proto protoreflect.FileDescriptor
 
 const file_keyderivation_v1_keyderivation_proto_rawDesc = "" +
 	"\n" +
-	"$keyderivation/v1/keyderivation.proto\x12\x18denseid.keyderivation.v1\"P\n" +
+	"$keyderivation/v1/keyderivation.proto\x12\x18denseid.keyderivation.v1\"R\n" +
 	"\x0fEvaluateRequest\x12'\n" +
-	"\x0fblinded_element\x18\x01 \x01(\fR\x0eblindedElement\x12\x14\n" +
-	"\x05sigma\x18\x02 \x01(\fR\x05sigma\"?\n" +
+	"\x0fblinded_element\x18\x01 \x01(\fR\x0eblindedElement\x12\x16\n" +
+	"\x06ticket\x18\x02 \x01(\fR\x06ticket\"?\n" +
 	"\x10EvaluateResponse\x12+\n" +
 	"\x11evaluated_element\x18\x01 \x01(\fR\x10evaluatedElement2y\n" +
 	"\x14KeyDerivationService\x12a\n" +

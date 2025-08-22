@@ -10,13 +10,11 @@ type Config struct {
 	Port         string `env:"PORT" envDefault:":50051"`
 	IsProduction bool   `env:"IS_PRODUCTION" envDefault:"false"`
 
-	GPKStr string `env:"GROUP_PK,required"`
-	GPK    []byte
+	AtVkStr string `env:"AT_VK,required"`
+	AtVerifyKey    []byte
 
-	OprfSKStr string `env:"OPRF_SK,required"`
-	OprfVKStr string `env:"OPRF_VK"`
-	OprfSK    []byte
-	OprfVK    []byte
+	KsSkStr string `env:"KS_SK,required"`
+	KsPrivateKey    []byte
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {
@@ -24,11 +22,16 @@ func (cfg *Config) ParseKeysAsBytes() error {
 		return errors.New("failed to parse keys as bytes")
 	}
 
-	cfg.GPK, _ = signing.DecodeHex(cfg.GPKStr)
-	cfg.OprfSK, _ = signing.DecodeHex(cfg.OprfSKStr)
+	var err error
 
-	if cfg.OprfVKStr == "" {
-		cfg.OprfVK, _ = signing.DecodeHex(cfg.OprfVKStr)
+	cfg.AtVerifyKey, err = signing.DecodeHex(cfg.AtVkStr)
+	if err != nil {
+		return err
+	}
+
+	cfg.KsPrivateKey, err = signing.DecodeHex(cfg.KsSkStr)
+	if err != nil {
+		return err
 	}
 
 	return nil

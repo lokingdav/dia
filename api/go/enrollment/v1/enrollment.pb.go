@@ -99,16 +99,17 @@ func (x *DisplayInformation) GetTagline() string {
 }
 
 type EnrollmentRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Tn            string                 `protobuf:"bytes,1,opt,name=tn,proto3" json:"tn,omitempty"`
-	Iden          *DisplayInformation    `protobuf:"bytes,2,opt,name=iden,proto3" json:"iden,omitempty"`
-	NBio          uint32                 `protobuf:"varint,3,opt,name=n_bio,json=nBio,proto3" json:"n_bio,omitempty"`
-	Nonce         string                 `protobuf:"bytes,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	Pk            []byte                 `protobuf:"bytes,5,opt,name=pk,proto3" json:"pk,omitempty"`
-	Ipk           []byte                 `protobuf:"bytes,6,opt,name=ipk,proto3" json:"ipk,omitempty"`
-	Sigma         []byte                 `protobuf:"bytes,7,opt,name=sigma,proto3" json:"sigma,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Tn             string                 `protobuf:"bytes,1,opt,name=tn,proto3" json:"tn,omitempty"`
+	Iden           *DisplayInformation    `protobuf:"bytes,2,opt,name=iden,proto3" json:"iden,omitempty"`
+	NBio           uint32                 `protobuf:"varint,3,opt,name=n_bio,json=nBio,proto3" json:"n_bio,omitempty"`
+	Nonce          string                 `protobuf:"bytes,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	Pk             []byte                 `protobuf:"bytes,5,opt,name=pk,proto3" json:"pk,omitempty"`
+	Ipk            []byte                 `protobuf:"bytes,6,opt,name=ipk,proto3" json:"ipk,omitempty"`
+	BlindedTickets [][]byte               `protobuf:"bytes,7,rep,name=blinded_tickets,json=blindedTickets,proto3" json:"blinded_tickets,omitempty"`
+	Sigma          []byte                 `protobuf:"bytes,8,opt,name=sigma,proto3" json:"sigma,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *EnrollmentRequest) Reset() {
@@ -183,6 +184,13 @@ func (x *EnrollmentRequest) GetIpk() []byte {
 	return nil
 }
 
+func (x *EnrollmentRequest) GetBlindedTickets() [][]byte {
+	if x != nil {
+		return x.BlindedTickets
+	}
+	return nil
+}
+
 func (x *EnrollmentRequest) GetSigma() []byte {
 	if x != nil {
 		return x.Sigma
@@ -191,13 +199,16 @@ func (x *EnrollmentRequest) GetSigma() []byte {
 }
 
 type EnrollmentResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Eid           string                 `protobuf:"bytes,1,opt,name=eid,proto3" json:"eid,omitempty"`
-	Exp           *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=exp,proto3" json:"exp,omitempty"`
-	Epk           []byte                 `protobuf:"bytes,3,opt,name=epk,proto3" json:"epk,omitempty"`
-	Sigma         []byte                 `protobuf:"bytes,4,opt,name=sigma,proto3" json:"sigma,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Eid              string                 `protobuf:"bytes,1,opt,name=eid,proto3" json:"eid,omitempty"`
+	Exp              *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=exp,proto3" json:"exp,omitempty"`
+	Epk              []byte                 `protobuf:"bytes,3,opt,name=epk,proto3" json:"epk,omitempty"`
+	Sigma            []byte                 `protobuf:"bytes,4,opt,name=sigma,proto3" json:"sigma,omitempty"`
+	Mpk              []byte                 `protobuf:"bytes,5,opt,name=mpk,proto3" json:"mpk,omitempty"`
+	Avk              []byte                 `protobuf:"bytes,6,opt,name=avk,proto3" json:"avk,omitempty"`
+	EvaluatedTickets [][]byte               `protobuf:"bytes,7,rep,name=evaluated_tickets,json=evaluatedTickets,proto3" json:"evaluated_tickets,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *EnrollmentResponse) Reset() {
@@ -258,6 +269,27 @@ func (x *EnrollmentResponse) GetSigma() []byte {
 	return nil
 }
 
+func (x *EnrollmentResponse) GetMpk() []byte {
+	if x != nil {
+		return x.Mpk
+	}
+	return nil
+}
+
+func (x *EnrollmentResponse) GetAvk() []byte {
+	if x != nil {
+		return x.Avk
+	}
+	return nil
+}
+
+func (x *EnrollmentResponse) GetEvaluatedTickets() [][]byte {
+	if x != nil {
+		return x.EvaluatedTickets
+	}
+	return nil
+}
+
 var File_enrollment_v1_enrollment_proto protoreflect.FileDescriptor
 
 const file_enrollment_v1_enrollment_proto_rawDesc = "" +
@@ -270,20 +302,24 @@ const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"websiteUrl\x12\x1f\n" +
 	"\vbrand_color\x18\x04 \x01(\tR\n" +
 	"brandColor\x12\x18\n" +
-	"\atagline\x18\x05 \x01(\tR\atagline\"\xc5\x01\n" +
+	"\atagline\x18\x05 \x01(\tR\atagline\"\xee\x01\n" +
 	"\x11EnrollmentRequest\x12\x0e\n" +
 	"\x02tn\x18\x01 \x01(\tR\x02tn\x12=\n" +
 	"\x04iden\x18\x02 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
 	"\x05n_bio\x18\x03 \x01(\rR\x04nBio\x12\x14\n" +
 	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12\x0e\n" +
 	"\x02pk\x18\x05 \x01(\fR\x02pk\x12\x10\n" +
-	"\x03ipk\x18\x06 \x01(\fR\x03ipk\x12\x14\n" +
-	"\x05sigma\x18\a \x01(\fR\x05sigma\"|\n" +
+	"\x03ipk\x18\x06 \x01(\fR\x03ipk\x12'\n" +
+	"\x0fblinded_tickets\x18\a \x03(\fR\x0eblindedTickets\x12\x14\n" +
+	"\x05sigma\x18\b \x01(\fR\x05sigma\"\xcd\x01\n" +
 	"\x12EnrollmentResponse\x12\x10\n" +
 	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
 	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +
 	"\x03epk\x18\x03 \x01(\fR\x03epk\x12\x14\n" +
-	"\x05sigma\x18\x04 \x01(\fR\x05sigma2|\n" +
+	"\x05sigma\x18\x04 \x01(\fR\x05sigma\x12\x10\n" +
+	"\x03mpk\x18\x05 \x01(\fR\x03mpk\x12\x10\n" +
+	"\x03avk\x18\x06 \x01(\fR\x03avk\x12+\n" +
+	"\x11evaluated_tickets\x18\a \x03(\fR\x10evaluatedTickets2|\n" +
 	"\x11EnrollmentService\x12g\n" +
 	"\x10EnrollSubscriber\x12(.denseid.enrollment.v1.EnrollmentRequest\x1a).denseid.enrollment.v1.EnrollmentResponseBEZCgithub.com/dense-identity/denseid/api/go/enrollment/v1;enrollmentpbb\x06proto3"
 

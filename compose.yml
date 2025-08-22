@@ -32,7 +32,7 @@ services:
     ports:
       - "50051:50051"
     env_file: .env
-    profiles: [enrollment]
+    profiles: [es]
 
   key-derivation:
     <<: *denseid-server-base
@@ -43,7 +43,7 @@ services:
     ports:
       - "50052:50051"
     env_file: .env
-    profiles: [keyderivation]
+    profiles: [ks]
 
   revocation-server:
     <<: *denseid-server-base
@@ -54,7 +54,7 @@ services:
     ports:
       - "50053:50051"
     env_file: .env
-    profiles: [revocation]
+    profiles: [rv]
 
   relay-server:
     <<: *denseid-server-base
@@ -65,7 +65,7 @@ services:
     ports:
       - "50054:50051"
     env_file: .env
-    profiles: [relay]
+    profiles: [rs]
 
 volumes:
   go-mod-cache:
