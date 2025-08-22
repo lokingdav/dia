@@ -9,8 +9,9 @@ import (
 type Config struct {
 	Port         string `env:"PORT" envDefault:":50051"`
 	IsProduction bool   `env:"IS_PRODUCTION" envDefault:"false"`
-	GPKStr       string `env:"GROUP_PK,required"`
-	GPK          []byte
+
+	AtVkStr string `env:"AT_VK,required"`
+	AtVerifyKey    []byte
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {
@@ -19,7 +20,11 @@ func (cfg *Config) ParseKeysAsBytes() error {
 	}
 	
 	var err error
-	cfg.GPK, err = signing.DecodeHex(cfg.GPKStr)
 
-	return err
+	cfg.AtVerifyKey, err = signing.DecodeHex(cfg.AtVkStr)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

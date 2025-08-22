@@ -5,35 +5,22 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/dense-identity/denseid/api/go/relay/v1;relaypb";
 
-// When subscribing, clients must present a signature so only authorized members can listen.
 message SubscribeRequest {
-  string channel     = 1;
-  string sender_id   = 2;
-  google.protobuf.Timestamp timestamp = 3;
-  bytes sigma        = 4;
+  string topic    = 1;
+  bytes ticket    = 2;
+  string sender_id = 3;
 }
 
 message RelayMessage {
-  // client‐assigned
-  string id         = 1;
-  string channel    = 2;
-  bytes  payload    = 3;
-
-  // client’s own send timestamp (included in the signature)
-  google.protobuf.Timestamp sent_at = 4;
-
-  // signature over (id,channel,payload,sent_at,sender_id)
-  bytes  sigma      = 5;
-
-  string sender_id  = 6;
-
-  // server’s relay timestamp (NOT covered by the signature)
-  google.protobuf.Timestamp relay_at = 7;
+  string topic    = 1;
+  bytes  payload    = 2;
+  string corr_id = 3;
+  string sender_id = 4;
 }
 
 message PublishResponse {
-  // just echo back the server’s relay timestamp
-  google.protobuf.Timestamp relay_at = 1;
+  string status = 1;
+  google.protobuf.Timestamp relay_at = 2;
 }
 
 service RelayService {

@@ -75,15 +75,15 @@ func (s *Server) startWriter(topic string, sub *subscriber) {
 // Publish handles a message and broadcasts it to existing topic subscribers (except originator).
 // Anyone may publish, BUT ONLY if the topic already exists (created by a prior Subscribe).
 func (s *Server) Publish(ctx context.Context, msg *pb.RelayMessage) (*pb.PublishResponse, error) {
-	now := timestamppb.Now()
 	topic := msg.GetTopic()
+	response := &pb.PublishResponse{RelayAt: timestamppb.Now()}
 
-	// Topic must already exist (Subscribe creates it). Otherwise reject.
+	// Topic must already exist (Subscribe creates it). Otherwise return silently.
 	s.mu.RLock()
 	_, exists := s.clients[topic]
 	s.mu.RUnlock()
 	if !exists {
-		return nil, status.Error(codes.NotFound, "topic does not exist")
+		return response, nil
 	}
 
 	// Snapshot recipients (except the originator) WITHOUT holding the lock during sends.
@@ -121,7 +121,7 @@ func (s *Server) Publish(ctx context.Context, msg *pb.RelayMessage) (*pb.Publish
 		}(sub)
 	}
 
-	return &pb.PublishResponse{RelayAt: now}, nil
+	return response, nil
 }
 
 // Subscribe authenticates, creates/opens the topic, replays history, then joins live delivery.
