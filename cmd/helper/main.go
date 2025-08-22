@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/dense-identity/denseid/internal/amf"
 	"github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
 )
@@ -42,7 +43,7 @@ func registrationAuthoritySetup() []string {
 		fmt.Sprintf("KS_PK=%s", signing.EncodeToHex(ksPk)))
 
 	// 4. Generate AMF keypair for Moderation
-	amfSk, amfPk, err := voprf.Keygen()
+	amfSk, amfPk, err := amf.Keygen()
 	if err != nil {
 		log.Fatalf("AMF Keygen failed: %v", err)
 	}

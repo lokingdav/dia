@@ -67,6 +67,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		req.GetIden().LogoUrl,
 		signing.EncodeToHex(req.GetPk()),
 		signing.EncodeToHex(req.GetIpk()),
+		req.Nonce,
 	}
 	for i, v := range attributes {
 		attributes[i] = v + req.Tn
