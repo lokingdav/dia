@@ -7,9 +7,13 @@ import (
 
 type Config struct {
 	IsProduction           bool   `env:"IS_PRODUCTION" envDefault:"false"`
+	UseTls           bool   `env:"USE_TLS" envDefault:"false"`
+
+	MyPhone string `env:"PHONE,required"`
+
+	KsAddr	string `env:"KS_ADDR" envDefault:"localhost:50052"`
 	RsHost           string   `env:"RS_HOST" envDefault:"localhost"`
 	RsPort       int   `env:"RS_PORT" envDefault:"50054"`
-	UseTls           bool   `env:"USE_TLS" envDefault:"false"`
 
 	// Credential verification
 	CiPkStr      string `env:"CI_PK,required"`
@@ -20,6 +24,9 @@ type Config struct {
 	// Moderation public key
 	AmfPkStr     string `env:"AMF_PK,required"`
 	AmfPublicKey	[]byte
+
+	TktStr string `env:"TKT,required"`
+	SampleTicket []byte
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {
@@ -40,6 +47,11 @@ func (cfg *Config) ParseKeysAsBytes() error {
 	}
 
 	cfg.AmfPublicKey, err = signing.DecodeHex(cfg.AmfPkStr)
+	if err != nil {
+		return err
+	}
+
+	cfg.SampleTicket, err = signing.DecodeHex(cfg.TktStr)
 	if err != nil {
 		return err
 	}

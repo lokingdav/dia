@@ -27,3 +27,8 @@ func MakeExpiration(days int) *timestamppb.Timestamp {
     // 4) Wrap in a protobuf Timestamp
     return timestamppb.New(expiry)
 }
+
+func GetTimestamp() string {
+    // for now only return YYYY-MM-DD
+    return time.Now().UTC().Format(time.DateOnly)
+}
