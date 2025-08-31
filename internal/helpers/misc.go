@@ -1,6 +1,9 @@
 package helpers
 
-import "runtime"
+import (
+	"encoding/hex"
+	"runtime"
+)
 
 func WipeBytes(b []byte) {
     for i := range b { b[i] = 0 }
@@ -23,4 +26,8 @@ func ConcatBytes(chunks ...[]byte) []byte {
         i += copy(out[i:], c)
     }
     return out
+}
+
+func EncodeToHex(data []byte) (string) {
+    return hex.EncodeToString(data)
 }

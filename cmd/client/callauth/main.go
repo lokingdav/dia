@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -41,12 +42,12 @@ func createCallState() *protocol.CallState {
 		log.Fatalf("failed to parse config: %v", err)
 	}
 
-	state := protocol.CreateCallState(config, *phone, *action)
+	state := protocol.NewCallState(config, *phone, *action)
 
 	return &state
 }
 
-func KeyDerivation(ctx context.Context, callState *protocol.CallState) {
+func RunKeyDerivation(ctx context.Context, callState *protocol.CallState) {
 	kdClient, err := subscriber.NewKeyDeriveClient(callState.Config.KeyServerAddr)
 	if err != nil {
 		log.Fatalf("error creating key derivation client: %v", err)
@@ -62,36 +63,45 @@ func KeyDerivation(ctx context.Context, callState *protocol.CallState) {
 	callState.SetSharedKey(sharedKey)
 }
 
+func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallState) {
+	err := protocol.InitAke(ctx, callState)
+	if err != nil {
+		log.Fatalf("failed to init AKE: %v", err)
+	}
+
+	oobController, err := subscriber.NewController(callState)
+
+	if err != nil {
+		panic(err)
+	}
+
+	// Start receiving (non-blocking)
+	oobController.Start(func(b []byte) {
+		fmt.Println("RX:", string(b))
+	})
+
+	if callState.IsCaller { // send initial auth info
+		if err := oobController.Send([]byte("AUTH_INIT|from=+15551234567")); err != nil {
+			println("publish failed:", err.Error())
+		}
+	}
+
+	// Wait for Ctrl-C, then close gracefully
+	// <-ctx.Done()
+
+	_ = oobController.Close()
+}
+
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	
+
 	// Initialize call state
 	callState := createCallState()
 
 	// Derive shared key and update state
-	KeyDerivation(ctx, callState)
+	RunKeyDerivation(ctx, callState)
 
 	log.Printf("Shared Key: %x", callState.SharedKey)
 
-	// oobController, err := subscriber.NewController(callState)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	// // Start receiving (non-blocking)
-	// oobController.Start(func(b []byte) {
-	// 	fmt.Println("RX:", string(b))
-	// })
-
-	// if callState.IsCaller { // send initial auth info
-	// 	if err := oobController.Send([]byte("AUTH_INIT|from=+15551234567")); err != nil {
-	// 		println("publish failed:", err.Error())
-	// 	}
-	// }
-
-	// // Wait for Ctrl-C, then close gracefully
-	// // <-ctx.Done()
-
-	// _ = oobController.Close()
 }

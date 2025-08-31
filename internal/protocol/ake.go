@@ -12,11 +12,6 @@ import (
 	dia "github.com/lokingdav/libdia/bindings/go"
 )
 
-type InitAkeResponse struct {
-	DhSk, DhPk, SharedKey []byte
-	Topic string
-}
-
 // AkeDeriveKey performs the VOPRF round-trip and returns a derived key.
 func AkeDeriveKey(ctx context.Context, client keypb.KeyDerivationServiceClient, callState *CallState) ([]byte, error) {
 	if client == nil {
@@ -31,7 +26,7 @@ func AkeDeriveKey(ctx context.Context, client keypb.KeyDerivationServiceClient, 
 	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	blinded, blind, err := voprf.Blind(callState.CallDetail.GetAkeLabel())
+	blinded, blind, err := voprf.Blind(callState.GetAkeLabel())
 	if err != nil {
 		return nil, err
 	}
@@ -58,76 +53,33 @@ func AkeDeriveKey(ctx context.Context, client keypb.KeyDerivationServiceClient, 
 	return out, nil
 }
 
-func InitAke(ctx context.Context, client keypb.KeyDerivationServiceClient, callState *CallState) (InitAkeResponse, error) {
+func InitAke(ctx context.Context, callState *CallState) (error) {
 	if callState == nil {
-		return InitAkeResponse{}, errors.New("nil CallState")
+		return errors.New("nil CallState")
 	}
 
 	dhSk, dhPk, err := dia.DHKeygen()
 	if err != nil {
-		return InitAkeResponse{}, err
+		return err
 	}
+	callState.SetDH(dhSk, dhPk)
 
-	topic := helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("1")))
-	callState.SetTopic(topic)
-	return InitAkeResponse{
-		DhSk: dhSk,
-		DhPk: dhPk,
-		SharedKey: callState.SharedKey,
-		Topic: topic,
-	}, nil
+	callState.SetTopic(helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("1"))))
+
+	return nil
 }
 
-func VerifyAkeZK(proof []byte, chal []byte, tn string) {}
-
-func CreateAkeState(callerPk, recipientPk, sharedKey []byte) {}
-
-func M1CallerToRecipient(
-	callDetail CallDetail, 
-	initAkeRes InitAkeResponse) (topic string, ciphertext []byte, err error) {
-	c0 := AkeChallenge0(initAkeRes.SharedKey, initAkeRes.DhPk, callDetail.CallerId, callDetail.Ts)
+func M1CallerToRecipient(callState *CallState) ([]byte, error) {
+	c0 := AkeChallenge0(callState.SharedKey, callState.DhPk, callState.CallerId, callState.Ts)
 	proof, err := bbs.ZkProof(c0)
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	message := AkeMessage1{
-		DhPk: initAkeRes.DhPk,
+		DhPk: callState.DhPk,
 		ZkProof: proof,
 	}
 
-	ciphertext, err = message.Encrypt(initAkeRes.SharedKey)
-	if err != nil {
-		return
-	}
-
-	topic = initAkeRes.Topic
-
-	return
+	return message.Encrypt(callState.SharedKey)
 }
-
-// func M2RecipientToCaller(
-// 	callDetail CallDetail, 
-// 	initAkeRes InitAkeResponse, 
-// 	m1Ciphertext []byte) (tpc string, ciphertext []byte, err error) {
-// 	c0 := AkeChallenge0(initAkeRes.SharedKey, message1.DhPk, callDetail.CallerId, callDetail.Ts)
-// 	proof, err := bbs.ZkProof(c0)
-
-// 	if err != nil {
-// 		return
-// 	}
-
-// 	message := AkeMessage1{
-// 		DhPk: initAkeRes.DhPk,
-// 		ZkProof: proof,
-// 	}
-
-// 	ciphertext, err = message.Encrypt(initAkeRes.SharedKey)
-// 	if err != nil {
-// 		return
-// 	}
-
-// 	tpc = initAkeRes.Tpc
-
-// 	return
-// }

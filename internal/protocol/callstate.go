@@ -8,28 +8,19 @@ import (
 	"github.com/google/uuid"
 )
 
-type CallDetail struct {
-	CallerId  string
-	Recipient string
-	Ts        string
-}
-
 type CallState struct {
-	mu sync.Mutex
-	CallDetail CallDetail
-	IsCaller bool
-	Topic string
-	Ticket []byte
-	SenderId string
-	SharedKey []byte
+	mu         sync.Mutex
+	IsCaller   bool
+	CallerId, Recipient, Ts, Topic, SenderId   string
+	DhSk, DhPk, Ticket, SharedKey  []byte
 	Config *config.SubscriberConfig
 }
 
-func (s *CallDetail) GetAkeLabel() []byte {
+func (s *CallState) GetAkeLabel() []byte {
 	return []byte(s.CallerId + s.Ts)
 }
 
-func (s *CallDetail) GetRtuLabel() []byte {
+func (s *CallState) GetRtuLabel() []byte {
 	return []byte(s.CallerId + s.Recipient + s.Ts)
 }
 
@@ -39,13 +30,20 @@ func (s *CallState) SetTopic(v string) {
 	s.mu.Unlock()
 }
 
+func (s *CallState) SetDH(sk, pk []byte) {
+	s.mu.Lock()
+	s.DhSk = sk
+	s.DhPk = pk
+	s.mu.Unlock()
+}
+
 func (s *CallState) SetSharedKey(k []byte) {
 	s.mu.Lock()
 	s.SharedKey = k
 	s.mu.Unlock()
 }
 
-func CreateCallState(config *config.SubscriberConfig, phone, action string) CallState {
+func NewCallState(config *config.SubscriberConfig, phone, action string) CallState {
 	var callerId, recipient string
 	var isCaller bool
 
@@ -59,17 +57,13 @@ func CreateCallState(config *config.SubscriberConfig, phone, action string) Call
 		isCaller = false
 	}
 
-	callDetail := CallDetail{
+	return CallState{
 		CallerId:  callerId,
 		Recipient: recipient,
 		Ts:        datetime.GetNormalizedTs(),
-	}
-
-	return CallState{
-		CallDetail: callDetail,
-		IsCaller: isCaller,
-		SenderId: uuid.NewString(),
-		Ticket: config.SampleTicket,
-		Config: config,
+		IsCaller:   isCaller,
+		SenderId:   uuid.NewString(),
+		Ticket:     config.SampleTicket,
+		Config:     config,
 	}
 }
