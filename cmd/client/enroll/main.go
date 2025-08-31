@@ -127,19 +127,31 @@ func main() {
 	}
 
 	tickets := voprf.FinalizeTickets(data.blindedTickets, res.EvaluatedTickets)
+	env := make([]string, 0)
 
-	fmt.Printf("\nPHONE=%s\nNAME=%s\nLOGO=%s\nEID=%s\nExp=%x\nSIG=%x\nSK=%x\nPK=%x\nAT_VK=%x\nMD_PK=%x\nISK=%x\nIPK=%x\nTKT=%x\n",
-		*phone,
-		*name,
-		*logoUrl,
-		res.GetEid(),
-		res.GetExp(),
-		res.GetSigma(),
-		data.amfSk,
-		data.amfPk,
-		res.Avk,
-		res.Mpk,
-		data.isk,
-		data.ipk,
-		tickets[0].ToBytes())
+	env = append(env, 
+		fmt.Sprintf("\nMY_PHONE=%s", *phone),
+		fmt.Sprintf("MY_NAME=\"%s\"", *name),
+		fmt.Sprintf("MY_LOGO=\"%s\"", *logoUrl),
+
+		fmt.Sprintf("\nENROLLMENT_ID=%s", res.GetEid()),
+		fmt.Sprintf("ENROLLMENT_EXPIRATION=%x", res.GetExp()),
+		fmt.Sprintf("RA_PUBLIC_KEY=%x", res.GetEpk()),
+		fmt.Sprintf("RA_SIGNATURE=%x", res.GetSigma()),
+
+		fmt.Sprintf("\nRTU_PRIVATE_KEY=%x", data.amfSk),
+		fmt.Sprintf("RTU_PUBLIC_KEY=%x", data.amfPk),
+
+		fmt.Sprintf("\nSUBSCRIBER_PRIVATE_KEY=%x", data.isk),
+		fmt.Sprintf("SUBSCRIBER_PUBLIC_KEY=%x", data.ipk),
+
+		fmt.Sprintf("\nACCESS_TICKET_VK=%x", res.Avk),
+		fmt.Sprintf("\nSAMPLE_TICKET=%x", tickets[0].ToBytes()),
+		
+		fmt.Sprintf("MODERATOR_PUBLIC_KEY=%x", res.Mpk),
+	)
+	
+	for i := range env {
+		fmt.Println(env[i])
+	}
 }

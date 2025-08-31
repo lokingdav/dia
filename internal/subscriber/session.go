@@ -15,7 +15,7 @@ import (
 
 // Session holds one subscription (topic, ticket, senderID) over a Client.
 type Session struct {
-	client   *Client
+	client   *RelayClient
 	topic    string
 	ticket   []byte
 	senderID string
@@ -35,7 +35,7 @@ type Session struct {
 }
 
 // NewSession prepares a session. Call Start(...) to begin receiving.
-func NewSession(client *Client, topic string, ticket []byte, senderID string) *Session {
+func NewSession(client *RelayClient, topic string, ticket []byte, senderID string) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Session{
 		client:         client,

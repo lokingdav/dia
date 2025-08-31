@@ -30,7 +30,7 @@ func (s *Server) Evaluate(
 	ctx context.Context,
 	req *keyderivationpb.EvaluateRequest,
 ) (*keyderivationpb.EvaluateResponse, error) {
-	log.Printf("[Evaluate] blindedElement=%x", req.BlindedElement)
+	log.Printf("[Evaluate] blindedElement=%x, Ticket=%x", req.BlindedElement, req.Ticket)
 
 	// Verify ticket
 	ticketIsValid, err := voprf.VerifyTicket(req.Ticket, s.cfg.AtVerifyKey)
