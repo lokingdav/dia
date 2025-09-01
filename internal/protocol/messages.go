@@ -2,73 +2,78 @@ package protocol
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-
-	"github.com/dense-identity/denseid/internal/helpers"
 )
 
-type AkeMessage1 struct {
-	DhPk, Ciphertext, ZkProof []byte
+const (
+	TypeAkeM1 = "AkeM1"
+	TypeAkeM2 = "AkeM2"
+)
+
+type MessageHeader struct {
+	Type     string `json:"type"`
+	SenderId string `json:"sender_id"`
 }
 
-type AkeM1Payload struct {
-	Type  string `json:"type"`
+type AkeMessage1Body struct {
 	DhPk  string `json:"dhPk"`
 	Proof string `json:"proof"`
 }
 
-type AkeMessage2 struct {
-	AkeMessage1
+type AkeMessage1 struct {
+	Header MessageHeader   `json:"header"`
+	Body   AkeMessage1Body `json:"body"`
 }
 
-func (m1 *AkeMessage1) VerifyZk() bool {
-	return false
-}
-
-func (m1 *AkeMessage1) Encrypt(secretKey []byte) ([]byte, error) {
-	plaintext, err := json.Marshal(AkeM1Payload{
-		Type:  "AkeM1",
-		DhPk:  helpers.EncodeToHex(m1.DhPk),
-		Proof: helpers.EncodeToHex(m1.ZkProof),
-	})
-
-	if err != nil {
-		return nil, err
+func (m *AkeMessage1) Marshal() ([]byte, error) {
+	if m == nil {
+		return nil, fmt.Errorf("nil AkeMessage1")
 	}
 
-	// todo encrypt
-	ctx := plaintext
-
-	return ctx, nil
-}
-
-func (m1 *AkeMessage1) Decrypt(secretKey []byte) error {
-	// TODO: plaintext := decrypt(ctx, secretKey)
-	plaintext := m1.Ciphertext
-
-	var p AkeM1Payload
-	if err := json.Unmarshal(plaintext, &p); err != nil {
-		return fmt.Errorf("unmarshal m1 payload: %w", err)
+	if m.Header.Type == "" {
+		m.Header.Type = TypeAkeM1
+	} else if m.Header.Type != TypeAkeM1 {
+		return nil, fmt.Errorf("invalid header.Type %q (want %s)", m.Header.Type, TypeAkeM1)
 	}
 
-	dhPk, err := helpers.DecodeHex(p.DhPk)
-	if err != nil {
-		return fmt.Errorf("decode dhPk: %w", err)
-	}
-	proof, err := helpers.DecodeHex(p.Proof)
-	if err != nil {
-		return fmt.Errorf("decode proof: %w", err)
+	if m.Header.SenderId == "" {
+		return nil, fmt.Errorf("missing header.SenderId")
 	}
 
-	m1.DhPk = dhPk
-	m1.ZkProof = proof
-	return nil
+	if m.Body.DhPk == "" || m.Body.Proof == "" {
+		return nil, fmt.Errorf("missing dhpk or proof fields. Both are required")
+	}
+
+	return json.Marshal(m)
 }
 
-func (m2 *AkeMessage2) Encrypt(secretKey []byte) error {
-	return nil
-}
+func (m *AkeMessage1) Unmarshal(data []byte) error {
+	if m == nil {
+		return errors.New("nil AkeMessage1 receiver")
+	}
 
-func (m2 *AkeMessage2) Decrypt(privateKey []byte) error {
+	// Decode into a temp to avoid partial state on error.
+	var tmp AkeMessage1
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return fmt.Errorf("decode AkeMessage1: %w", err)
+	}
+
+	// Validate header.type matches this message kind.
+	if tmp.Header.Type != TypeAkeM1 {
+		return fmt.Errorf("unexpected header.type %q (want %s)", tmp.Header.Type, TypeAkeM1)
+	}
+
+	if tmp.Header.SenderId == "" {
+		return errors.New("missing header.sender_id")
+	}
+	if tmp.Body.DhPk == "" {
+		return errors.New("missing body.dhPk")
+	}
+	if tmp.Body.Proof == "" {
+		return errors.New("missing body.proof")
+	}
+
+	*m = tmp
 	return nil
 }

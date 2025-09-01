@@ -12,9 +12,7 @@ message SubscribeRequest {
 
 message RelayMessage {
   string topic    = 1;
-  string corr_id = 2;
-  string sender_id = 3;
-  bytes  payload    = 4;
+  bytes  payload    = 2;
 }
 
 message PublishRequest {

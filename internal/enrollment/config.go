@@ -25,7 +25,7 @@ type Config struct {
 
 	// Moderation public key
 	AmfPkStr     string `env:"AMF_PK,required"`
-	AmfPublicKey	[]byte
+	AmfPublicKey []byte
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {

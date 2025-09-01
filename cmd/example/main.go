@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"github.com/dense-identity/denseid/internal/merkle"
+	"log"
 )
 
 func main() {

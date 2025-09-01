@@ -10,11 +10,11 @@ type Config struct {
 	Port         string `env:"PORT" envDefault:":50051"`
 	IsProduction bool   `env:"IS_PRODUCTION" envDefault:"false"`
 
-	AtVkStr string `env:"AT_VK,required"`
-	AtVerifyKey    []byte
+	AtVkStr     string `env:"AT_VK,required"`
+	AtVerifyKey []byte
 
-	KsSkStr string `env:"KS_SK,required"`
-	KsPrivateKey    []byte
+	KsSkStr      string `env:"KS_SK,required"`
+	KsPrivateKey []byte
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {

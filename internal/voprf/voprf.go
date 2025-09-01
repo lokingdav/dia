@@ -5,9 +5,9 @@ import (
 )
 
 type BlindedTicket struct {
-	Input []byte
+	Input   []byte
 	Blinded []byte
-	Blind []byte
+	Blind   []byte
 }
 
 type Ticket struct {
@@ -15,7 +15,7 @@ type Ticket struct {
 	T2 []byte
 }
 
-func (t *Ticket) ToBytes() ([]byte) {
+func (t *Ticket) ToBytes() []byte {
 	return append(t.T1, t.T2...)
 }
 
@@ -55,21 +55,21 @@ func VerifyTicket(ticket, verifyKey []byte) (bool, error) {
 	return dia.VOPRFVerify(t1, t2, verifyKey)
 }
 
-func GenerateTickets(count int) ([]BlindedTicket) {
+func GenerateTickets(count int) []BlindedTicket {
 	blindedTickets := make([]BlindedTicket, count)
 	for i := 0; i < count; i++ {
 		input, _, _ := Keygen()
 		blinded, blind, _ := Blind(input)
 		blindedTickets[i] = BlindedTicket{
-			Input: input,
+			Input:   input,
 			Blinded: blinded,
-			Blind: blind,
+			Blind:   blind,
 		}
 	}
 	return blindedTickets
 }
 
-func FinalizeTickets(blindedTickets []BlindedTicket, evaluated [][]byte) ([]Ticket) {
+func FinalizeTickets(blindedTickets []BlindedTicket, evaluated [][]byte) []Ticket {
 	tickets := make([]Ticket, len(blindedTickets))
 	for i, v := range evaluated {
 		output, _ := Finalize(v, blindedTickets[i].Blind)

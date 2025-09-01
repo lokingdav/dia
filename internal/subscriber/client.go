@@ -42,8 +42,8 @@ func NewRelayClient(addr string, useTLS bool, extraOpts ...grpc.DialOption) (*Re
 		creds,
 		grpc.WithKeepaliveParams(kacp),
 		grpc.WithDefaultCallOptions(
-			grpc.MaxCallRecvMsgSize(4 * 1024 * 1024),
-			grpc.MaxCallSendMsgSize(4 * 1024 * 1024),
+			grpc.MaxCallRecvMsgSize(4*1024*1024),
+			grpc.MaxCallSendMsgSize(4*1024*1024),
 		),
 	}
 	opts = append(opts, extraOpts...)

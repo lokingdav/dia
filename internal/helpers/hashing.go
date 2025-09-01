@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 )
 
-func Hash256(data []byte) ([]byte) {
+func Hash256(data []byte) []byte {
 	sum := sha256.Sum256(data)
 	return sum[:]
 }

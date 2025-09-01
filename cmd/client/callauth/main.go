@@ -36,7 +36,7 @@ func createCallState() *protocol.CallState {
 	}
 
 	var outgoing bool
-	var phoneNumber string 
+	var phoneNumber string
 
 	if *dial == "" {
 		outgoing = false

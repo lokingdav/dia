@@ -84,12 +84,12 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	}
 
 	resp := &pb.EnrollmentResponse{
-		Eid:       eid,
-		Exp:       expiryPb,
-		Epk:       s.cfg.CiPublicKey,
-		Sigma:     Sigma,
-		Mpk: s.cfg.AmfPublicKey,
-		Avk: s.cfg.AtPublicKey,
+		Eid:              eid,
+		Exp:              expiryPb,
+		Epk:              s.cfg.CiPublicKey,
+		Sigma:            Sigma,
+		Mpk:              s.cfg.AmfPublicKey,
+		Avk:              s.cfg.AtPublicKey,
 		EvaluatedTickets: evaluatedTickets,
 	}
 

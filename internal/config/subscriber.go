@@ -6,39 +6,37 @@ import (
 )
 
 type SubscriberConfig struct {
-	IsProduction           bool   `env:"IS_PRODUCTION" envDefault:"false"`
-	UseTls           bool   `env:"USE_TLS" envDefault:"false"`
+	IsProduction bool `env:"IS_PRODUCTION" envDefault:"false"`
+	UseTls       bool `env:"USE_TLS" envDefault:"false"`
 
 	// Servers
-	KeyServerAddr	string `env:"KEY_SERVER_ADDR,required"`
-	RelayServerAddr           string   `env:"RELAY_SERVER_ADDR,required"`
-	
+	KeyServerAddr   string `env:"KEY_SERVER_ADDR,required"`
+	RelayServerAddr string `env:"RELAY_SERVER_ADDR,required"`
+
 	// Personal Details
 	MyPhone string `env:"MY_PHONE,required"`
-	MyName string `env:"MY_NAME,required"`
-	MyLogo string `env:"MY_LOGO,required"`
+	MyName  string `env:"MY_NAME,required"`
+	MyLogo  string `env:"MY_LOGO,required"`
 
 	// Credential verification
-	EnExpirationStr     string `env:"ENROLLMENT_EXPIRATION,required"`
-	RaPublicKeyStr      string `env:"RA_PUBLIC_KEY,required"`
-	RaSignatureStr      string `env:"RA_SIGNATURE,required"`
-	EnExpiration, RaPublicKey, RaSignature  []byte
+	EnExpirationStr                        string `env:"ENROLLMENT_EXPIRATION,required"`
+	RaPublicKeyStr                         string `env:"RA_PUBLIC_KEY,required"`
+	RaSignatureStr                         string `env:"RA_SIGNATURE,required"`
+	EnExpiration, RaPublicKey, RaSignature []byte
 
 	// Right-To-Use
-	RtuPrivateKeyStr string `env:"RTU_PRIVATE_KEY,required"`
-	RtuPublicKeyStr string `env:"RTU_PUBLIC_KEY,required"`
+	RtuPrivateKeyStr            string `env:"RTU_PRIVATE_KEY,required"`
+	RtuPublicKeyStr             string `env:"RTU_PUBLIC_KEY,required"`
 	RtuPrivateKey, RtuPublicKey []byte
 
 	// Access Ticket
-	AccessTicketVkStr      string `env:"ACCESS_TICKET_VK,required"`
-	SampleTicketStr string `env:"SAMPLE_TICKET,required"`
+	AccessTicketVkStr            string `env:"ACCESS_TICKET_VK,required"`
+	SampleTicketStr              string `env:"SAMPLE_TICKET,required"`
 	AccessTicketVk, SampleTicket []byte
-	
 
 	// Moderation public key
-	ModeratorPublicKeyStr     string `env:"MODERATOR_PUBLIC_KEY,required"`
-	ModeratorPublicKey	[]byte
-
+	ModeratorPublicKeyStr string `env:"MODERATOR_PUBLIC_KEY,required"`
+	ModeratorPublicKey    []byte
 }
 
 func (conf *SubscriberConfig) ParseKeysAsBytes() error {

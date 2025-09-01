@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"crypto/rand"
-	mr "math/rand/v2"
 	"flag"
 	"fmt"
 	"log"
+	mr "math/rand/v2"
 
 	// Import the generated protobuf code.
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
@@ -20,11 +20,11 @@ import (
 )
 
 type newEnrollment struct {
-	request *pb.EnrollmentRequest
-	isk []byte
-	ipk []byte
-	amfSk []byte
-	amfPk []byte
+	request        *pb.EnrollmentRequest
+	isk            []byte
+	ipk            []byte
+	amfSk          []byte
+	amfPk          []byte
 	blindedTickets []voprf.BlindedTicket
 }
 
@@ -56,15 +56,15 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 	}
 
 	var req = &pb.EnrollmentRequest{
-		Tn:         phoneNumber,
-		NBio:       0,
+		Tn:   phoneNumber,
+		NBio: 0,
 		Iden: &pb.DisplayInformation{
 			Name:    displayName,
 			LogoUrl: logoUrl,
 		},
-		Nonce: signing.EncodeToHex(nonce),
-		Ipk: derIpk,
-		Pk: amfPk,
+		Nonce:          signing.EncodeToHex(nonce),
+		Ipk:            derIpk,
+		Pk:             amfPk,
 		BlindedTickets: blinded,
 	}
 
@@ -75,12 +75,12 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 	req.Sigma = signing.RegSigSign(isk, data)
 
 	payload := newEnrollment{
-		isk: isk,
-		ipk: ipk,
-		amfSk: amfSk,
-		amfPk: amfPk,
+		isk:            isk,
+		ipk:            ipk,
+		amfSk:          amfSk,
+		amfPk:          amfPk,
 		blindedTickets: blindedTickets,
-		request: req,
+		request:        req,
 	}
 
 	return &payload, nil
@@ -129,7 +129,7 @@ func main() {
 	tickets := voprf.FinalizeTickets(data.blindedTickets, res.EvaluatedTickets)
 	env := make([]string, 0)
 
-	env = append(env, 
+	env = append(env,
 		fmt.Sprintf("\nMY_PHONE=%s", *phone),
 		fmt.Sprintf("MY_NAME=\"%s\"", *name),
 		fmt.Sprintf("MY_LOGO=\"%s\"", *logoUrl),
@@ -147,10 +147,10 @@ func main() {
 
 		fmt.Sprintf("\nACCESS_TICKET_VK=%x", res.Avk),
 		fmt.Sprintf("\nSAMPLE_TICKET=%x", tickets[0].ToBytes()),
-		
+
 		fmt.Sprintf("MODERATOR_PUBLIC_KEY=%x", res.Mpk),
 	)
-	
+
 	for i := range env {
 		fmt.Println(env[i])
 	}

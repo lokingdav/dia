@@ -7,6 +7,7 @@ import (
 
 	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
 	"github.com/dense-identity/denseid/internal/bbs"
+	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/dense-identity/denseid/internal/voprf"
 	dia "github.com/lokingdav/libdia/bindings/go"
@@ -44,16 +45,16 @@ func AkeDeriveKey(ctx context.Context, client keypb.KeyDerivationServiceClient, 
 	}
 
 	out, err := voprf.Finalize(eval, blind)
-	
+
 	helpers.WipeBytes(blind)
-	
+
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func InitAke(ctx context.Context, callState *CallState) (error) {
+func InitAke(ctx context.Context, callState *CallState) error {
 	if callState == nil {
 		return errors.New("nil CallState")
 	}
@@ -77,10 +78,21 @@ func AkeM1CallerToRecipient(callState *CallState) ([]byte, error) {
 		return nil, err
 	}
 
-	message := AkeMessage1{
-		DhPk: callState.DhPk,
-		ZkProof: proof,
+	akeM1 := AkeMessage1{
+		Header: MessageHeader{
+			SenderId: callState.SenderId,
+		},
+		Body: AkeMessage1Body{
+			DhPk:  helpers.EncodeToHex(callState.DhPk),
+			Proof: helpers.EncodeToHex(proof),
+		},
 	}
 
-	return message.Encrypt(callState.SharedKey)
+	msg, err := akeM1.Marshal()
+
+	if err != nil {
+		return nil, err
+	}
+
+	return encryption.SymEncrypt(callState.SharedKey, msg)
 }
