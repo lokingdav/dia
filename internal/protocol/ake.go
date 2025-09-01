@@ -58,18 +58,19 @@ func InitAke(ctx context.Context, callState *CallState) (error) {
 		return errors.New("nil CallState")
 	}
 
+	topic := helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("1")))
+
 	dhSk, dhPk, err := dia.DHKeygen()
 	if err != nil {
 		return err
 	}
-	callState.SetDH(dhSk, dhPk)
 
-	callState.SetTopic(helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("1"))))
+	callState.InitAke(dhSk, dhPk, topic)
 
 	return nil
 }
 
-func M1CallerToRecipient(callState *CallState) ([]byte, error) {
+func AkeM1CallerToRecipient(callState *CallState) ([]byte, error) {
 	c0 := AkeChallenge0(callState.SharedKey, callState.DhPk, callState.CallerId, callState.Ts)
 	proof, err := bbs.ZkProof(c0)
 	if err != nil {

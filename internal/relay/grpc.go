@@ -3,6 +3,7 @@ package relay
 
 import (
 	"context"
+	"log"
 	"sync"
 
 	pb "github.com/dense-identity/denseid/api/go/relay/v1"
@@ -76,6 +77,7 @@ func (s *Server) startWriter(topic string, sub *subscriber) {
 // Anyone may publish, BUT ONLY if the topic already exists (created by a prior Subscribe).
 func (s *Server) Publish(ctx context.Context, msg *pb.RelayMessage) (*pb.PublishResponse, error) {
 	topic := msg.GetTopic()
+	log.Printf("Received PUBLISH on topic %s", topic)
 	response := &pb.PublishResponse{RelayAt: timestamppb.Now()}
 
 	// Topic must already exist (Subscribe creates it). Otherwise return silently.
@@ -126,6 +128,8 @@ func (s *Server) Publish(ctx context.Context, msg *pb.RelayMessage) (*pb.Publish
 
 // Subscribe authenticates, creates/opens the topic, replays history, then joins live delivery.
 func (s *Server) Subscribe(req *pb.SubscribeRequest, stream pb.RelayService_SubscribeServer) error {
+	log.Printf("Received SUBSCRIBE on topic %v", req.GetTopic())
+
 	// 1) Verify ticket (binds authorization to open the channel).
 	ok, err := voprf.VerifyTicket(req.GetTicket(), s.cfg.AtVerifyKey)
 	if err != nil {

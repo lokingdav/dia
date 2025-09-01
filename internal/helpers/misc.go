@@ -31,3 +31,7 @@ func ConcatBytes(chunks ...[]byte) []byte {
 func EncodeToHex(data []byte) (string) {
     return hex.EncodeToString(data)
 }
+
+func DecodeHex(v string) ([]byte, error) {
+	return hex.DecodeString(v)
+}

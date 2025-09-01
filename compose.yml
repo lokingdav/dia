@@ -23,16 +23,16 @@ x-denseid-server: &denseid-server-base
         memory: 500M
 
 services:
-  enrollment-server:
-    <<: *denseid-server-base
-    container_name: enrollment-server
-    command:
-      - "--build.cmd=go build -o /app/bin/es /app/cmd/enrollment"
-      - "--build.bin=/app/bin/es"
-    ports:
-      - "50051:50051"
-    env_file: .env
-    profiles: [es]
+  # enrollment-server:
+  #   <<: *denseid-server-base
+  #   container_name: enrollment-server
+  #   command:
+  #     - "--build.cmd=go build -o /app/bin/es /app/cmd/enrollment"
+  #     - "--build.bin=/app/bin/es"
+  #   ports:
+  #     - "50051:50051"
+  #   env_file: .env
+  #   profiles: [es]
 
   key-derivation:
     <<: *denseid-server-base
@@ -45,16 +45,16 @@ services:
     env_file: .env
     profiles: [ks]
 
-  revocation-server:
-    <<: *denseid-server-base
-    container_name: revocation-server
-    command:
-      - "--build.cmd=go build -o /app/bin/rv /app/cmd/revocation"
-      - "--build.bin=/app/bin/rv"
-    ports:
-      - "50053:50051"
-    env_file: .env
-    profiles: [rv]
+  # revocation-server:
+  #   <<: *denseid-server-base
+  #   container_name: revocation-server
+  #   command:
+  #     - "--build.cmd=go build -o /app/bin/rv /app/cmd/revocation"
+  #     - "--build.bin=/app/bin/rv"
+  #   ports:
+  #     - "50053:50051"
+  #   env_file: .env
+  #   profiles: [rv]
 
   relay-server:
     <<: *denseid-server-base

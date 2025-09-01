@@ -7,8 +7,7 @@ option go_package = "github.com/dense-identity/denseid/api/go/relay/v1;relaypb";
 
 message SubscribeRequest {
   string topic    = 1;
-  bytes ticket    = 2;
-  string sender_id = 3;
+  string sender_id = 2;
 }
 
 message RelayMessage {
@@ -16,14 +15,22 @@ message RelayMessage {
   bytes  payload    = 2;
   string corr_id = 3;
   string sender_id = 4;
+  bytes ticket = 5
 }
 
-message PublishResponse {
+message Channel {
+  string topic = 1
+  bytes ticket = 2
+  RelayMessage message = 3
+}
+
+message RelayResponse {
   string status = 1;
   google.protobuf.Timestamp relay_at = 2;
 }
 
 service RelayService {
+  rpc Create   (Channel)          returns (RelayResponse);
+  rpc Publish  (RelayMessage)     returns (RelayResponse);
   rpc Subscribe(SubscribeRequest) returns (stream RelayMessage);
-  rpc Publish  (RelayMessage)       returns (PublishResponse);
 }

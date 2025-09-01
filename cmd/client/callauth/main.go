@@ -70,7 +70,6 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 	}
 
 	oobController, err := subscriber.NewController(callState)
-
 	if err != nil {
 		panic(err)
 	}
@@ -80,10 +79,18 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 		fmt.Println("RX:", string(b))
 	})
 
-	if callState.IsCaller { // send initial auth info
-		if err := oobController.Send([]byte("AUTH_INIT|from=+15551234567")); err != nil {
-			println("publish failed:", err.Error())
+	if callState.IsCaller { 
+		ciphertext, err := protocol.AkeM1CallerToRecipient(callState)
+
+		if err != nil {
+			log.Fatalf("failed creating M1 Caller --> Recipient: %v", err)
 		}
+
+		if err := oobController.Send(ciphertext); err != nil {
+			log.Fatalf("publish failed: %v", err)
+		}
+
+		log.Println("M1 message sent")
 	}
 
 	// Wait for Ctrl-C, then close gracefully
@@ -104,4 +111,5 @@ func main() {
 
 	log.Printf("Shared Key: %x", callState.SharedKey)
 
+	RunAuthenticatedKeyExchange(ctx, callState)
 }

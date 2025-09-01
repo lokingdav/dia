@@ -24,16 +24,11 @@ func (s *CallState) GetRtuLabel() []byte {
 	return []byte(s.CallerId + s.Recipient + s.Ts)
 }
 
-func (s *CallState) SetTopic(v string) {
+func (s *CallState) InitAke(dhSk, dhPk []byte, topic string) {
 	s.mu.Lock()
-	s.Topic = v
-	s.mu.Unlock()
-}
-
-func (s *CallState) SetDH(sk, pk []byte) {
-	s.mu.Lock()
-	s.DhSk = sk
-	s.DhPk = pk
+	s.DhSk = dhSk
+	s.DhPk = dhPk
+	s.Topic = topic
 	s.mu.Unlock()
 }
 
