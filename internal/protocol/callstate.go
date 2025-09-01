@@ -10,7 +10,7 @@ import (
 
 type CallState struct {
 	mu         sync.Mutex
-	IsCaller   bool
+	IsOutgoing   bool
 	CallerId, Recipient, Ts, Topic, SenderId   string
 	DhSk, DhPk, Ticket, SharedKey  []byte
 	Config *config.SubscriberConfig
@@ -38,25 +38,22 @@ func (s *CallState) SetSharedKey(k []byte) {
 	s.mu.Unlock()
 }
 
-func NewCallState(config *config.SubscriberConfig, phone, action string) CallState {
+func NewCallState(config *config.SubscriberConfig, phoneNumber string, outgoing bool) CallState {
 	var callerId, recipient string
-	var isCaller bool
 
-	if action == "dial" {
+	if outgoing {
 		callerId = config.MyPhone
-		recipient = phone
-		isCaller = true
+		recipient = phoneNumber
 	} else {
-		callerId = phone
+		callerId = phoneNumber
 		recipient = config.MyPhone
-		isCaller = false
 	}
 
 	return CallState{
 		CallerId:  callerId,
 		Recipient: recipient,
 		Ts:        datetime.GetNormalizedTs(),
-		IsCaller:   isCaller,
+		IsOutgoing:   outgoing,
 		SenderId:   uuid.NewString(),
 		Ticket:     config.SampleTicket,
 		Config:     config,

@@ -74,18 +74,44 @@ func (s *Server) startWriter(topic string, sub *subscriber) {
 }
 
 // Publish handles a message and broadcasts it to existing topic subscribers (except originator).
-// Anyone may publish, BUT ONLY if the topic already exists (created by a prior Subscribe).
-func (s *Server) Publish(ctx context.Context, msg *pb.RelayMessage) (*pb.PublishResponse, error) {
-	topic := msg.GetTopic()
+// Ticket is required only if the topic doesn't exist yet (for topic creation).
+// Publishing to existing topics allows empty tickets.
+func (s *Server) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
+	topic := req.GetTopic()
 	log.Printf("Received PUBLISH on topic %s", topic)
-	response := &pb.PublishResponse{RelayAt: timestamppb.Now()}
 
-	// Topic must already exist (Subscribe creates it). Otherwise return silently.
+	response := &pb.PublishResponse{RelayAt: timestamppb.Now()}
+	msg := req.GetMessage()
+
+	// Check if topic already exists
 	s.mu.RLock()
 	_, exists := s.clients[topic]
 	s.mu.RUnlock()
+
+	// If topic doesn't exist, ticket is required to create it
 	if !exists {
-		return response, nil
+		ticket := req.GetTicket()
+		if len(ticket) == 0 {
+			return nil, status.Error(codes.PermissionDenied, "Ticket required to create new topic")
+		}
+
+		// Verify ticket for topic creation
+		ok, err := voprf.VerifyTicket(ticket, s.cfg.AtVerifyKey)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Ticket verification failed: %v", err)
+		}
+		if !ok {
+			return nil, status.Error(codes.Unauthenticated, "Invalid ticket for topic creation")
+		}
+
+		// Create the topic since authentication passed
+		s.mu.Lock()
+		if _, present := s.clients[topic]; !present {
+			s.clients[topic] = make(map[*subscriber]struct{})
+		}
+		s.mu.Unlock()
+
+		log.Printf("Created new topic %s with authenticated ticket", topic)
 	}
 
 	// Snapshot recipients (except the originator) WITHOUT holding the lock during sends.
@@ -126,18 +152,10 @@ func (s *Server) Publish(ctx context.Context, msg *pb.RelayMessage) (*pb.Publish
 	return response, nil
 }
 
-// Subscribe authenticates, creates/opens the topic, replays history, then joins live delivery.
+// Subscribe creates/opens the topic, replays history, then joins live delivery.
+// No authentication required for subscribers.
 func (s *Server) Subscribe(req *pb.SubscribeRequest, stream pb.RelayService_SubscribeServer) error {
 	log.Printf("Received SUBSCRIBE on topic %v", req.GetTopic())
-
-	// 1) Verify ticket (binds authorization to open the channel).
-	ok, err := voprf.VerifyTicket(req.GetTicket(), s.cfg.AtVerifyKey)
-	if err != nil {
-		return status.Errorf(codes.Internal, "Unauthorized: %v", err)
-	}
-	if !ok {
-		return status.Error(codes.InvalidArgument, "Invalid ticket")
-	}
 
 	topic := req.GetTopic()
 	sub := &subscriber{

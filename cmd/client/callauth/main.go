@@ -14,23 +14,36 @@ import (
 )
 
 func createCallState() *protocol.CallState {
-	phone := flag.String("phone", "", "Phone number to dial/recieve calls to/from")
-	action := flag.String("action", "dial", "Either dial/receive")
+	dial := flag.String("dial", "", "The phone number to dial")
+	receive := flag.String("receive", "", "The phone number to recieve call from")
 	envfile := flag.String("env", "", ".env file which contains details of the subscriber")
 	flag.Parse()
 
-	if *phone == "" {
-		log.Fatal("--phone is required")
+	if *dial == "" && *receive == "" {
+		log.Fatal("--dial or --receive option is required")
 	}
-	if *action == "" {
-		log.Fatal("--action is required to be either dial or receive")
+
+	if *dial != "" && *receive != "" {
+		log.Fatal("You cannot specify both --dial or --receive. Make your mind up.")
 	}
+
 	if *envfile == "" {
 		log.Fatal("--env is required for subscriber authentication")
 	}
 
 	if err := config.LoadEnv(*envfile); err != nil {
 		log.Printf("warning loading %s: %v", *envfile, err)
+	}
+
+	var outgoing bool
+	var phoneNumber string 
+
+	if *dial == "" {
+		outgoing = false
+		phoneNumber = *receive
+	} else {
+		outgoing = true
+		phoneNumber = *dial
 	}
 
 	config, err := config.New[config.SubscriberConfig]()
@@ -42,7 +55,12 @@ func createCallState() *protocol.CallState {
 		log.Fatalf("failed to parse config: %v", err)
 	}
 
-	state := protocol.NewCallState(config, *phone, *action)
+	state := protocol.NewCallState(config, phoneNumber, outgoing)
+
+	fmt.Println("===== Call Details =====")
+	fmt.Printf("--> Outgoing: %v\n", outgoing)
+	fmt.Printf("--> CallerID: %s\n", state.CallerId)
+	fmt.Printf("--> Recipient: %s\n\n", state.Recipient)
 
 	return &state
 }
@@ -74,12 +92,7 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 		panic(err)
 	}
 
-	// Start receiving (non-blocking)
-	oobController.Start(func(b []byte) {
-		fmt.Println("RX:", string(b))
-	})
-
-	if callState.IsCaller { 
+	if callState.IsOutgoing {
 		ciphertext, err := protocol.AkeM1CallerToRecipient(callState)
 
 		if err != nil {
@@ -90,11 +103,18 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 			log.Fatalf("publish failed: %v", err)
 		}
 
-		log.Println("M1 message sent")
+		log.Println("M1 Caller --> Recipient")
 	}
 
+	// Start receiving (non-blocking)
+	oobController.Start(func(b []byte) {
+		fmt.Println("RX:", string(b))
+	})
+
+	log.Printf("Topic: %s", callState.Topic)
+
 	// Wait for Ctrl-C, then close gracefully
-	// <-ctx.Done()
+	<-ctx.Done()
 
 	_ = oobController.Close()
 }

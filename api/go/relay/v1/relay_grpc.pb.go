@@ -19,16 +19,16 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	RelayService_Subscribe_FullMethodName = "/denseid.relay.v1.RelayService/Subscribe"
 	RelayService_Publish_FullMethodName   = "/denseid.relay.v1.RelayService/Publish"
+	RelayService_Subscribe_FullMethodName = "/denseid.relay.v1.RelayService/Subscribe"
 )
 
 // RelayServiceClient is the client API for RelayService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type RelayServiceClient interface {
+	Publish(ctx context.Context, in *PublishRequest, opts ...grpc.CallOption) (*PublishResponse, error)
 	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RelayMessage], error)
-	Publish(ctx context.Context, in *RelayMessage, opts ...grpc.CallOption) (*PublishResponse, error)
 }
 
 type relayServiceClient struct {
@@ -37,6 +37,16 @@ type relayServiceClient struct {
 
 func NewRelayServiceClient(cc grpc.ClientConnInterface) RelayServiceClient {
 	return &relayServiceClient{cc}
+}
+
+func (c *relayServiceClient) Publish(ctx context.Context, in *PublishRequest, opts ...grpc.CallOption) (*PublishResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishResponse)
+	err := c.cc.Invoke(ctx, RelayService_Publish_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *relayServiceClient) Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[RelayMessage], error) {
@@ -58,22 +68,12 @@ func (c *relayServiceClient) Subscribe(ctx context.Context, in *SubscribeRequest
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type RelayService_SubscribeClient = grpc.ServerStreamingClient[RelayMessage]
 
-func (c *relayServiceClient) Publish(ctx context.Context, in *RelayMessage, opts ...grpc.CallOption) (*PublishResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(PublishResponse)
-	err := c.cc.Invoke(ctx, RelayService_Publish_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // RelayServiceServer is the server API for RelayService service.
 // All implementations must embed UnimplementedRelayServiceServer
 // for forward compatibility.
 type RelayServiceServer interface {
+	Publish(context.Context, *PublishRequest) (*PublishResponse, error)
 	Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[RelayMessage]) error
-	Publish(context.Context, *RelayMessage) (*PublishResponse, error)
 	mustEmbedUnimplementedRelayServiceServer()
 }
 
@@ -84,11 +84,11 @@ type RelayServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRelayServiceServer struct{}
 
+func (UnimplementedRelayServiceServer) Publish(context.Context, *PublishRequest) (*PublishResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Publish not implemented")
+}
 func (UnimplementedRelayServiceServer) Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[RelayMessage]) error {
 	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
-}
-func (UnimplementedRelayServiceServer) Publish(context.Context, *RelayMessage) (*PublishResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Publish not implemented")
 }
 func (UnimplementedRelayServiceServer) mustEmbedUnimplementedRelayServiceServer() {}
 func (UnimplementedRelayServiceServer) testEmbeddedByValue()                      {}
@@ -111,19 +111,8 @@ func RegisterRelayServiceServer(s grpc.ServiceRegistrar, srv RelayServiceServer)
 	s.RegisterService(&RelayService_ServiceDesc, srv)
 }
 
-func _RelayService_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(SubscribeRequest)
-	if err := stream.RecvMsg(m); err != nil {
-		return err
-	}
-	return srv.(RelayServiceServer).Subscribe(m, &grpc.GenericServerStream[SubscribeRequest, RelayMessage]{ServerStream: stream})
-}
-
-// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
-type RelayService_SubscribeServer = grpc.ServerStreamingServer[RelayMessage]
-
 func _RelayService_Publish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(RelayMessage)
+	in := new(PublishRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -135,10 +124,21 @@ func _RelayService_Publish_Handler(srv interface{}, ctx context.Context, dec fun
 		FullMethod: RelayService_Publish_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RelayServiceServer).Publish(ctx, req.(*RelayMessage))
+		return srv.(RelayServiceServer).Publish(ctx, req.(*PublishRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _RelayService_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SubscribeRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(RelayServiceServer).Subscribe(m, &grpc.GenericServerStream[SubscribeRequest, RelayMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type RelayService_SubscribeServer = grpc.ServerStreamingServer[RelayMessage]
 
 // RelayService_ServiceDesc is the grpc.ServiceDesc for RelayService service.
 // It's only intended for direct use with grpc.RegisterService,

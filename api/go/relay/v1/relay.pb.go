@@ -25,8 +25,7 @@ const (
 type SubscribeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	Ticket        []byte                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`
-	SenderId      string                 `protobuf:"bytes,3,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
+	SenderId      string                 `protobuf:"bytes,2,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -68,13 +67,6 @@ func (x *SubscribeRequest) GetTopic() string {
 	return ""
 }
 
-func (x *SubscribeRequest) GetTicket() []byte {
-	if x != nil {
-		return x.Ticket
-	}
-	return nil
-}
-
 func (x *SubscribeRequest) GetSenderId() string {
 	if x != nil {
 		return x.SenderId
@@ -85,9 +77,9 @@ func (x *SubscribeRequest) GetSenderId() string {
 type RelayMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
-	CorrId        string                 `protobuf:"bytes,3,opt,name=corr_id,json=corrId,proto3" json:"corr_id,omitempty"`
-	SenderId      string                 `protobuf:"bytes,4,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
+	CorrId        string                 `protobuf:"bytes,2,opt,name=corr_id,json=corrId,proto3" json:"corr_id,omitempty"`
+	SenderId      string                 `protobuf:"bytes,3,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -129,13 +121,6 @@ func (x *RelayMessage) GetTopic() string {
 	return ""
 }
 
-func (x *RelayMessage) GetPayload() []byte {
-	if x != nil {
-		return x.Payload
-	}
-	return nil
-}
-
 func (x *RelayMessage) GetCorrId() string {
 	if x != nil {
 		return x.CorrId
@@ -150,6 +135,73 @@ func (x *RelayMessage) GetSenderId() string {
 	return ""
 }
 
+func (x *RelayMessage) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+type PublishRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	Ticket        []byte                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`
+	Message       *RelayMessage          `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishRequest) Reset() {
+	*x = PublishRequest{}
+	mi := &file_relay_v1_relay_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishRequest) ProtoMessage() {}
+
+func (x *PublishRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishRequest.ProtoReflect.Descriptor instead.
+func (*PublishRequest) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *PublishRequest) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+func (x *PublishRequest) GetTicket() []byte {
+	if x != nil {
+		return x.Ticket
+	}
+	return nil
+}
+
+func (x *PublishRequest) GetMessage() *RelayMessage {
+	if x != nil {
+		return x.Message
+	}
+	return nil
+}
+
 type PublishResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
@@ -160,7 +212,7 @@ type PublishResponse struct {
 
 func (x *PublishResponse) Reset() {
 	*x = PublishResponse{}
-	mi := &file_relay_v1_relay_proto_msgTypes[2]
+	mi := &file_relay_v1_relay_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -172,7 +224,7 @@ func (x *PublishResponse) String() string {
 func (*PublishResponse) ProtoMessage() {}
 
 func (x *PublishResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_relay_v1_relay_proto_msgTypes[2]
+	mi := &file_relay_v1_relay_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -185,7 +237,7 @@ func (x *PublishResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PublishResponse.ProtoReflect.Descriptor instead.
 func (*PublishResponse) Descriptor() ([]byte, []int) {
-	return file_relay_v1_relay_proto_rawDescGZIP(), []int{2}
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *PublishResponse) GetStatus() string {
@@ -206,22 +258,25 @@ var File_relay_v1_relay_proto protoreflect.FileDescriptor
 
 const file_relay_v1_relay_proto_rawDesc = "" +
 	"\n" +
-	"\x14relay/v1/relay.proto\x12\x10denseid.relay.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"]\n" +
+	"\x14relay/v1/relay.proto\x12\x10denseid.relay.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"E\n" +
 	"\x10SubscribeRequest\x12\x14\n" +
-	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x16\n" +
-	"\x06ticket\x18\x02 \x01(\fR\x06ticket\x12\x1b\n" +
-	"\tsender_id\x18\x03 \x01(\tR\bsenderId\"t\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x1b\n" +
+	"\tsender_id\x18\x02 \x01(\tR\bsenderId\"t\n" +
 	"\fRelayMessage\x12\x14\n" +
-	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload\x12\x17\n" +
-	"\acorr_id\x18\x03 \x01(\tR\x06corrId\x12\x1b\n" +
-	"\tsender_id\x18\x04 \x01(\tR\bsenderId\"`\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x17\n" +
+	"\acorr_id\x18\x02 \x01(\tR\x06corrId\x12\x1b\n" +
+	"\tsender_id\x18\x03 \x01(\tR\bsenderId\x12\x18\n" +
+	"\apayload\x18\x04 \x01(\fR\apayload\"x\n" +
+	"\x0ePublishRequest\x12\x14\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x16\n" +
+	"\x06ticket\x18\x02 \x01(\fR\x06ticket\x128\n" +
+	"\amessage\x18\x03 \x01(\v2\x1e.denseid.relay.v1.RelayMessageR\amessage\"`\n" +
 	"\x0fPublishResponse\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x125\n" +
-	"\brelay_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\arelayAt2\xaf\x01\n" +
-	"\fRelayService\x12Q\n" +
-	"\tSubscribe\x12\".denseid.relay.v1.SubscribeRequest\x1a\x1e.denseid.relay.v1.RelayMessage0\x01\x12L\n" +
-	"\aPublish\x12\x1e.denseid.relay.v1.RelayMessage\x1a!.denseid.relay.v1.PublishResponseB;Z9github.com/dense-identity/denseid/api/go/relay/v1;relaypbb\x06proto3"
+	"\brelay_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\arelayAt2\xb1\x01\n" +
+	"\fRelayService\x12N\n" +
+	"\aPublish\x12 .denseid.relay.v1.PublishRequest\x1a!.denseid.relay.v1.PublishResponse\x12Q\n" +
+	"\tSubscribe\x12\".denseid.relay.v1.SubscribeRequest\x1a\x1e.denseid.relay.v1.RelayMessage0\x01B;Z9github.com/dense-identity/denseid/api/go/relay/v1;relaypbb\x06proto3"
 
 var (
 	file_relay_v1_relay_proto_rawDescOnce sync.Once
@@ -235,24 +290,26 @@ func file_relay_v1_relay_proto_rawDescGZIP() []byte {
 	return file_relay_v1_relay_proto_rawDescData
 }
 
-var file_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_relay_v1_relay_proto_goTypes = []any{
 	(*SubscribeRequest)(nil),      // 0: denseid.relay.v1.SubscribeRequest
 	(*RelayMessage)(nil),          // 1: denseid.relay.v1.RelayMessage
-	(*PublishResponse)(nil),       // 2: denseid.relay.v1.PublishResponse
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*PublishRequest)(nil),        // 2: denseid.relay.v1.PublishRequest
+	(*PublishResponse)(nil),       // 3: denseid.relay.v1.PublishResponse
+	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
 }
 var file_relay_v1_relay_proto_depIdxs = []int32{
-	3, // 0: denseid.relay.v1.PublishResponse.relay_at:type_name -> google.protobuf.Timestamp
-	0, // 1: denseid.relay.v1.RelayService.Subscribe:input_type -> denseid.relay.v1.SubscribeRequest
-	1, // 2: denseid.relay.v1.RelayService.Publish:input_type -> denseid.relay.v1.RelayMessage
-	1, // 3: denseid.relay.v1.RelayService.Subscribe:output_type -> denseid.relay.v1.RelayMessage
-	2, // 4: denseid.relay.v1.RelayService.Publish:output_type -> denseid.relay.v1.PublishResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	1, // 0: denseid.relay.v1.PublishRequest.message:type_name -> denseid.relay.v1.RelayMessage
+	4, // 1: denseid.relay.v1.PublishResponse.relay_at:type_name -> google.protobuf.Timestamp
+	2, // 2: denseid.relay.v1.RelayService.Publish:input_type -> denseid.relay.v1.PublishRequest
+	0, // 3: denseid.relay.v1.RelayService.Subscribe:input_type -> denseid.relay.v1.SubscribeRequest
+	3, // 4: denseid.relay.v1.RelayService.Publish:output_type -> denseid.relay.v1.PublishResponse
+	1, // 5: denseid.relay.v1.RelayService.Subscribe:output_type -> denseid.relay.v1.RelayMessage
+	4, // [4:6] is the sub-list for method output_type
+	2, // [2:4] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_relay_v1_relay_proto_init() }
@@ -266,7 +323,7 @@ func file_relay_v1_relay_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_relay_v1_relay_proto_rawDesc), len(file_relay_v1_relay_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

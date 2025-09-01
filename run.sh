@@ -50,6 +50,12 @@ case "$cmd" in
     fi
     ;;
 
+  alice)
+    go run cmd/client/callauth/main.go --dial bob --env .env.alice
+    ;;
+  bob)
+    go run cmd/client/callauth/main.go --receive alice --env .env.bob
+    ;;
   *)
     echo "Error: unknown command '$cmd'."
     usage

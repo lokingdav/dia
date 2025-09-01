@@ -60,7 +60,7 @@ func (s *Session) Start(onMessage func([]byte)) {
 }
 
 // Send publishes one payload with the configured senderID. Returns error on failure.
-// NOTE: Server rejects NotFound if the topic doesn't exist (no active subscribers).
+// Uses ticket if available, otherwise publishes to existing topic without ticket.
 func (s *Session) Send(payload []byte) error {
 	if s.closed.Load() {
 		return errors.New("session closed")
@@ -69,10 +69,14 @@ func (s *Session) Send(payload []byte) error {
 	ctx, cancel := context.WithTimeout(s.ctx, s.publishTimeout)
 	defer cancel()
 
-	_, err := s.client.Stub.Publish(ctx, &relaypb.RelayMessage{
-		Topic:    s.topic,
-		Payload:  payload,
-		SenderId: s.senderID,
+	_, err := s.client.Stub.Publish(ctx, &relaypb.PublishRequest{
+		Topic:  s.topic,
+		Ticket: s.ticket, // Use ticket if available for topic creation
+		Message: &relaypb.RelayMessage{
+			Topic:    s.topic,
+			Payload:  payload,
+			SenderId: s.senderID,
+		},
 	})
 	if err != nil {
 		// For app logic, you might want to surface NotFound (topic missing) distinctly.
@@ -102,7 +106,6 @@ func (s *Session) recvLoop() {
 		// Start/Restart the Subscribe stream
 		stream, err := s.client.Stub.Subscribe(s.ctx, &relaypb.SubscribeRequest{
 			Topic:    s.topic,
-			Ticket:   s.ticket,
 			SenderId: s.senderID,
 		})
 		if err != nil {
