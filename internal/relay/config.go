@@ -12,6 +12,14 @@ type Config struct {
 
 	AtVkStr     string `env:"AT_VK,required"`
 	AtVerifyKey []byte
+
+	// Redis configuration
+	RedisAddr     string `env:"REDIS_ADDR" envDefault:"redis:6379"`
+	RedisPassword string `env:"REDIS_PASSWORD" envDefault:""`
+	RedisDB       int    `env:"REDIS_DB" envDefault:"0"`
+
+	// Message TTL in seconds (default: 1 hour)
+	MessageTTL int `env:"MESSAGE_TTL" envDefault:"5"`
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {

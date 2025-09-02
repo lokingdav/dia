@@ -28,20 +28,28 @@ func (s *subscriber) closeQ() { s.closeOnce.Do(func() { close(s.sendQ) }) }
 type Server struct {
 	pb.UnimplementedRelayServiceServer
 
-	cfg        *Config
-	mu         sync.RWMutex
-	clients    map[string]map[*subscriber]struct{} // topic → set(subscribers)
-	history    map[string][]*pb.RelayMessage       // topic → last N msgs
-	maxHistory int
+	cfg     *Config
+	mu      sync.RWMutex
+	clients map[string]map[*subscriber]struct{} // topic → set(subscribers)
+	store   *RedisStore                         // Redis-backed message store
 }
 
-func NewServer(cfg *Config) *Server {
-	return &Server{
-		cfg:        cfg,
-		clients:    make(map[string]map[*subscriber]struct{}),
-		history:    make(map[string][]*pb.RelayMessage),
-		maxHistory: 100,
+func NewServer(cfg *Config) (*Server, error) {
+	store, err := NewRedisStore(cfg)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Server{
+		cfg:     cfg,
+		clients: make(map[string]map[*subscriber]struct{}),
+		store:   store,
+	}, nil
+}
+
+// Close gracefully shuts down the server
+func (s *Server) Close() error {
+	return s.store.Close()
 }
 
 // removeSubscriber is idempotent: detaches sub from topic set and closes its queue.
@@ -88,6 +96,15 @@ func (s *Server) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 	_, exists := s.clients[topic]
 	s.mu.RUnlock()
 
+	// Also check Redis for topic existence
+	if !exists {
+		redisExists, err := s.store.TopicExists(ctx, topic)
+		if err != nil {
+			log.Printf("Warning: failed to check topic in Redis: %v", err)
+		}
+		exists = redisExists
+	}
+
 	// If topic doesn't exist, ticket is required to create it
 	if !exists {
 		ticket := req.GetTicket()
@@ -111,6 +128,11 @@ func (s *Server) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 		}
 		s.mu.Unlock()
 
+		// Also create topic in Redis
+		if err := s.store.CreateTopic(ctx, topic); err != nil {
+			log.Printf("Warning: failed to create topic in Redis: %v", err)
+		}
+
 		log.Printf("Created new topic %s with authenticated ticket", topic)
 	}
 
@@ -127,14 +149,10 @@ func (s *Server) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.Publi
 	}
 	s.mu.RUnlock()
 
-	// Append to history (ring-buffer style).
-	s.mu.Lock()
-	h := append(s.history[topic], msg)
-	if len(h) > s.maxHistory {
-		h = h[len(h)-s.maxHistory:]
+	// Store message in Redis with TTL
+	if err := s.store.StoreMessage(ctx, topic, msg); err != nil {
+		log.Printf("Warning: failed to store message in Redis: %v", err)
 	}
-	s.history[topic] = h
-	s.mu.Unlock()
 
 	// Enqueue to each subscriber's writer queue.
 	// Drop if their queue is full or already closed (POC-friendly semantics).
@@ -171,9 +189,14 @@ func (s *Server) Subscribe(req *pb.SubscribeRequest, stream pb.RelayService_Subs
 	if _, present := s.clients[topic]; !present {
 		s.clients[topic] = make(map[*subscriber]struct{})
 	}
-	// Snapshot history now; we'll replay it before joining live.
-	histCopy := append([]*pb.RelayMessage(nil), s.history[topic]...)
 	s.mu.Unlock()
+
+	// Get message history from Redis
+	histCopy, err := s.store.GetMessageHistory(stream.Context(), topic)
+	if err != nil {
+		log.Printf("Warning: failed to get message history from Redis: %v", err)
+		histCopy = []*pb.RelayMessage{} // Continue with empty history
+	}
 
 	// 3) Replay history to this subscriber (skip their own past messages if desired).
 	for _, m := range histCopy {

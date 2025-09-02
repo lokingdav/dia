@@ -39,7 +39,10 @@ func main() {
 
 	// 5) Create gRPC server and register your relay service
 	grpcServer := grpc.NewServer()
-	relayServer := relay.NewServer(cfg)
+	relayServer, err := relay.NewServer(cfg)
+	if err != nil {
+		log.Fatalf("Failed to create relay server: %v", err)
+	}
 	relaypb.RegisterRelayServiceServer(grpcServer, relayServer)
 
 	log.Printf("RelayService listening at %s", addr)
