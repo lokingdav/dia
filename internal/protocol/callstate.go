@@ -12,7 +12,7 @@ type CallState struct {
 	mu                                       sync.Mutex
 	IsOutgoing                               bool
 	CallerId, Recipient, Ts, Topic, SenderId string
-	DhSk, DhPk, Ticket, SharedKey            []byte
+	DhSk, DhPk, Ticket, SharedKey, Chal0, Proof     []byte
 	Config                                   *config.SubscriberConfig
 }
 
@@ -20,8 +20,16 @@ func (s *CallState) GetAkeLabel() []byte {
 	return []byte(s.CallerId + s.Ts)
 }
 
-func (s *CallState) GetRtuLabel() []byte {
-	return []byte(s.CallerId + s.Recipient + s.Ts)
+func (s *CallState) MarshalTopic() []byte {
+	return []byte(s.Topic)
+}
+
+func (s *CallState) IamCaller() bool {
+	return s.IsOutgoing
+}
+
+func (s *CallState) IamRecipient() bool {
+	return !s.IsOutgoing
 }
 
 func (s *CallState) InitAke(dhSk, dhPk []byte, topic string) {
@@ -35,6 +43,13 @@ func (s *CallState) InitAke(dhSk, dhPk []byte, topic string) {
 func (s *CallState) SetSharedKey(k []byte) {
 	s.mu.Lock()
 	s.SharedKey = k
+	s.mu.Unlock()
+}
+
+func (s *CallState) UpdateR1(chal, proof []byte) {
+	s.mu.Lock()
+	s.Chal0 = chal
+	s.Proof = proof
 	s.mu.Unlock()
 }
 

@@ -71,28 +71,123 @@ func InitAke(ctx context.Context, callState *CallState) error {
 	return nil
 }
 
-func AkeM1CallerToRecipient(callState *CallState) ([]byte, error) {
-	c0 := AkeChallenge0(callState.SharedKey, callState.DhPk, callState.CallerId, callState.Ts)
+func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
+	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
 	proof, err := bbs.ZkProof(c0)
 	if err != nil {
 		return nil, err
 	}
 
-	akeM1 := AkeMessage1{
-		Header: MessageHeader{
-			SenderId: callState.SenderId,
-		},
-		Body: AkeMessage1Body{
-			DhPk:  helpers.EncodeToHex(callState.DhPk),
-			Proof: helpers.EncodeToHex(proof),
-		},
+	akeMsg := AkeMessage{
+		Round: AkeRound1,
+		SenderId: caller.SenderId,
+		DhPk:  helpers.EncodeToHex(caller.DhPk),
+		Proof: helpers.EncodeToHex(proof),
 	}
 
-	msg, err := akeM1.Marshal()
+	msg, err := akeMsg.Marshal()
 
 	if err != nil {
 		return nil, err
 	}
 
-	return encryption.SymEncrypt(callState.SharedKey, msg)
+	caller.UpdateR1(c0, proof)
+
+	return encryption.SymEncrypt(caller.SharedKey, msg)
+}
+
+func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byte, error) {
+	if !caller.IsRoundOne() {
+		return nil, errors.New("AkeRound2RecipientToCaller can only be called on Round1 message")
+	}
+
+	callerDhPk, err1 := helpers.DecodeHex(caller.DhPk)
+	callerProof, err2 := helpers.DecodeHex(caller.Proof)
+	if err1 != nil || err2 != nil {
+		return nil, errors.New("something unexpected happened")
+	}
+
+	c0 := helpers.Hash256(helpers.ConcatBytes(recipient.SharedKey, callerDhPk, recipient.GetAkeLabel()))
+	if !bbs.ZkVerify(callerProof, c0, recipient.CallerId) {
+		return nil, errors.New("unauthenticated")
+	}
+
+	c1 := helpers.Hash256(helpers.ConcatBytes(callerProof, callerDhPk, recipient.DhPk, c0))
+	proof, err := bbs.ZkProof(c1)
+	if err != nil {
+		return nil, err
+	}
+
+	akeMsg := AkeMessage{
+		Round: AkeRound2,
+		SenderId: recipient.SenderId,
+		DhPk:  helpers.EncodeToHex(recipient.DhPk),
+		Proof: helpers.EncodeToHex(proof),
+	}
+
+	msg, err := akeMsg.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	ciphertext, err := encryption.SymEncrypt(recipient.SharedKey, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	secret, err := dia.DHComputeSecret(recipient.DhSk, callerDhPk)
+	if err != nil {
+		return nil, err
+	}
+	keybytes := helpers.ConcatBytes(
+		recipient.SharedKey, 
+		recipient.MarshalTopic(), 
+		callerProof, 
+		proof,
+		callerDhPk,
+		recipient.DhPk,
+		c0,
+		c1, 
+		secret,
+	)
+	recipient.SetSharedKey(helpers.Hash256(keybytes))
+
+	return ciphertext, nil
+}
+
+func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
+	if !recipient.IsRoundTwo() {
+		return errors.New("AkeRound2CallerFinalize can only be called on Round2 message")
+	}
+
+	recipientDhPk, err1 := helpers.DecodeHex(recipient.DhPk)
+	recipientProof, err2 := helpers.DecodeHex(recipient.Proof)
+	if err1 != nil || err2 != nil {
+		return errors.New("something unexpected happened")
+	}
+
+	c1 := helpers.Hash256(helpers.ConcatBytes(recipientProof, recipientDhPk, caller.DhPk, caller.Chal0))
+	if !bbs.ZkVerify(recipientProof, c1, caller.Recipient) {
+		return errors.New("unauthenticated")
+	}
+
+	secret, err := dia.DHComputeSecret(caller.DhSk, recipientDhPk)
+	if err != nil {
+		return err
+	}
+
+	keybytes := helpers.ConcatBytes(
+		caller.SharedKey, 
+		caller.MarshalTopic(), 
+		caller.Proof, 
+		recipientProof,
+		caller.DhPk,
+		recipientDhPk,
+		caller.Chal0,
+		c1, 
+		secret,
+	)
+	caller.SetSharedKey(helpers.Hash256(keybytes))
+
+	return nil
 }

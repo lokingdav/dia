@@ -2,78 +2,117 @@ package protocol
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 )
 
 const (
-	TypeAkeM1 = "AkeM1"
-	TypeAkeM2 = "AkeM2"
+	TypeAke = "Ake"
+
+	AkeRound1 = 1
+	AkeRound2 = 2
 )
 
-type MessageHeader struct {
-	Type     string `json:"type"`
-	SenderId string `json:"sender_id"`
+type ProtocolMessage struct {
+	Type     string          `json:"type"`
+	SenderId string          `json:"sender_id"`
+	Payload  json.RawMessage `json:"payload"`
 }
 
-type AkeMessage1Body struct {
-	DhPk  string `json:"dhPk"`
-	Proof string `json:"proof"`
+func (m *ProtocolMessage) SetPayload(v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	m.Payload = b
+	return nil
 }
 
-type AkeMessage1 struct {
-	Header MessageHeader   `json:"header"`
-	Body   AkeMessage1Body `json:"body"`
+func (m *ProtocolMessage) DecodePayload(out any) error {
+	// out should be a pointer to the concrete payload type
+	if out == nil {
+		return fmt.Errorf("DecodePayload: nil out")
+	}
+	return json.Unmarshal(m.Payload, out)
 }
 
-func (m *AkeMessage1) Marshal() ([]byte, error) {
+func (m *ProtocolMessage) Marshal() ([]byte, error) {
 	if m == nil {
-		return nil, fmt.Errorf("nil AkeMessage1")
+		return nil, fmt.Errorf("nil ProtocolMessage")
 	}
-
-	if m.Header.Type == "" {
-		m.Header.Type = TypeAkeM1
-	} else if m.Header.Type != TypeAkeM1 {
-		return nil, fmt.Errorf("invalid header.Type %q (want %s)", m.Header.Type, TypeAkeM1)
+	if m.Type == "" {
+		return nil, fmt.Errorf("missing type")
 	}
-
-	if m.Header.SenderId == "" {
-		return nil, fmt.Errorf("missing header.SenderId")
-	}
-
-	if m.Body.DhPk == "" || m.Body.Proof == "" {
-		return nil, fmt.Errorf("missing dhpk or proof fields. Both are required")
-	}
-
 	return json.Marshal(m)
 }
 
-func (m *AkeMessage1) Unmarshal(data []byte) error {
+// Unmarshal fills the envelope (type/sender/payload raw bytes).
+func (m *ProtocolMessage) Unmarshal(data []byte) error {
 	if m == nil {
-		return errors.New("nil AkeMessage1 receiver")
+		return fmt.Errorf("nil ProtocolMessage")
 	}
+	return json.Unmarshal(data, m)
+}
 
-	// Decode into a temp to avoid partial state on error.
-	var tmp AkeMessage1
-	if err := json.Unmarshal(data, &tmp); err != nil {
-		return fmt.Errorf("decode AkeMessage1: %w", err)
+// Convenience: Unmarshal envelope then decode payload into `out`.
+func (m *ProtocolMessage) UnmarshalInto(data []byte, out any) error {
+	if err := m.Unmarshal(data); err != nil {
+		return err
 	}
+	// if m.Type != TypeAke { return fmt.Errorf("unexpected type %q", m.Type) }
+	return m.DecodePayload(out)
+}
 
-	// Validate header.type matches this message kind.
-	if tmp.Header.Type != TypeAkeM1 {
-		return fmt.Errorf("unexpected header.type %q (want %s)", tmp.Header.Type, TypeAkeM1)
+func (m *ProtocolMessage) IsAke() bool {
+	if m == nil {
+		return false
 	}
+	return m.Type == TypeAke
+}
 
-	if tmp.Header.SenderId == "" {
-		return errors.New("missing header.sender_id")
-	}
-	if tmp.Body.DhPk == "" {
-		return errors.New("missing body.dhPk")
-	}
-	if tmp.Body.Proof == "" {
-		return errors.New("missing body.proof")
-	}
+type AkeMessage struct {
+	Round    int    `json:"round"`
+	DhPk     string `json:"dhPk"`
+	Proof    string `json:"proof"`
+	SenderId string `json:"sender_id"`
+}
 
-	*m = tmp
-	return nil
+func (m *AkeMessage) IsRoundOne() bool {
+	return m.Round == AkeRound1
+}
+
+func (m *AkeMessage) IsRoundTwo() bool {
+	return m.Round == AkeRound2
+}
+
+func (m *AkeMessage) Marshal() ([]byte, error) {
+	if m == nil {
+		return nil, fmt.Errorf("nil AkeMessage")
+	}
+	if m.DhPk == "" || m.Proof == "" || m.SenderId == "" {
+		return nil, fmt.Errorf("missing dhPk or proof (both required)")
+	}
+	env := ProtocolMessage{
+		Type: TypeAke,
+		SenderId: m.SenderId,
+	}
+	if err := env.SetPayload(m); err != nil {
+		return nil, err
+	}
+	return env.Marshal()
+}
+
+// Optional helper to parse an Ake envelope directly.
+func ParseAkeMessage(data []byte) (*AkeMessage, error) {
+	var env ProtocolMessage
+	if err := env.Unmarshal(data); err != nil {
+		return nil, err
+	}
+	if env.Type != TypeAke {
+		return nil, fmt.Errorf("unexpected type %q", env.Type)
+	}
+	var msg AkeMessage
+	if err := env.DecodePayload(&msg); err != nil {
+		return nil, err
+	}
+	return &msg, nil
 }

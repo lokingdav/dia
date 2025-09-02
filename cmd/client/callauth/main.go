@@ -9,6 +9,7 @@ import (
 	"os/signal"
 
 	"github.com/dense-identity/denseid/internal/config"
+	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/protocol"
 	"github.com/dense-identity/denseid/internal/subscriber"
 )
@@ -93,7 +94,7 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 	}
 
 	if callState.IsOutgoing {
-		ciphertext, err := protocol.AkeM1CallerToRecipient(callState)
+		ciphertext, err := protocol.AkeRound1CallerToRecipient(callState)
 
 		if err != nil {
 			log.Fatalf("failed creating M1 Caller --> Recipient: %v", err)
@@ -103,12 +104,52 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 			log.Fatalf("publish failed: %v", err)
 		}
 
-		log.Println("M1 Caller --> Recipient")
+		log.Println("Sent Round 1 Message: Caller --> Recipient")
 	}
 
 	// Start receiving (non-blocking)
-	oobController.Start(func(b []byte) {
-		fmt.Println("RX:", string(b))
+	oobController.Start(func(data []byte) {
+		plaintext, err := encryption.SymDecrypt(callState.SharedKey, data)
+		if err != nil {
+			log.Printf("failed to decrypt received message: %v", err)
+			//to-do: decrypt with public key encryption if symmetric fails
+		}
+		message := protocol.ProtocolMessage{}
+		message.Unmarshal(plaintext)
+		
+		if message.SenderId == callState.SenderId {
+			return
+		}
+
+		fmt.Println("RX:", string(data))
+
+		if message.IsAke() {
+			var akeMsg protocol.AkeMessage
+			message.DecodePayload(&akeMsg)
+			
+			if akeMsg.IsRoundOne() && callState.IamRecipient() {
+				log.Println("Handling Round 1 Message: Recipient --> Caller")
+
+				response, err := protocol.AkeRound2RecipientToCaller(callState, &akeMsg)
+				if err != nil {
+					log.Printf("failed responding to ake round 1: %v", err)
+				}
+				if err := oobController.Send(response); err != nil {
+					log.Printf("failed responding to ake round 1: %v", err)
+				}
+
+				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+			} 
+			
+			if akeMsg.IsRoundTwo() && callState.IamCaller() {
+				log.Println("Handling Round 2 Message: Caller Finalize")
+				if err := protocol.AkeRound2CallerFinalize(callState, &akeMsg); err != nil {
+					log.Printf("failed to finalize recipients ake message: %v", err)
+				}
+
+				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+			}
+		}
 	})
 
 	log.Printf("Topic: %s", callState.Topic)
@@ -129,7 +170,7 @@ func main() {
 	// Derive shared key and update state
 	RunKeyDerivation(ctx, callState)
 
-	log.Printf("Shared Key: %x", callState.SharedKey)
+	// log.Printf("Shared Key: %x", callState.SharedKey)
 
 	RunAuthenticatedKeyExchange(ctx, callState)
 }

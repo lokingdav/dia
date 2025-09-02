@@ -42,7 +42,7 @@ func main() {
 	relayServer := relay.NewServer(cfg)
 	relaypb.RegisterRelayServiceServer(grpcServer, relayServer)
 
-	log.Printf("gRPC server listening at %s", addr)
+	log.Printf("RelayService listening at %s", addr)
 	if err := grpcServer.Serve(lis); err != nil {
 		log.Fatalf("gRPC serve error: %v", err)
 	}
