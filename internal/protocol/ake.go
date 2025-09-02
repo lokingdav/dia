@@ -3,9 +3,6 @@ package protocol
 import (
 	"context"
 	"errors"
-	"fmt"
-
-	// "fmt"
 	"time"
 
 	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
@@ -145,12 +142,6 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 		return nil, err
 	}
 
-	// Make copies of the DH keys BEFORE calling DHComputeSecret since it may wipe them
-	callerDhPkCopy := make([]byte, len(callerDhPk))
-	copy(callerDhPkCopy, callerDhPk)
-	recipientDhPkCopy := make([]byte, len(recipient.DhPk))
-	copy(recipientDhPkCopy, recipient.DhPk)
-
 	secret, err := dia.DHComputeSecret(recipient.DhSk, callerDhPk)
 	if err != nil {
 		return nil, err
@@ -161,8 +152,8 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 		recipient.MarshalTopic(),
 		callerProof,
 		proof,
-		callerDhPkCopy,
-		recipientDhPkCopy,
+		callerDhPk,
+		recipient.DhPk,
 		c0,
 		c1,
 		secret,
@@ -193,12 +184,6 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 		return errors.New("unauthenticated")
 	}
 
-	// Make copies of the DH keys BEFORE calling DHComputeSecret since it may wipe them
-	callerDhPkCopy := make([]byte, len(caller.DhPk))
-	copy(callerDhPkCopy, caller.DhPk)
-	recipientDhPkCopy := make([]byte, len(recipientDhPk))
-	copy(recipientDhPkCopy, recipientDhPk)
-
 	secret, err := dia.DHComputeSecret(caller.DhSk, recipientDhPk)
 	if err != nil {
 		return err
@@ -209,8 +194,8 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 		caller.MarshalTopic(),
 		caller.Proof,
 		recipientProof,
-		callerDhPkCopy,
-		recipientDhPkCopy,
+		caller.DhPk,
+		recipientDhPk,
 		caller.Chal0,
 		c1,
 		secret,
@@ -220,16 +205,15 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 }
 
 func ComputeSharedKey(k, tpc, pieA, pieB, A, B, c0, c1, sec []byte) []byte {
-	fmt.Printf("\nk:\t%x\n", k)
-	fmt.Printf("tpc:\t%x\n", tpc)
-	fmt.Printf("pieA:\t%x\n", pieA)
-	fmt.Printf("pieB:\t%x\n", pieB)
-	fmt.Printf("A:\t%x\n", A)
-	fmt.Printf("B:\t%x\n", B)
-	fmt.Printf("c0:\t%x\n", c0)
-	fmt.Printf("c1:\t%x\n", c1)
-	fmt.Printf("sec:\t%x\n\n", sec)
-
+	// fmt.Printf("\nk:\t%x\n", k)
+	// fmt.Printf("tpc:\t%x\n", tpc)
+	// fmt.Printf("pieA:\t%x\n", pieA)
+	// fmt.Printf("pieB:\t%x\n", pieB)
+	// fmt.Printf("A:\t%x\n", A)
+	// fmt.Printf("B:\t%x\n", B)
+	// fmt.Printf("c0:\t%x\n", c0)
+	// fmt.Printf("c1:\t%x\n", c1)
+	// fmt.Printf("sec:\t%x\n\n", sec)
 	keybytes := helpers.ConcatBytes(k, tpc, pieA, pieB, A, B, c0, c1, sec)
 	return helpers.Hash256(keybytes)
 }
