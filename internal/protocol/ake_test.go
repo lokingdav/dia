@@ -210,11 +210,13 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("recipient shared key is empty after AKE")
 	}
 
-	// Note: In a complete integration, final shared keys should match
-	// This test demonstrates the AKE protocol flow, but cryptographic consistency
-	// would require proper DH key agreement implementation
-	t.Logf("AKE completed successfully! Caller key: %x", callerState.SharedKey)
-	t.Logf("AKE completed successfully! Recipient key: %x", recipientState.SharedKey)
+	// Verify final shared keys match (should be the same after AKE completion)
+	if string(callerState.SharedKey) != string(recipientState.SharedKey) {
+		t.Errorf("final shared keys don't match!\n\tCaller:    %x\n\tRecipient: %x",
+			callerState.SharedKey, recipientState.SharedKey)
+	}
+
+	t.Logf("AKE completed successfully! Shared secret: %x", callerState.SharedKey)
 }
 
 // TestAkeRound1CallerToRecipient tests Round 1 independently

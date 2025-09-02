@@ -145,19 +145,24 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 		return nil, err
 	}
 
+	// Make copies of the DH keys BEFORE calling DHComputeSecret since it may wipe them
+	callerDhPkCopy := make([]byte, len(callerDhPk))
+	copy(callerDhPkCopy, callerDhPk)
+	recipientDhPkCopy := make([]byte, len(recipient.DhPk))
+	copy(recipientDhPkCopy, recipient.DhPk)
+
 	secret, err := dia.DHComputeSecret(recipient.DhSk, callerDhPk)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Println("======== Recipient ==========")
 	recipient.SetSharedKey(ComputeSharedKey(
 		recipient.SharedKey,
 		recipient.MarshalTopic(),
 		callerProof,
 		proof,
-		callerDhPk,
-		recipient.DhPk,
+		callerDhPkCopy,
+		recipientDhPkCopy,
 		c0,
 		c1,
 		secret,
@@ -183,24 +188,29 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 		return errors.New("something unexpected happened")
 	}
 
-	c1 := helpers.Hash256(helpers.ConcatBytes(recipientProof, recipientDhPk, caller.DhPk, caller.Chal0))
+	c1 := helpers.Hash256(helpers.ConcatBytes(caller.Proof, caller.DhPk, recipientDhPk, caller.Chal0))
 	if !bbs.ZkVerify(recipientProof, c1, caller.Recipient) {
 		return errors.New("unauthenticated")
 	}
+
+	// Make copies of the DH keys BEFORE calling DHComputeSecret since it may wipe them
+	callerDhPkCopy := make([]byte, len(caller.DhPk))
+	copy(callerDhPkCopy, caller.DhPk)
+	recipientDhPkCopy := make([]byte, len(recipientDhPk))
+	copy(recipientDhPkCopy, recipientDhPk)
 
 	secret, err := dia.DHComputeSecret(caller.DhSk, recipientDhPk)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("======== Recipient ==========")
 	caller.SetSharedKey(ComputeSharedKey(
 		caller.SharedKey,
 		caller.MarshalTopic(),
 		caller.Proof,
 		recipientProof,
-		caller.DhPk,
-		recipientDhPk,
+		callerDhPkCopy,
+		recipientDhPkCopy,
 		caller.Chal0,
 		c1,
 		secret,
