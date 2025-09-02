@@ -82,7 +82,7 @@ func RunKeyDerivation(ctx context.Context, callState *protocol.CallState) {
 	callState.SetSharedKey(sharedKey)
 }
 
-func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallState) {
+func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallState, stop context.CancelFunc) {
 	err := protocol.InitAke(ctx, callState)
 	if err != nil {
 		log.Fatalf("failed to init AKE: %v", err)
@@ -139,6 +139,7 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 				}
 
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+				stop() // Signal completion
 			}
 
 			if akeMsg.IsRoundTwo() && callState.IamCaller() {
@@ -148,13 +149,14 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 				}
 
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+				stop() // Signal completion
 			}
 		}
 	})
 
 	log.Printf("Topic: %s", callState.Topic)
 
-	// Wait for Ctrl-C, then close gracefully
+	// Wait for completion or Ctrl-C
 	<-ctx.Done()
 
 	_ = oobController.Close()
@@ -172,5 +174,5 @@ func main() {
 
 	// log.Printf("Shared Key: %x", callState.SharedKey)
 
-	RunAuthenticatedKeyExchange(ctx, callState)
+	RunAuthenticatedKeyExchange(ctx, callState, stop)
 }

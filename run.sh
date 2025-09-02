@@ -8,7 +8,7 @@ profile=${2:-}
 PROFILES=(es ks rv rs)
 
 usage() {
-  echo "Usage: $0 {up|down} [all|${PROFILES[*]}]"
+  echo "Usage: $0 {up|down|restart} [all|${PROFILES[*]}]"
   exit 1
 }
 
@@ -47,6 +47,32 @@ case "$cmd" in
         usage
       fi
       docker compose --profile "$profile" down
+    fi
+    ;;
+
+  restart)
+    if [[ -z "$profile" ]]; then
+      echo "Error: no profile specified."
+      usage
+    fi
+
+    # First, bring down the services
+    if [[ "$profile" == "all" ]]; then
+      docker compose "${ALL_PROFILE_ARGS[@]}" down
+    else
+      # check it's one of the allowed profiles
+      if [[ ! " ${PROFILES[*]} " =~ " $profile " ]]; then
+        echo "Error: unknown profile '$profile'."
+        usage
+      fi
+      docker compose --profile "$profile" down
+    fi
+
+    # Then, bring them back up
+    if [[ "$profile" == "all" ]]; then
+      docker compose "${ALL_PROFILE_ARGS[@]}" up -d --build
+    else
+      docker compose --profile "$profile" up -d --build
     fi
     ;;
 
