@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
+	// "fmt"
 	"time"
 
 	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
@@ -73,6 +75,10 @@ func InitAke(ctx context.Context, callState *CallState) error {
 }
 
 func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
+	if caller == nil {
+		return nil, errors.New("caller CallState cannot be nil")
+	}
+
 	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
 	proof, err := bbs.ZkProof(c0)
 	if err != nil {
@@ -80,10 +86,10 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	}
 
 	akeMsg := AkeMessage{
-		Round: AkeRound1,
+		Round:    AkeRound1,
 		SenderId: caller.SenderId,
-		DhPk:  helpers.EncodeToHex(caller.DhPk),
-		Proof: helpers.EncodeToHex(proof),
+		DhPk:     helpers.EncodeToHex(caller.DhPk),
+		Proof:    helpers.EncodeToHex(proof),
 	}
 
 	msg, err := akeMsg.Marshal()
@@ -98,15 +104,18 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 }
 
 func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byte, error) {
+	if recipient == nil {
+		return nil, errors.New("recipient CallState cannot be nil")
+	}
+	if caller == nil {
+		return nil, errors.New("caller AkeMessage cannot be nil")
+	}
 	if !caller.IsRoundOne() {
 		return nil, errors.New("AkeRound2RecipientToCaller can only be called on Round1 message")
 	}
 
-	callerDhPk, err1 := helpers.DecodeHex(caller.DhPk)
-	callerProof, err2 := helpers.DecodeHex(caller.Proof)
-	if err1 != nil || err2 != nil {
-		return nil, errors.New("something unexpected happened")
-	}
+	callerDhPk := caller.GetDhPk()
+	callerProof := caller.GetProof()
 
 	c0 := helpers.Hash256(helpers.ConcatBytes(recipient.SharedKey, callerDhPk, recipient.GetAkeLabel()))
 	if !bbs.ZkVerify(callerProof, c0, recipient.CallerId) {
@@ -120,10 +129,10 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	}
 
 	akeMsg := AkeMessage{
-		Round: AkeRound2,
+		Round:    AkeRound2,
 		SenderId: recipient.SenderId,
-		DhPk:  helpers.EncodeToHex(recipient.DhPk),
-		Proof: helpers.EncodeToHex(proof),
+		DhPk:     helpers.EncodeToHex(recipient.DhPk),
+		Proof:    helpers.EncodeToHex(proof),
 	}
 
 	msg, err := akeMsg.Marshal()
@@ -140,15 +149,17 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	if err != nil {
 		return nil, err
 	}
+
+	fmt.Println("======== Recipient ==========")
 	recipient.SetSharedKey(ComputeSharedKey(
-		recipient.SharedKey, 
-		recipient.MarshalTopic(), 
-		callerProof, 
+		recipient.SharedKey,
+		recipient.MarshalTopic(),
+		callerProof,
 		proof,
 		callerDhPk,
 		recipient.DhPk,
 		c0,
-		c1, 
+		c1,
 		secret,
 	))
 
@@ -156,6 +167,12 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 }
 
 func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
+	if caller == nil {
+		return errors.New("caller CallState cannot be nil")
+	}
+	if recipient == nil {
+		return errors.New("recipient AkeMessage cannot be nil")
+	}
 	if !recipient.IsRoundTwo() {
 		return errors.New("AkeRound2CallerFinalize can only be called on Round2 message")
 	}
@@ -176,15 +193,16 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 		return err
 	}
 
+	fmt.Println("======== Recipient ==========")
 	caller.SetSharedKey(ComputeSharedKey(
-		caller.SharedKey, 
-		caller.MarshalTopic(), 
-		caller.Proof, 
+		caller.SharedKey,
+		caller.MarshalTopic(),
+		caller.Proof,
 		recipientProof,
 		caller.DhPk,
 		recipientDhPk,
 		caller.Chal0,
-		c1, 
+		c1,
 		secret,
 	))
 

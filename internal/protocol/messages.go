@@ -3,6 +3,8 @@ package protocol
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/dense-identity/denseid/internal/helpers"
 )
 
 const (
@@ -76,6 +78,30 @@ type AkeMessage struct {
 	SenderId string `json:"sender_id"`
 }
 
+func (m *AkeMessage) GetDhPk() []byte {
+	if m == nil {
+		return nil
+	}
+
+	data, err := helpers.DecodeHex(m.DhPk)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+func (m *AkeMessage) GetProof() []byte {
+	if m == nil {
+		return nil
+	}
+
+	data, err := helpers.DecodeHex(m.Proof)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
 func (m *AkeMessage) IsRoundOne() bool {
 	return m.Round == AkeRound1
 }
@@ -92,7 +118,7 @@ func (m *AkeMessage) Marshal() ([]byte, error) {
 		return nil, fmt.Errorf("missing dhPk or proof (both required)")
 	}
 	env := ProtocolMessage{
-		Type: TypeAke,
+		Type:     TypeAke,
 		SenderId: m.SenderId,
 	}
 	if err := env.SetPayload(m); err != nil {
