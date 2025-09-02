@@ -5,6 +5,7 @@ import (
 
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
+	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/google/uuid"
 )
 
@@ -21,7 +22,8 @@ func (s *CallState) GetAkeLabel() []byte {
 }
 
 func (s *CallState) MarshalTopic() []byte {
-	return []byte(s.Topic)
+	b, _ := helpers.DecodeHex(s.Topic)
+	return b
 }
 
 func (s *CallState) IamCaller() bool {

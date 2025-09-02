@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
@@ -139,7 +140,7 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	if err != nil {
 		return nil, err
 	}
-	keybytes := helpers.ConcatBytes(
+	recipient.SetSharedKey(ComputeSharedKey(
 		recipient.SharedKey, 
 		recipient.MarshalTopic(), 
 		callerProof, 
@@ -149,8 +150,7 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 		c0,
 		c1, 
 		secret,
-	)
-	recipient.SetSharedKey(helpers.Hash256(keybytes))
+	))
 
 	return ciphertext, nil
 }
@@ -176,7 +176,7 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 		return err
 	}
 
-	keybytes := helpers.ConcatBytes(
+	caller.SetSharedKey(ComputeSharedKey(
 		caller.SharedKey, 
 		caller.MarshalTopic(), 
 		caller.Proof, 
@@ -186,8 +186,22 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 		caller.Chal0,
 		c1, 
 		secret,
-	)
-	caller.SetSharedKey(helpers.Hash256(keybytes))
+	))
 
 	return nil
+}
+
+func ComputeSharedKey(k, tpc, pieA, pieB, A, B, c0, c1, sec []byte) []byte {
+	fmt.Printf("\nk:\t%x\n", k)
+	fmt.Printf("tpc:\t%x\n", tpc)
+	fmt.Printf("pieA:\t%x\n", pieA)
+	fmt.Printf("pieB:\t%x\n", pieB)
+	fmt.Printf("A:\t%x\n", A)
+	fmt.Printf("B:\t%x\n", B)
+	fmt.Printf("c0:\t%x\n", c0)
+	fmt.Printf("c1:\t%x\n", c1)
+	fmt.Printf("sec:\t%x\n\n", sec)
+
+	keybytes := helpers.ConcatBytes(k, tpc, pieA, pieB, A, B, c0, c1, sec)
+	return helpers.Hash256(keybytes)
 }
