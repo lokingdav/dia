@@ -10,11 +10,11 @@ import (
 )
 
 type CallState struct {
-	mu                                       sync.Mutex
-	IsOutgoing                               bool
-	CallerId, Recipient, Ts, Topic, SenderId string
-	DhSk, DhPk, Ticket, SharedKey, Chal0, Proof     []byte
-	Config                                   *config.SubscriberConfig
+	mu                                          sync.Mutex
+	IsOutgoing                                  bool
+	CallerId, Recipient, Ts, Topic, SenderId    string
+	DhSk, DhPk, Ticket, SharedKey, Chal0, Proof []byte
+	Config                                      *config.SubscriberConfig
 }
 
 func (s *CallState) GetAkeLabel() []byte {

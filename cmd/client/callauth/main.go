@@ -116,7 +116,7 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 		}
 		message := protocol.ProtocolMessage{}
 		message.Unmarshal(plaintext)
-		
+
 		if message.SenderId == callState.SenderId {
 			return
 		}
@@ -126,7 +126,7 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 		if message.IsAke() {
 			var akeMsg protocol.AkeMessage
 			message.DecodePayload(&akeMsg)
-			
+
 			if akeMsg.IsRoundOne() && callState.IamRecipient() {
 				log.Println("Handling Round 1 Message: Recipient --> Caller")
 
@@ -139,8 +139,8 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 				}
 
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
-			} 
-			
+			}
+
 			if akeMsg.IsRoundTwo() && callState.IamCaller() {
 				log.Println("Handling Round 2 Message: Caller Finalize")
 				if err := protocol.AkeRound2CallerFinalize(callState, &akeMsg); err != nil {
