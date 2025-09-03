@@ -85,6 +85,48 @@ func (s *Session) Send(payload []byte) error {
 	return nil
 }
 
+// SendToTopic publishes one payload to a specific topic (different from the subscribed topic)
+func (s *Session) SendToTopic(topic string, payload []byte, ticket []byte) error {
+	if s.closed.Load() {
+		return errors.New("session closed")
+	}
+	// Short per-call deadline for snappy UX
+	ctx, cancel := context.WithTimeout(s.ctx, s.publishTimeout)
+	defer cancel()
+
+	_, err := s.client.Stub.Publish(ctx, &relaypb.PublishRequest{
+		Topic:  topic,
+		Ticket: ticket, // Use provided ticket for topic creation
+		Message: &relaypb.RelayMessage{
+			Topic:    topic,
+			Payload:  payload,
+			SenderId: s.senderID,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// SubscribeToNewTopic creates a new subscription to a different topic
+func (s *Session) SubscribeToNewTopic(newTopic string) error {
+	if s.closed.Load() {
+		return errors.New("session closed")
+	}
+
+	// Update the session's topic for future subscriptions
+	s.topic = newTopic
+
+	// Force reconnection by canceling and recreating the context
+	// This will cause the recvLoop to reconnect with the new topic
+	oldCancel := s.cancel
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	oldCancel() // This will close the old stream and force reconnection
+
+	return nil
+}
+
 // Close stops receiving and waits for cleanup.
 func (s *Session) Close() {
 	if s.closed.Swap(true) {

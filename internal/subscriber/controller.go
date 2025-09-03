@@ -31,6 +31,16 @@ func (c *Controller) Send(payload []byte) error {
 	return c.Session.Send(payload)
 }
 
+// SendToTopic publishes payload to a specific topic
+func (c *Controller) SendToTopic(topic string, payload []byte, ticket []byte) error {
+	return c.Session.SendToTopic(topic, payload, ticket)
+}
+
+// SubscribeToNewTopic subscribes to a new topic
+func (c *Controller) SubscribeToNewTopic(newTopic string) error {
+	return c.Session.SubscribeToNewTopic(newTopic)
+}
+
 // Close shuts down the session and the underlying client connection.
 func (c *Controller) Close() error {
 	c.Session.Close()

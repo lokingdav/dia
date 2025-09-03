@@ -178,7 +178,13 @@ func main() {
 				// Compute RTU topic and transition
 				rtuTopic := protocol.DeriveRtuTopic(callState.SharedKey)
 				callState.TransitionToRtu(rtuTopic)
-				log.Printf("Transitioned to RTU topic: %s", rtuTopic)
+
+				// Subscribe to the new RTU topic
+				if err := oobController.SubscribeToNewTopic(rtuTopic); err != nil {
+					log.Printf("failed to subscribe to RTU topic: %v", err)
+					return
+				}
+				log.Printf("Transitioned and subscribed to RTU topic: %s", rtuTopic)
 			}
 
 			if message.IsRtuInit() {
@@ -204,7 +210,7 @@ func main() {
 					log.Printf("failed to create RTU init: %v", err)
 					return
 				}
-				if err := oobController.Send(rtuInitMsg); err != nil {
+				if err := oobController.SendToTopic(rtuTopic, rtuInitMsg, callState.Ticket); err != nil {
 					log.Printf("failed to send RTU init message: %v", err)
 					return
 				}
