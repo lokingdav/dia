@@ -11,12 +11,14 @@ const (
 	TypeAkeInit     = "AkeInit"
 	TypeAkeResponse = "AkeResponse"
 	TypeAkeComplete = "AkeComplete"
+	TypeRtuInit     = "RtuInit"
 	TypeBye         = "Bye"
 )
 
 type ProtocolMessage struct {
 	Type     string          `json:"type"`
 	SenderId string          `json:"sender_id"`
+	Topic    string          `json:"topic"`
 	Payload  json.RawMessage `json:"payload"`
 }
 
@@ -83,6 +85,13 @@ func (m *ProtocolMessage) IsAkeComplete() bool {
 		return false
 	}
 	return m.Type == TypeAkeComplete
+}
+
+func (m *ProtocolMessage) IsRtuInit() bool {
+	if m == nil {
+		return false
+	}
+	return m.Type == TypeRtuInit
 }
 
 func (m *ProtocolMessage) IsBye() bool {
@@ -180,10 +189,11 @@ func ParseAkeResponseMessage(data []byte) (*AkeMessage, error) {
 }
 
 // CreateAkeInitMessage creates an AkeInit message (caller -> recipient)
-func CreateAkeInitMessage(senderId string, payload *AkeMessage) ([]byte, error) {
+func CreateAkeInitMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
 	msg := ProtocolMessage{
 		Type:     TypeAkeInit,
 		SenderId: senderId,
+		Topic:    topic,
 	}
 
 	if err := msg.SetPayload(payload); err != nil {
@@ -194,10 +204,26 @@ func CreateAkeInitMessage(senderId string, payload *AkeMessage) ([]byte, error) 
 }
 
 // CreateAkeResponseMessage creates an AkeResponse message (recipient -> caller)
-func CreateAkeResponseMessage(senderId string, payload *AkeMessage) ([]byte, error) {
+func CreateAkeResponseMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
 	msg := ProtocolMessage{
 		Type:     TypeAkeResponse,
 		SenderId: senderId,
+		Topic:    topic,
+	}
+
+	if err := msg.SetPayload(payload); err != nil {
+		return nil, err
+	}
+
+	return msg.Marshal()
+}
+
+// CreateRtuInitMessage creates an RtuInit message (caller -> recipient)
+func CreateRtuInitMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
+	msg := ProtocolMessage{
+		Type:     TypeRtuInit,
+		SenderId: senderId,
+		Topic:    topic,
 	}
 
 	if err := msg.SetPayload(payload); err != nil {
@@ -208,20 +234,22 @@ func CreateAkeResponseMessage(senderId string, payload *AkeMessage) ([]byte, err
 }
 
 // CreateAkeCompleteMessage creates an AkeComplete message (caller -> recipient)
-func CreateAkeCompleteMessage(senderId string) ([]byte, error) {
+func CreateAkeCompleteMessage(senderId, topic string) ([]byte, error) {
 	msg := ProtocolMessage{
 		Type:     TypeAkeComplete,
 		SenderId: senderId,
+		Topic:    topic,
 	}
 
 	return msg.Marshal()
 }
 
 // CreateByeMessage creates a bye message to signal session termination
-func CreateByeMessage(senderId string) ([]byte, error) {
+func CreateByeMessage(senderId, topic string) ([]byte, error) {
 	msg := ProtocolMessage{
 		Type:     TypeBye,
 		SenderId: senderId,
+		Topic:    topic,
 	}
 
 	return msg.Marshal()

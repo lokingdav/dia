@@ -13,6 +13,8 @@ type CallState struct {
 	mu                                          sync.Mutex
 	IsOutgoing                                  bool
 	CallerId, Recipient, Ts, Topic, SenderId    string
+	CurrentTopic                                string // Track active topic (for filtering)
+	RtuActive                                   bool   // Flag for protocol phase
 	DhSk, DhPk, Ticket, SharedKey, Chal0, Proof []byte
 	Config                                      *config.SubscriberConfig
 }
@@ -39,7 +41,28 @@ func (s *CallState) InitAke(dhSk, dhPk []byte, topic string) {
 	s.DhSk = dhSk
 	s.DhPk = dhPk
 	s.Topic = topic
+	s.CurrentTopic = topic // Initially current topic is AKE topic
+	s.RtuActive = false
 	s.mu.Unlock()
+}
+
+func (s *CallState) TransitionToRtu(rtuTopic string) {
+	s.mu.Lock()
+	s.CurrentTopic = rtuTopic
+	s.RtuActive = true
+	s.mu.Unlock()
+}
+
+func (s *CallState) GetCurrentTopic() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.CurrentTopic
+}
+
+func (s *CallState) IsRtuActive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.RtuActive
 }
 
 func (s *CallState) SetSharedKey(k []byte) {

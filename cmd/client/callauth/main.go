@@ -134,10 +134,16 @@ func main() {
 			log.Printf("error getting message stream: %v", err)
 		}
 
-		log.Printf("New Message. Type:%s, Sender:%s", message.Type, message.SenderId)
+		log.Printf("New Message. Type:%s, Sender:%s, Topic:%s", message.Type, message.SenderId, message.Topic)
 
 		if message.SenderId == callState.SenderId {
 			log.Printf("Ignoring self-authored message")
+			return
+		}
+
+		// Filter by current topic - only process messages for the active topic
+		if message.Topic != callState.GetCurrentTopic() {
+			log.Printf("Ignoring message from inactive topic: %s (current: %s)", message.Topic, callState.GetCurrentTopic())
 			return
 		}
 
@@ -168,7 +174,16 @@ func main() {
 
 			if message.IsAkeComplete() {
 				log.Println("Received AkeComplete message - AKE protocol finished")
-				// Here we would transition to RTU protocol later
+
+				// Compute RTU topic and transition
+				rtuTopic := protocol.DeriveRtuTopic(callState.SharedKey)
+				callState.TransitionToRtu(rtuTopic)
+				log.Printf("Transitioned to RTU topic: %s", rtuTopic)
+			}
+
+			if message.IsRtuInit() {
+				log.Println("Received RtuInit message - RTU protocol started")
+				// Here we would handle RTU initialization
 			}
 		}
 
@@ -182,6 +197,18 @@ func main() {
 				}
 
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+
+				// Create RTU topic and publish RtuInit message
+				rtuTopic, rtuInitMsg, err := protocol.CreateRtuInitForCaller(callState)
+				if err != nil {
+					log.Printf("failed to create RTU init: %v", err)
+					return
+				}
+				if err := oobController.Send(rtuInitMsg); err != nil {
+					log.Printf("failed to send RTU init message: %v", err)
+					return
+				}
+				log.Printf("Sent RtuInit message to new topic: %s", rtuTopic)
 
 				// Send AkeComplete to signal protocol completion
 				completeMsg, err := protocol.AkeCompleteSendToCaller(callState)

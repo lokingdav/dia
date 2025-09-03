@@ -510,7 +510,7 @@ func TestJsonCompatibility(t *testing.T) {
 // TestByeMessage tests bye message creation and detection
 func TestByeMessage(t *testing.T) {
 	// Create bye message
-	byeData, err := CreateByeMessage("test_sender")
+	byeData, err := CreateByeMessage("test_sender", "test_topic")
 	if err != nil {
 		t.Fatalf("failed to create bye message: %v", err)
 	}
