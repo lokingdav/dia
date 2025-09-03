@@ -141,9 +141,16 @@ func main() {
 			return
 		}
 
-		if message.IsAke() {
-			// === Recipient Logic ===
-			if callState.IamRecipient() {
+		// Check for bye message - applies to both roles
+		if message.IsBye() {
+			log.Println("Received bye message - shutting down")
+			stop()
+			return
+		}
+
+		// === Recipient Logic ===
+		if callState.IamRecipient() {
+			if message.IsAke() {
 				if message.IsRoundOne() {
 					log.Println("Handling Round 1 Message: Recipient --> Caller")
 
@@ -158,12 +165,13 @@ func main() {
 					}
 
 					log.Printf("Computed Shared Secret: %x", callState.SharedKey)
-					stop() // Signal completion
 				}
 			}
+		}
 
-			// === Caller Logic ===
-			if callState.IamCaller() {
+		// === Caller Logic ===
+		if callState.IamCaller() {
+			if message.IsAke() {
 				if message.IsRoundTwo() {
 					log.Println("Handling Round 2 Message: Caller Finalize")
 					if err := protocol.AkeRound2CallerFinalize(callState, &message); err != nil {
@@ -172,7 +180,6 @@ func main() {
 					}
 
 					log.Printf("Computed Shared Secret: %x", callState.SharedKey)
-					stop() // Signal completion
 				}
 			}
 		}

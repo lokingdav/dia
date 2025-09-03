@@ -9,6 +9,7 @@ import (
 
 const (
 	TypeAke = "Ake"
+	TypeBye = "Bye"
 
 	AkeRound1 = 1
 	AkeRound2 = 2
@@ -70,6 +71,13 @@ func (m *ProtocolMessage) IsAke() bool {
 		return false
 	}
 	return m.Type == TypeAke
+}
+
+func (m *ProtocolMessage) IsBye() bool {
+	if m == nil {
+		return false
+	}
+	return m.Type == TypeBye
 }
 
 type AkeMessage struct {
@@ -149,4 +157,15 @@ func ParseAkeMessage(data []byte) (*AkeMessage, error) {
 		return nil, err
 	}
 	return &msg, nil
+}
+
+// CreateByeMessage creates a bye message to signal completion
+func CreateByeMessage(senderId string) ([]byte, error) {
+	msg := ProtocolMessage{
+		Type:     TypeBye,
+		SenderId: senderId,
+		Round:    0, // Bye messages don't need rounds
+	}
+
+	return msg.Marshal()
 }

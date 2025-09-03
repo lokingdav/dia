@@ -458,3 +458,38 @@ func TestJsonCompatibility(t *testing.T) {
 		t.Error("payload should not contain round field - it should be in the envelope")
 	}
 }
+
+// TestByeMessage tests bye message creation and detection
+func TestByeMessage(t *testing.T) {
+	// Create bye message
+	byeData, err := CreateByeMessage("test_sender")
+	if err != nil {
+		t.Fatalf("failed to create bye message: %v", err)
+	}
+
+	// Parse bye message
+	var byeMsg ProtocolMessage
+	err = byeMsg.Unmarshal(byeData)
+	if err != nil {
+		t.Fatalf("failed to unmarshal bye message: %v", err)
+	}
+
+	// Verify it's a bye message
+	if !byeMsg.IsBye() {
+		t.Error("message should be detected as bye message")
+	}
+
+	if byeMsg.IsAke() {
+		t.Error("bye message should not be detected as AKE message")
+	}
+
+	// Verify sender
+	if byeMsg.SenderId != "test_sender" {
+		t.Errorf("sender mismatch: got %s, want test_sender", byeMsg.SenderId)
+	}
+
+	// Verify type
+	if byeMsg.Type != TypeBye {
+		t.Errorf("type mismatch: got %s, want %s", byeMsg.Type, TypeBye)
+	}
+}
