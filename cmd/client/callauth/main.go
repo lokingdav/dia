@@ -82,15 +82,10 @@ func RunKeyDerivation(ctx context.Context, callState *protocol.CallState) {
 	callState.SetSharedKey(sharedKey)
 }
 
-func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallState, stop context.CancelFunc) {
-	err := protocol.InitAke(ctx, callState)
+func akeRound1(oob *subscriber.Controller, callState *protocol.CallState) {
+	err := protocol.InitAke(callState)
 	if err != nil {
 		log.Fatalf("failed to init AKE: %v", err)
-	}
-
-	oobController, err := subscriber.NewController(callState)
-	if err != nil {
-		panic(err)
 	}
 
 	if callState.IsOutgoing {
@@ -100,28 +95,51 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 			log.Fatalf("failed creating M1 Caller --> Recipient: %v", err)
 		}
 
-		if err := oobController.Send(ciphertext); err != nil {
+		if err := oob.Send(ciphertext); err != nil {
 			log.Fatalf("publish failed: %v", err)
 		}
 
 		log.Println("Sent Round 1 Message: Caller --> Recipient")
 	}
+}
 
-	// Start receiving (non-blocking)
+// func rtuRound1(oob *subscriber.Controller, callState *protocol.CallState) {
+
+// }
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	// Initialize call state
+	callState := createCallState()
+
+	// Derive shared key and update state
+	RunKeyDerivation(ctx, callState)
+
+	// create controller to handle pub-sub communication
+	oobController, err := subscriber.NewController(callState)
+	if err != nil {
+		panic(err)
+	}
+
+	//to-do: add check to run akeRound1 only if no state is found
+	akeRound1(oobController, callState)
+	//else rtuRound1(oobController, callState)
+
+	// Now start the subscription service
 	oobController.Start(func(data []byte) {
-		plaintext, err := encryption.SymDecrypt(callState.SharedKey, data)
+		message, err := getMessage(callState, data)
 		if err != nil {
-			log.Printf("failed to decrypt received message: %v", err)
-			//to-do: decrypt with public key encryption if symmetric fails
+			log.Printf("error getting message stream: %v", err)
 		}
-		message := protocol.ProtocolMessage{}
-		message.Unmarshal(plaintext)
+
+		log.Printf("New Message. Type:%s, Sender:%s, Round:%d", message.Type, message.SenderId, message.Round)
 
 		if message.SenderId == callState.SenderId {
+			log.Printf("Ignoring self-authored message")
 			return
 		}
-
-		fmt.Println("RX:", string(data))
 
 		if message.IsAke() {
 			var akeMsg protocol.AkeMessage
@@ -162,17 +180,13 @@ func RunAuthenticatedKeyExchange(ctx context.Context, callState *protocol.CallSt
 	_ = oobController.Close()
 }
 
-func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	// Initialize call state
-	callState := createCallState()
-
-	// Derive shared key and update state
-	RunKeyDerivation(ctx, callState)
-
-	// log.Printf("Shared Key: %x", callState.SharedKey)
-
-	RunAuthenticatedKeyExchange(ctx, callState, stop)
+func getMessage(callState *protocol.CallState, data []byte) (protocol.ProtocolMessage, error) {
+	plaintext, err := encryption.SymDecrypt(callState.SharedKey, data)
+	if err != nil {
+		return protocol.ProtocolMessage{}, err
+		//to-do: decrypt with public key encryption if symmetric fails
+	}
+	message := protocol.ProtocolMessage{}
+	message.Unmarshal(plaintext)
+	return message, nil
 }

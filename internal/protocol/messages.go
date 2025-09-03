@@ -17,6 +17,7 @@ const (
 type ProtocolMessage struct {
 	Type     string          `json:"type"`
 	SenderId string          `json:"sender_id"`
+	Round int `json:"round"`
 	Payload  json.RawMessage `json:"payload"`
 }
 

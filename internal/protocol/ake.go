@@ -54,7 +54,7 @@ func AkeDeriveKey(ctx context.Context, client keypb.KeyDerivationServiceClient, 
 	return out, nil
 }
 
-func InitAke(ctx context.Context, callState *CallState) error {
+func InitAke(callState *CallState) error {
 	if callState == nil {
 		return errors.New("nil CallState")
 	}
@@ -94,6 +94,7 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	}
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
+		Round: AkeRound1,
 		SenderId: caller.SenderId,
 	}
 	protocolMsg.SetPayload(akeMsg)
@@ -141,6 +142,7 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	}
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
+		Round: AkeRound2,
 		SenderId: recipient.SenderId,
 	}
 	protocolMsg.SetPayload(akeMsg)

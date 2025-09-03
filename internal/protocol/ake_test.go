@@ -151,8 +151,6 @@ func createTestCallState(phone string, outgoing bool) *CallState {
 
 // TestCompleteAkeFlowLikeRealUsage tests the complete AKE flow as used in main.go
 func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
-	ctx := context.Background()
-
 	// Create caller and recipient states with different identities
 	// Caller "alice" calling recipient "bob"
 	callerState := createTestCallStateForUser("alice", "bob", true)     // alice calls bob
@@ -172,12 +170,12 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 
 	// Initialize AKE for both parties (like RunAuthenticatedKeyExchange in main.go)
 	var err error
-	err = InitAke(ctx, callerState)
+	err = InitAke(callerState)
 	if err != nil {
 		t.Fatalf("failed to init AKE for caller: %v", err)
 	}
 
-	err = InitAke(ctx, recipientState)
+	err = InitAke(recipientState)
 	if err != nil {
 		t.Fatalf("failed to init AKE for recipient: %v", err)
 	}
@@ -301,12 +299,10 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 
 // TestAkeRound1CallerToRecipient tests Round 1 independently
 func TestAkeRound1CallerToRecipient(t *testing.T) {
-	ctx := context.Background()
-
 	callerState := createTestCallState("bob", true)
 	callerState.SetSharedKey([]byte("test_shared_key_32_bytes_test___"))
 
-	err := InitAke(ctx, callerState)
+	err := InitAke(callerState)
 	if err != nil {
 		t.Fatalf("failed to init AKE: %v", err)
 	}
@@ -470,13 +466,12 @@ func TestRealEnrollmentData(t *testing.T) {
 	bobState.SetSharedKey(testSharedKey)
 
 	// Initialize AKE
-	ctx := context.Background()
-	err = InitAke(ctx, aliceState)
+	err = InitAke(aliceState)
 	if err != nil {
 		t.Fatalf("failed to init AKE for alice: %v", err)
 	}
 
-	err = InitAke(ctx, bobState)
+	err = InitAke(bobState)
 	if err != nil {
 		t.Fatalf("failed to init AKE for bob: %v", err)
 	}

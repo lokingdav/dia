@@ -45,17 +45,6 @@ services:
     env_file: .env
     profiles: [ks]
 
-  # revocation-server:
-  #   <<: *denseid-server-base
-  #   container_name: revocation-server
-  #   command:
-  #     - "--build.cmd=go build -o /app/bin/rv /app/cmd/revocation"
-  #     - "--build.bin=/app/bin/rv"
-  #   ports:
-  #     - "50053:50051"
-  #   env_file: .env
-  #   profiles: [rv]
-
   relay-server:
     <<: *denseid-server-base
     container_name: relay-server
