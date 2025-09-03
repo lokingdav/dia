@@ -80,7 +80,7 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	}
 
 	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
-	proof, err := bbs.ZkProof(c0)
+	proof, err := CreateZKProof(caller, c0)
 	if err != nil {
 		return nil, err
 	}
@@ -122,12 +122,12 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	callerProof := caller.GetProof()
 
 	c0 := helpers.Hash256(helpers.ConcatBytes(recipient.SharedKey, callerDhPk, recipient.GetAkeLabel()))
-	if !bbs.ZkVerify(callerProof, c0, recipient.CallerId) {
+	if !VerifyZKProof(caller, recipient.CallerId, c0, recipient.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
 	c1 := helpers.Hash256(helpers.ConcatBytes(callerProof, callerDhPk, recipient.DhPk, c0))
-	proof, err := bbs.ZkProof(c1)
+	proof, err := CreateZKProof(recipient, c1)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 	}
 
 	c1 := helpers.Hash256(helpers.ConcatBytes(caller.Proof, caller.DhPk, recipientDhPk, caller.Chal0))
-	if !bbs.ZkVerify(recipientProof, c1, caller.Recipient) {
+	if !VerifyZKProof(recipient, caller.Recipient, c1, caller.Config.RaPublicKey) {
 		return errors.New("unauthenticated")
 	}
 
@@ -228,4 +228,45 @@ func ComputeSharedKey(k, tpc, pieA, pieB, A, B, c0, c1, sec []byte) []byte {
 	// fmt.Printf("sec:\t%x\n\n", sec)
 	keybytes := helpers.ConcatBytes(k, tpc, pieA, pieB, A, B, c0, c1, sec)
 	return helpers.Hash256(keybytes)
+}
+
+func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
+	var telephoneNumber string
+	if prover.IamCaller() {
+		telephoneNumber = prover.CallerId
+	} else {
+		telephoneNumber = prover.Recipient
+	}
+
+	proof, err := bbs.ZkCreateProof(bbs.AkeZkProof{
+		Tn: telephoneNumber,
+		PublicKey: prover.Config.RtuPublicKey, 
+		Expiration: prover.Config.EnExpiration, 
+		Nonce: chal, 
+		RaPublicKey: prover.Config.RaPublicKey, 
+		Signature: prover.Config.RaSignature, 
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return proof, nil
+}
+
+func VerifyZKProof(prover *AkeMessage, tn string, chal, raPublicKey []byte) bool {
+	ok, err := bbs.ZkVerifyProof(bbs.AkeZkProof{
+		Tn: tn,
+		PublicKey: prover.GetPublicKey(), 
+		Expiration: prover.GetExpiration(), 
+		Nonce: chal, 
+		RaPublicKey: raPublicKey, 
+		Proof: prover.GetProof(), 
+	})
+
+	if err != nil {
+		return false
+	}
+
+	return ok
 }

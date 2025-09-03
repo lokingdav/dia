@@ -5,9 +5,11 @@ import (
 	"testing"
 
 	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
+	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/encryption"
+	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 )
@@ -43,20 +45,48 @@ func (e *mockError) Error() string {
 	return e.msg
 }
 
-// createTestCallState creates a CallState for testing, similar to main.go
-func createTestCallState(phone string, outgoing bool) *CallState {
-	config := &config.SubscriberConfig{
-		MyPhone:      "alice",
-		SampleTicket: []byte("test_ticket_32_bytes_for_testing"),
-	}
+// Global test keys to ensure consistency across test parties
+var (
+	testRaPrivateKey []byte
+	testRaPublicKey  []byte
+	testRtuPublicKey []byte
+	testExpiration   []byte
+)
 
+func init() {
+	// Initialize shared test keys once
+	testRaPrivateKey, testRaPublicKey, _ = bbs.Keygen()
+	_, testRtuPublicKey, _ = bbs.Keygen()
+	testExpiration = []byte("20991231235959Z")
+}
+
+// createTestCallStateForUser creates a CallState for a specific user identity
+func createTestCallStateForUser(myPhone, otherPhone string, outgoing bool) *CallState {
+	// Determine roles
 	var callerId, recipient string
 	if outgoing {
-		callerId = config.MyPhone
-		recipient = phone
+		callerId = myPhone
+		recipient = otherPhone
 	} else {
-		callerId = phone
-		recipient = config.MyPhone
+		callerId = otherPhone
+		recipient = myPhone
+	}
+
+	// Create signature for this user's credential
+	message := helpers.ConcatBytes(testRtuPublicKey, testExpiration, []byte(myPhone))
+
+	// Sign the message with shared RA private key
+	raSignature, _ := bbs.Sign(testRaPrivateKey, [][]byte{message})
+
+	config := &config.SubscriberConfig{
+		MyPhone:      myPhone,
+		SampleTicket: []byte("test_ticket_32_bytes_for_testing"),
+
+		// BBS keys and signatures for ZK proofs (shared RA keys)
+		RtuPublicKey: testRtuPublicKey,
+		EnExpiration: testExpiration,
+		RaPublicKey:  testRaPublicKey,
+		RaSignature:  raSignature,
 	}
 
 	return &CallState{
@@ -70,13 +100,20 @@ func createTestCallState(phone string, outgoing bool) *CallState {
 	}
 }
 
+// createTestCallState creates a CallState for testing, similar to main.go
+func createTestCallState(phone string, outgoing bool) *CallState {
+	// For backward compatibility - always creates state for "alice"
+	return createTestCallStateForUser("alice", phone, outgoing)
+}
+
 // TestCompleteAkeFlowLikeRealUsage tests the complete AKE flow as used in main.go
 func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	ctx := context.Background()
 
-	// Create caller and recipient states (like createCallState in main.go)
-	callerState := createTestCallState("bob", true)       // outgoing call
-	recipientState := createTestCallState("alice", false) // incoming call
+	// Create caller and recipient states with different identities
+	// Caller "alice" calling recipient "bob"
+	callerState := createTestCallStateForUser("alice", "bob", true)     // alice calls bob
+	recipientState := createTestCallStateForUser("bob", "alice", false) // bob receives call from alice
 
 	// Ensure both have same shared key from key derivation
 	// In real usage, both parties would derive the same key from VOPRF
@@ -306,16 +343,22 @@ func TestAkeErrorCases(t *testing.T) {
 	t.Run("WrongRoundMessage", func(t *testing.T) {
 		recipientState := createTestCallState("alice", false)
 
-		// Create a Round 2 message and try to pass it to Round 2 handler
+		// Create a Round 2 message and try to pass it to the function that expects Round 1
 		wrongRoundMsg := &AkeMessage{
-			Round:    AkeRound1, // Wrong round
-			DhPk:     "test_dhpk",
-			Proof:    "test_proof",
+			Round:      AkeRound2, // Wrong round - function expects Round 1
+			DhPk:       helpers.EncodeToHex([]byte("test_dhpk_32_bytes_for_testing___")),
+			PublicKey:  helpers.EncodeToHex(testRtuPublicKey),
+			Expiration: helpers.EncodeToHex(testExpiration),
+			Proof:      helpers.EncodeToHex([]byte("test_proof_data_32_bytes_test___")),
 		}
 
 		_, err := AkeRound2RecipientToCaller(recipientState, wrongRoundMsg)
 		if err == nil {
 			t.Fatal("expected error for wrong round message")
+		}
+
+		if err.Error() != "AkeRound2RecipientToCaller can only be called on Round1 message" {
+			t.Errorf("unexpected error message: %v", err)
 		}
 	})
 }

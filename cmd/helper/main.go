@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/dense-identity/denseid/internal/amf"
+	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
 )
@@ -14,7 +15,7 @@ func registrationAuthoritySetup() []string {
 	var env = make([]string, 0, 12)
 
 	// 1. Generate BBS keypair
-	bbsSk, bbsPk, err := signing.BbsKeygen()
+	bbsSk, bbsPk, err := bbs.Keygen()
 	if err != nil {
 		log.Fatalf("CI Keygen failed: %v", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"log"
 
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
+	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/dense-identity/denseid/internal/signing"
@@ -61,7 +62,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 	}
 
 	message := helpers.ConcatBytes(req.GetPk(), expiryBytes, []byte(req.GetTn()))
-	Sigma, err := signing.BbsSign(s.cfg.CiPrivateKey, [][]byte{message,})
+	Sigma, err := bbs.Sign(s.cfg.CiPrivateKey, [][]byte{message,})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate credential: %v", err)
 	}
