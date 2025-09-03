@@ -72,7 +72,7 @@ func InitAke(callState *CallState) error {
 	return nil
 }
 
-func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
+func AkeInitCallerToRecipient(caller *CallState) ([]byte, error) {
 	if caller == nil {
 		return nil, errors.New("caller CallState cannot be nil")
 	}
@@ -92,13 +92,8 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 		Expiration: helpers.EncodeToHex(caller.Config.EnExpiration),
 		Proof:      helpers.EncodeToHex(proof),
 	}
-	protocolMsg := ProtocolMessage{
-		Type:     TypeAke,
-		Round:    AkeRound1,
-		SenderId: caller.SenderId,
-	}
-	protocolMsg.SetPayload(akeMsg)
-	msg, err := protocolMsg.Marshal()
+
+	msg, err := CreateAkeInitMessage(caller.SenderId, &akeMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -108,15 +103,15 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	return encryption.SymEncrypt(caller.SharedKey, msg)
 }
 
-func AkeRound2RecipientToCaller(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, error) {
+func AkeResponseRecipientToCaller(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, error) {
 	if recipient == nil {
 		return nil, errors.New("recipient CallState cannot be nil")
 	}
 	if callerMsg == nil {
 		return nil, errors.New("caller ProtocolMessage cannot be nil")
 	}
-	if !callerMsg.IsRoundOne() {
-		return nil, errors.New("AkeRound2RecipientToCaller can only be called on Round1 message")
+	if !callerMsg.IsAkeInit() {
+		return nil, errors.New("AkeResponseRecipientToCaller can only be called on AkeInit message")
 	}
 
 	// Decode the AKE message from the protocol message
@@ -145,13 +140,8 @@ func AkeRound2RecipientToCaller(recipient *CallState, callerMsg *ProtocolMessage
 		Expiration: helpers.EncodeToHex(recipient.Config.EnExpiration),
 		Proof:      helpers.EncodeToHex(proof),
 	}
-	protocolMsg := ProtocolMessage{
-		Type:     TypeAke,
-		Round:    AkeRound2,
-		SenderId: recipient.SenderId,
-	}
-	protocolMsg.SetPayload(akeMsg)
-	msg, err := protocolMsg.Marshal()
+
+	msg, err := CreateAkeResponseMessage(recipient.SenderId, &akeMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -181,15 +171,15 @@ func AkeRound2RecipientToCaller(recipient *CallState, callerMsg *ProtocolMessage
 	return ciphertext, nil
 }
 
-func AkeRound2CallerFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
+func AkeFinalizeCaller(caller *CallState, recipientMsg *ProtocolMessage) error {
 	if caller == nil {
 		return errors.New("caller CallState cannot be nil")
 	}
 	if recipientMsg == nil {
 		return errors.New("recipient ProtocolMessage cannot be nil")
 	}
-	if !recipientMsg.IsRoundTwo() {
-		return errors.New("AkeRound2CallerFinalize can only be called on Round2 message")
+	if !recipientMsg.IsAkeResponse() {
+		return errors.New("AkeFinalizeCaller can only be called on AkeResponse message")
 	}
 
 	// Decode the AKE message from the protocol message
@@ -227,6 +217,20 @@ func AkeRound2CallerFinalize(caller *CallState, recipientMsg *ProtocolMessage) e
 	))
 
 	return nil
+}
+
+// AkeCompleteSendToCaller sends the AkeComplete message from caller to recipient
+func AkeCompleteSendToCaller(caller *CallState) ([]byte, error) {
+	if caller == nil {
+		return nil, errors.New("caller CallState cannot be nil")
+	}
+
+	msg, err := CreateAkeCompleteMessage(caller.SenderId)
+	if err != nil {
+		return nil, err
+	}
+
+	return encryption.SymEncrypt(caller.SharedKey, msg)
 }
 
 func ComputeSharedKey(k, tpc, pieA, pieB, A, B, c0, c1, sec []byte) []byte {

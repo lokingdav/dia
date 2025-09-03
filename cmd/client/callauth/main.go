@@ -82,24 +82,24 @@ func RunKeyDerivation(ctx context.Context, callState *protocol.CallState) {
 	callState.SetSharedKey(sharedKey)
 }
 
-func akeRound1(oob *subscriber.Controller, callState *protocol.CallState) {
+func akeInit(oob *subscriber.Controller, callState *protocol.CallState) {
 	err := protocol.InitAke(callState)
 	if err != nil {
 		log.Fatalf("failed to init AKE: %v", err)
 	}
 
 	if callState.IsOutgoing {
-		ciphertext, err := protocol.AkeRound1CallerToRecipient(callState)
+		ciphertext, err := protocol.AkeInitCallerToRecipient(callState)
 
 		if err != nil {
-			log.Fatalf("failed creating M1 Caller --> Recipient: %v", err)
+			log.Fatalf("failed creating AkeInit Caller --> Recipient: %v", err)
 		}
 
 		if err := oob.Send(ciphertext); err != nil {
 			log.Fatalf("publish failed: %v", err)
 		}
 
-		log.Println("Sent Round 1 Message: Caller --> Recipient")
+		log.Println("Sent AkeInit Message: Caller --> Recipient")
 	}
 }
 
@@ -123,8 +123,8 @@ func main() {
 		panic(err)
 	}
 
-	//to-do: add check to run akeRound1 only if no state is found
-	akeRound1(oobController, callState)
+	//to-do: add check to run akeInit only if no state is found
+	akeInit(oobController, callState)
 	//else rtuRound1(oobController, callState)
 
 	// Now start the subscription service
@@ -134,7 +134,7 @@ func main() {
 			log.Printf("error getting message stream: %v", err)
 		}
 
-		log.Printf("New Message. Type:%s, Sender:%s, Round:%d", message.Type, message.SenderId, message.Round)
+		log.Printf("New Message. Type:%s, Sender:%s", message.Type, message.SenderId)
 
 		if message.SenderId == callState.SenderId {
 			log.Printf("Ignoring self-authored message")
@@ -150,37 +150,50 @@ func main() {
 
 		// === Recipient Logic ===
 		if callState.IamRecipient() {
-			if message.IsAke() {
-				if message.IsRoundOne() {
-					log.Println("Handling Round 1 Message: Recipient --> Caller")
+			if message.IsAkeInit() {
+				log.Println("Handling AkeInit Message: Recipient --> Caller")
 
-					response, err := protocol.AkeRound2RecipientToCaller(callState, &message)
-					if err != nil {
-						log.Printf("failed responding to ake round 1: %v", err)
-						return
-					}
-					if err := oobController.Send(response); err != nil {
-						log.Printf("failed responding to ake round 1: %v", err)
-						return
-					}
-
-					log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+				response, err := protocol.AkeResponseRecipientToCaller(callState, &message)
+				if err != nil {
+					log.Printf("failed responding to ake init: %v", err)
+					return
 				}
+				if err := oobController.Send(response); err != nil {
+					log.Printf("failed responding to ake init: %v", err)
+					return
+				}
+
+				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+			}
+
+			if message.IsAkeComplete() {
+				log.Println("Received AkeComplete message - AKE protocol finished")
+				// Here we would transition to RTU protocol later
 			}
 		}
 
 		// === Caller Logic ===
 		if callState.IamCaller() {
-			if message.IsAke() {
-				if message.IsRoundTwo() {
-					log.Println("Handling Round 2 Message: Caller Finalize")
-					if err := protocol.AkeRound2CallerFinalize(callState, &message); err != nil {
-						log.Printf("failed to finalize recipients ake message: %v", err)
-						return
-					}
-
-					log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+			if message.IsAkeResponse() {
+				log.Println("Handling AkeResponse Message: Caller Finalize")
+				if err := protocol.AkeFinalizeCaller(callState, &message); err != nil {
+					log.Printf("failed to finalize ake response: %v", err)
+					return
 				}
+
+				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+
+				// Send AkeComplete to signal protocol completion
+				completeMsg, err := protocol.AkeCompleteSendToCaller(callState)
+				if err != nil {
+					log.Printf("failed to create ake complete message: %v", err)
+					return
+				}
+				if err := oobController.Send(completeMsg); err != nil {
+					log.Printf("failed to send ake complete message: %v", err)
+					return
+				}
+				log.Println("Sent AkeComplete message to recipient")
 			}
 		}
 	})

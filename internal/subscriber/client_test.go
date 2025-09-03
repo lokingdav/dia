@@ -61,8 +61,7 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 
 	// Create protocol message wrapper
 	wrapperMsg := protocol.ProtocolMessage{
-		Type:     protocol.TypeAke,
-		Round:    protocol.AkeRound1,
+		Type:     protocol.TypeAkeInit,
 		SenderId: "caller",
 	}
 
@@ -93,9 +92,9 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	// Verify it's an AKE message
-	if !protocolMsg.IsAke() {
-		t.Fatal("expected AKE message")
+	// Verify it's an AkeInit message
+	if !protocolMsg.IsAkeInit() {
+		t.Fatal("expected AkeInit message")
 	}
 
 	// Decode the AKE payload
@@ -105,11 +104,7 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
 
-	// Verify the round and data
-	if !protocolMsg.IsRoundOne() {
-		t.Error("expected Round 1 message")
-	}
-
+	// Verify the data (no round check needed anymore)
 	if decodedAke.DhPk != "test_dhpk" {
 		t.Errorf("dhPk mismatch: got %s, want test_dhpk", decodedAke.DhPk)
 	}
@@ -161,10 +156,9 @@ func TestAkeRoundProcessing(t *testing.T) {
 		Proof: "caller_proof",
 	}
 
-	// Create protocol message wrapper
+	// Create protocol message wrapper for AkeInit
 	protocolWrapper1 := protocol.ProtocolMessage{
-		Type:     protocol.TypeAke,
-		Round:    protocol.AkeRound1,
+		Type:     protocol.TypeAkeInit,
 		SenderId: "caller",
 	}
 
@@ -191,7 +185,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 		t.Fatalf("failed to decode: %v", err)
 	}
 
-	if protocolMsg.IsRoundOne() {
+	if protocolMsg.IsAkeInit() {
 		// This is what recipient would do
 		if akeMsg.DhPk != "caller_dhpk" {
 			t.Errorf("dhPk mismatch: got %s", akeMsg.DhPk)
@@ -203,10 +197,9 @@ func TestAkeRoundProcessing(t *testing.T) {
 			Proof: "recipient_proof",
 		}
 
-		// Create protocol message wrapper for Round 2
+		// Create protocol message wrapper for AkeResponse
 		protocolWrapper2 := protocol.ProtocolMessage{
-			Type:     protocol.TypeAke,
-			Round:    protocol.AkeRound2,
+			Type:     protocol.TypeAkeResponse,
 			SenderId: "recipient",
 		}
 
@@ -233,7 +226,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 			t.Fatalf("failed to decode round 2: %v", err)
 		}
 
-		if !round2Protocol.IsRoundTwo() {
+		if !round2Protocol.IsAkeResponse() {
 			t.Error("expected Round 2 message")
 		}
 

@@ -9,7 +9,7 @@ import (
 func TestProtocolMessageMarshalUnmarshal(t *testing.T) {
 	// Create a test protocol message
 	original := ProtocolMessage{
-		Type:     TypeAke,
+		Type:     TypeAkeInit,
 		SenderId: "test_sender_123",
 	}
 
@@ -68,8 +68,7 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
-		Type:     TypeAke,
-		Round:    AkeRound1,
+		Type:     TypeAkeInit,
 		SenderId: "alice",
 	}
 
@@ -91,8 +90,8 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	if !restoredProtocol.IsAke() {
-		t.Fatal("expected AKE message")
+	if !restoredProtocol.IsAkeInit() {
+		t.Fatal("expected AkeInit message")
 	}
 
 	// Decode the AKE payload
@@ -103,25 +102,12 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 	}
 
 	// Verify all fields
-	if restoredProtocol.Round != AkeRound1 {
-		t.Errorf("round mismatch: got %d, want %d", restoredProtocol.Round, AkeRound1)
-	}
-
 	if restored.DhPk != original.DhPk {
 		t.Errorf("dhPk mismatch: got %s, want %s", restored.DhPk, original.DhPk)
 	}
 
 	if restored.Proof != original.Proof {
 		t.Errorf("proof mismatch: got %s, want %s", restored.Proof, original.Proof)
-	}
-
-	// Test round detection
-	if !restoredProtocol.IsRoundOne() {
-		t.Error("should be round one")
-	}
-
-	if restoredProtocol.IsRoundTwo() {
-		t.Error("should not be round two")
 	}
 }
 
@@ -174,9 +160,9 @@ func TestAkeMessageValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create protocol message wrapper
+			// Create protocol message wrapper (using AkeInit as example)
 			protocolMsg := ProtocolMessage{
-				Type:     TypeAke,
+				Type:     TypeAkeInit,
 				SenderId: tc.senderId,
 			}
 
@@ -225,7 +211,7 @@ func TestProtocolMessageValidation(t *testing.T) {
 
 	t.Run("nil_payload_decode", func(t *testing.T) {
 		msg := ProtocolMessage{
-			Type: TypeAke,
+			Type: TypeAkeInit,
 		}
 		err := msg.DecodePayload(nil)
 		if err == nil {
@@ -234,44 +220,112 @@ func TestProtocolMessageValidation(t *testing.T) {
 	})
 }
 
-// TestAkeRoundHelpers tests round detection helpers
-func TestAkeRoundHelpers(t *testing.T) {
-	round1Msg := ProtocolMessage{Type: TypeAke, Round: AkeRound1}
-	round2Msg := ProtocolMessage{Type: TypeAke, Round: AkeRound2}
+// TestAkeMessageTypeHelpers tests the new message type helper methods
+func TestAkeMessageTypeHelpers(t *testing.T) {
+	// Test AkeInit message
+	akeInitMsg := ProtocolMessage{Type: TypeAkeInit}
+	akeResponseMsg := ProtocolMessage{Type: TypeAkeResponse}
+	akeCompleteMsg := ProtocolMessage{Type: TypeAkeComplete}
+	byeMsg := ProtocolMessage{Type: TypeBye}
 
-	// Test Round 1
-	if !round1Msg.IsRoundOne() {
-		t.Error("Round 1 message should be detected as round one")
+	// Test AkeInit
+	if !akeInitMsg.IsAkeInit() {
+		t.Error("should be AkeInit")
 	}
-	if round1Msg.IsRoundTwo() {
-		t.Error("Round 1 message should not be detected as round two")
+	if akeInitMsg.IsAkeResponse() {
+		t.Error("should not be AkeResponse")
+	}
+	if akeInitMsg.IsAkeComplete() {
+		t.Error("should not be AkeComplete")
 	}
 
-	// Test Round 2
-	if round2Msg.IsRoundOne() {
-		t.Error("Round 2 message should not be detected as round one")
+	// Test AkeResponse
+	if akeResponseMsg.IsAkeInit() {
+		t.Error("should not be AkeInit")
 	}
-	if !round2Msg.IsRoundTwo() {
-		t.Error("Round 2 message should be detected as round two")
+	if !akeResponseMsg.IsAkeResponse() {
+		t.Error("should be AkeResponse")
+	}
+	if akeResponseMsg.IsAkeComplete() {
+		t.Error("should not be AkeComplete")
+	}
+
+	// Test AkeComplete
+	if akeCompleteMsg.IsAkeInit() {
+		t.Error("should not be AkeInit")
+	}
+	if akeCompleteMsg.IsAkeResponse() {
+		t.Error("should not be AkeResponse")
+	}
+	if !akeCompleteMsg.IsAkeComplete() {
+		t.Error("should be AkeComplete")
+	}
+
+	// Test Bye
+	if byeMsg.IsAkeInit() {
+		t.Error("should not be AkeInit")
+	}
+	if byeMsg.IsAkeResponse() {
+		t.Error("should not be AkeResponse")
+	}
+	if byeMsg.IsAkeComplete() {
+		t.Error("should not be AkeComplete")
+	}
+	if !byeMsg.IsBye() {
+		t.Error("should be Bye")
 	}
 }
 
 // TestProtocolMessageIsAke tests AKE type detection
-func TestProtocolMessageIsAke(t *testing.T) {
-	akeMsg := ProtocolMessage{Type: TypeAke}
-	nonAkeMsg := ProtocolMessage{Type: "SomeOtherType"}
+// TestProtocolMessageTypeDetection tests the new specific message type detection methods
+func TestProtocolMessageTypeDetection(t *testing.T) {
+	akeInitMsg := ProtocolMessage{Type: TypeAkeInit}
+	akeResponseMsg := ProtocolMessage{Type: TypeAkeResponse}
+	akeCompleteMsg := ProtocolMessage{Type: TypeAkeComplete}
+	byeMsg := ProtocolMessage{Type: TypeBye}
+	otherMsg := ProtocolMessage{Type: "SomeOtherType"}
 	var nilMsg *ProtocolMessage
 
-	if !akeMsg.IsAke() {
-		t.Error("AKE message should be detected as AKE")
+	// Test AkeInit detection
+	if !akeInitMsg.IsAkeInit() {
+		t.Error("AkeInit message should be detected as AkeInit")
+	}
+	if akeInitMsg.IsAkeResponse() || akeInitMsg.IsAkeComplete() || akeInitMsg.IsBye() {
+		t.Error("AkeInit message should not be detected as other types")
 	}
 
-	if nonAkeMsg.IsAke() {
-		t.Error("non-AKE message should not be detected as AKE")
+	// Test AkeResponse detection
+	if !akeResponseMsg.IsAkeResponse() {
+		t.Error("AkeResponse message should be detected as AkeResponse")
+	}
+	if akeResponseMsg.IsAkeInit() || akeResponseMsg.IsAkeComplete() || akeResponseMsg.IsBye() {
+		t.Error("AkeResponse message should not be detected as other types")
 	}
 
-	if nilMsg.IsAke() {
-		t.Error("nil message should not be detected as AKE")
+	// Test AkeComplete detection
+	if !akeCompleteMsg.IsAkeComplete() {
+		t.Error("AkeComplete message should be detected as AkeComplete")
+	}
+	if akeCompleteMsg.IsAkeInit() || akeCompleteMsg.IsAkeResponse() || akeCompleteMsg.IsBye() {
+		t.Error("AkeComplete message should not be detected as other types")
+	}
+
+	// Test Bye detection
+	if !byeMsg.IsBye() {
+		t.Error("Bye message should be detected as Bye")
+	}
+	if byeMsg.IsAkeInit() || byeMsg.IsAkeResponse() || byeMsg.IsAkeComplete() {
+		t.Error("Bye message should not be detected as AKE types")
+	}
+
+	// Test other type detection
+	if otherMsg.IsAkeInit() || otherMsg.IsAkeResponse() || otherMsg.IsAkeComplete() || otherMsg.IsBye() {
+		t.Error("Other message should not be detected as any known type")
+	}
+
+	// Test nil message detection
+	if nilMsg.IsAkeInit() || nilMsg.IsAkeResponse() || nilMsg.IsAkeComplete() || nilMsg.IsBye() {
+		t.Error("nil message should not be detected as any type")
 	}
 }
 
@@ -284,8 +338,7 @@ func TestComplexPayloadHandling(t *testing.T) {
 	}
 
 	protocolMsg := ProtocolMessage{
-		Type:     TypeAke,
-		Round:    AkeRound2,
+		Type:     TypeAkeResponse,
 		SenderId: "envelope_sender",
 	}
 
@@ -310,19 +363,15 @@ func TestComplexPayloadHandling(t *testing.T) {
 	}
 
 	// Verify envelope
-	if restoredProtocol.Type != TypeAke {
-		t.Errorf("type mismatch: got %s, want %s", restoredProtocol.Type, TypeAke)
+	if restoredProtocol.Type != TypeAkeResponse {
+		t.Errorf("type mismatch: got %s, want %s", restoredProtocol.Type, TypeAkeResponse)
 	}
 
 	if restoredProtocol.SenderId != "envelope_sender" {
 		t.Errorf("envelope senderId mismatch: got %s, want envelope_sender", restoredProtocol.SenderId)
 	}
 
-	// Verify payload
-	if restoredProtocol.Round != AkeRound2 {
-		t.Errorf("round mismatch: got %d, want %d", restoredProtocol.Round, AkeRound2)
-	}
-
+	// Verify payload (no round field anymore)
 	if restoredAke.DhPk != "complex_dhpk_data" {
 		t.Errorf("dhPk mismatch: got %s, want complex_dhpk_data", restoredAke.DhPk)
 	}
@@ -340,8 +389,7 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
-		Type:     TypeAke,
-		Round:    AkeRound1,
+		Type:     TypeAkeInit,
 		SenderId: "caller_id",
 	}
 
@@ -364,9 +412,9 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	// Step 2: Check if it's an AKE message (like in main.go)
-	if !receivedProtocolMsg.IsAke() {
-		t.Fatal("expected AKE message")
+	// Step 2: Check if it's an AkeInit message (like in main.go)
+	if !receivedProtocolMsg.IsAkeInit() {
+		t.Fatal("expected AkeInit message")
 	}
 
 	// Step 3: Decode the AKE payload (like in main.go)
@@ -376,15 +424,15 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
 
-	// Step 4: Check round and handle accordingly (like in main.go)
-	if receivedProtocolMsg.IsRoundOne() {
+	// Step 4: Handle AkeInit message (like in main.go)
+	if receivedProtocolMsg.IsAkeInit() {
 		// This is what would happen in the recipient's callback
 		if akeMsg.DhPk != "test_dhpk_from_caller" {
-			t.Errorf("dhPk mismatch in Round 1: got %s", akeMsg.DhPk)
+			t.Errorf("dhPk mismatch in AkeInit: got %s", akeMsg.DhPk)
 		}
 
 		if akeMsg.Proof != "test_proof_from_caller" {
-			t.Errorf("proof mismatch in Round 1: got %s", akeMsg.Proof)
+			t.Errorf("proof mismatch in AkeInit: got %s", akeMsg.Proof)
 		}
 	} else {
 		t.Fatal("expected Round 1 message")
@@ -406,8 +454,7 @@ func TestJsonCompatibility(t *testing.T) {
 
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
-		Type:     TypeAke,
-		Round:    AkeRound1,
+		Type:     TypeAkeInit,
 		SenderId: "test_sender",
 	}
 
@@ -430,16 +477,17 @@ func TestJsonCompatibility(t *testing.T) {
 	}
 
 	// Should have the expected envelope structure
-	if jsonCheck["type"] != TypeAke {
-		t.Errorf("JSON type mismatch: got %v, want %s", jsonCheck["type"], TypeAke)
+	if jsonCheck["type"] != TypeAkeInit {
+		t.Errorf("JSON type mismatch: got %v, want %s", jsonCheck["type"], TypeAkeInit)
 	}
 
 	if jsonCheck["sender_id"] != "test_sender" {
 		t.Errorf("JSON sender_id mismatch: got %v, want test_sender", jsonCheck["sender_id"])
 	}
 
-	if jsonCheck["round"] != float64(AkeRound1) { // JSON numbers are float64
-		t.Errorf("envelope round mismatch: got %v, want %d", jsonCheck["round"], AkeRound1)
+	// Round field should no longer exist in JSON
+	if _, exists := jsonCheck["round"]; exists {
+		t.Error("round field should not exist in JSON")
 	}
 
 	// Payload should be JSON too
@@ -479,8 +527,9 @@ func TestByeMessage(t *testing.T) {
 		t.Error("message should be detected as bye message")
 	}
 
-	if byeMsg.IsAke() {
-		t.Error("bye message should not be detected as AKE message")
+	// Verify bye message is not detected as any AKE type
+	if byeMsg.IsAkeInit() || byeMsg.IsAkeResponse() || byeMsg.IsAkeComplete() {
+		t.Error("bye message should not be detected as any AKE message type")
 	}
 
 	// Verify sender

@@ -183,7 +183,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	// === Round 1: Caller -> Recipient ===
 
 	// Caller creates Round 1 message
-	round1Ciphertext, err := AkeRound1CallerToRecipient(callerState)
+	round1Ciphertext, err := AkeInitCallerToRecipient(callerState)
 	if err != nil {
 		t.Fatalf("failed creating Round 1 message: %v", err)
 	}
@@ -201,9 +201,9 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	// Verify it's an AKE message
-	if !protocolMsg.IsAke() {
-		t.Fatal("expected AKE message")
+	// Verify it's an AkeInit message
+	if !protocolMsg.IsAkeInit() {
+		t.Fatal("expected AkeInit message")
 	}
 
 	// Skip self-messages (like in main.go)
@@ -216,11 +216,6 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	err = protocolMsg.DecodePayload(&akeMsg)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
-	}
-
-	// Verify it's Round 1
-	if !protocolMsg.IsRoundOne() {
-		t.Fatal("expected Round 1 message")
 	}
 
 	// Verify retrieved DhPk equals the one sent
@@ -237,7 +232,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	// === Round 2: Recipient -> Caller ===
 
 	// Recipient processes Round 1 and creates Round 2 response
-	round2Ciphertext, err := AkeRound2RecipientToCaller(recipientState, &protocolMsg)
+	round2Ciphertext, err := AkeResponseRecipientToCaller(recipientState, &protocolMsg)
 	if err != nil {
 		t.Fatalf("failed creating Round 2 response: %v", err)
 	}
@@ -255,24 +250,20 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatalf("failed to unmarshal Round 2 protocol message: %v", err)
 	}
 
-	// Verify and decode Round 2 AKE message
-	if !protocolMsg2.IsAke() {
-		t.Fatal("expected AKE message in Round 2")
+	// Verify and decode AkeResponse message
+	if !protocolMsg2.IsAkeResponse() {
+		t.Fatal("expected AkeResponse message")
 	}
 
 	var akeMsg2 AkeMessage
 	err = protocolMsg2.DecodePayload(&akeMsg2)
 	if err != nil {
-		t.Fatalf("failed to decode Round 2 AKE payload: %v", err)
+		t.Fatalf("failed to decode AkeResponse payload: %v", err)
 	}
 
-	if !protocolMsg2.IsRoundTwo() {
-		t.Fatal("expected Round 2 message")
-	}
+	// === Finalization: Caller processes AkeResponse ===
 
-	// === Finalization: Caller processes Round 2 ===
-
-	err = AkeRound2CallerFinalize(callerState, &protocolMsg2)
+	err = AkeFinalizeCaller(callerState, &protocolMsg2)
 	if err != nil {
 		t.Fatalf("failed to finalize AKE: %v", err)
 	}
@@ -297,59 +288,50 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	t.Logf("AKE completed successfully! Shared secret: %x", callerState.SharedKey)
 }
 
-// TestAkeRound1CallerToRecipient tests Round 1 independently
-func TestAkeRound1CallerToRecipient(t *testing.T) {
-	callerState := createTestCallState("bob", true)
-	callerState.SetSharedKey([]byte("test_shared_key_32_bytes_test___"))
+// TestAkeInitCallerToRecipient tests AkeInit independently
+func TestAkeInitCallerToRecipient(t *testing.T) {
+	callerState := createTestCallState("alice", true)
 
 	err := InitAke(callerState)
 	if err != nil {
 		t.Fatalf("failed to init AKE: %v", err)
 	}
 
-	ciphertext, err := AkeRound1CallerToRecipient(callerState)
+	ciphertext, err := AkeInitCallerToRecipient(callerState)
 	if err != nil {
-		t.Fatalf("Round 1 failed: %v", err)
+		t.Fatalf("AkeInit failed: %v", err)
 	}
 
 	if len(ciphertext) == 0 {
-		t.Fatal("Round 1 ciphertext is empty")
+		t.Fatal("AkeInit ciphertext is empty")
 	}
 
 	// Verify we can decrypt and parse the message
 	plaintext, err := encryption.SymDecrypt(callerState.SharedKey, ciphertext)
 	if err != nil {
-		t.Fatalf("failed to decrypt Round 1 message: %v", err)
+		t.Fatalf("failed to decrypt AkeInit message: %v", err)
 	}
 
-	// Parse protocol message
 	var protocolMsg ProtocolMessage
 	err = protocolMsg.Unmarshal(plaintext)
 	if err != nil {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	if !protocolMsg.IsAke() {
-		t.Fatal("expected AKE message")
+	// Verify it's an AkeInit message
+	if !protocolMsg.IsAkeInit() {
+		t.Fatal("expected AkeInit message")
 	}
 
-	// Decode AKE payload
 	var akeMsg AkeMessage
 	err = protocolMsg.DecodePayload(&akeMsg)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
 
-	if !protocolMsg.IsRoundOne() {
-		t.Fatal("expected Round 1 message")
-	}
-
-	if akeMsg.DhPk == "" {
-		t.Fatal("DhPk is empty")
-	}
-
-	if akeMsg.Proof == "" {
-		t.Fatal("Proof is empty")
+	// Verify retrieved DhPk equals the one sent
+	if string(callerState.DhPk) != string(akeMsg.GetDhPk()) {
+		t.Fatal("caller dhpk do not match")
 	}
 }
 
@@ -358,7 +340,7 @@ func TestAkeErrorCases(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("NilCallState", func(t *testing.T) {
-		_, err := AkeRound1CallerToRecipient(nil)
+		_, err := AkeInitCallerToRecipient(nil)
 		if err == nil {
 			t.Fatal("expected error for nil CallState")
 		}
@@ -369,7 +351,7 @@ func TestAkeErrorCases(t *testing.T) {
 		state.SetSharedKey([]byte("test_key"))
 		// Don't call InitAke
 
-		_, err := AkeRound1CallerToRecipient(state)
+		_, err := AkeInitCallerToRecipient(state)
 		if err == nil {
 			t.Fatal("expected error for uninitialized AKE")
 		}
@@ -392,22 +374,21 @@ func TestAkeErrorCases(t *testing.T) {
 		}
 	})
 
-	t.Run("WrongRoundMessage", func(t *testing.T) {
+	t.Run("WrongMessageType", func(t *testing.T) {
 		recipientState := createTestCallState("alice", false)
 
-		// Create protocol message with wrong round
+		// Create protocol message with wrong type
 		wrongProtocolMsg := &ProtocolMessage{
-			Type:     TypeAke,
-			Round:    AkeRound2, // Wrong round - function expects Round 1
+			Type:     TypeBye, // Wrong type - function expects AkeInit
 			SenderId: "test_sender",
 		}
 
-		_, err := AkeRound2RecipientToCaller(recipientState, wrongProtocolMsg)
+		_, err := AkeResponseRecipientToCaller(recipientState, wrongProtocolMsg)
 		if err == nil {
-			t.Fatal("expected error for wrong round message")
+			t.Fatal("expected error for wrong message type")
 		}
 
-		if err.Error() != "AkeRound2RecipientToCaller can only be called on Round1 message" {
+		if err.Error() != "AkeResponseRecipientToCaller can only be called on AkeInit message" {
 			t.Errorf("unexpected error message: %v", err)
 		}
 	})
@@ -488,7 +469,7 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	// Test Alice's Round 1 creation
-	round1Ciphertext, err := AkeRound1CallerToRecipient(aliceState)
+	round1Ciphertext, err := AkeInitCallerToRecipient(aliceState)
 	if err != nil {
 		t.Fatalf("failed creating Round 1 message with real data: %v", err)
 	}
@@ -506,7 +487,7 @@ func TestRealEnrollmentData(t *testing.T) {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	if !protocolMsg.IsAke() {
+	if !protocolMsg.IsAkeInit() {
 		t.Fatal("expected AKE message")
 	}
 
@@ -517,7 +498,7 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	// This should succeed with real enrollment data
-	_, err = AkeRound2RecipientToCaller(bobState, &protocolMsg)
+	_, err = AkeResponseRecipientToCaller(bobState, &protocolMsg)
 	if err != nil {
 		t.Fatalf("Bob failed to process Alice's real enrollment proof: %v", err)
 	}

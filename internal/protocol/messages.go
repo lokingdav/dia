@@ -8,17 +8,15 @@ import (
 )
 
 const (
-	TypeAke = "Ake"
-	TypeBye = "Bye"
-
-	AkeRound1 = 1
-	AkeRound2 = 2
+	TypeAkeInit     = "AkeInit"
+	TypeAkeResponse = "AkeResponse"
+	TypeAkeComplete = "AkeComplete"
+	TypeBye         = "Bye"
 )
 
 type ProtocolMessage struct {
 	Type     string          `json:"type"`
 	SenderId string          `json:"sender_id"`
-	Round    int             `json:"round"`
 	Payload  json.RawMessage `json:"payload"`
 }
 
@@ -66,11 +64,25 @@ func (m *ProtocolMessage) UnmarshalInto(data []byte, out any) error {
 	return m.DecodePayload(out)
 }
 
-func (m *ProtocolMessage) IsAke() bool {
+func (m *ProtocolMessage) IsAkeInit() bool {
 	if m == nil {
 		return false
 	}
-	return m.Type == TypeAke
+	return m.Type == TypeAkeInit
+}
+
+func (m *ProtocolMessage) IsAkeResponse() bool {
+	if m == nil {
+		return false
+	}
+	return m.Type == TypeAkeResponse
+}
+
+func (m *ProtocolMessage) IsAkeComplete() bool {
+	if m == nil {
+		return false
+	}
+	return m.Type == TypeAkeComplete
 }
 
 func (m *ProtocolMessage) IsBye() bool {
@@ -135,21 +147,13 @@ func (m *AkeMessage) GetProof() []byte {
 	return data
 }
 
-func (m *ProtocolMessage) IsRoundOne() bool {
-	return m.Round == AkeRound1
-}
-
-func (m *ProtocolMessage) IsRoundTwo() bool {
-	return m.Round == AkeRound2
-}
-
-// Optional helper to parse an Ake envelope directly.
-func ParseAkeMessage(data []byte) (*AkeMessage, error) {
+// Optional helper to parse an AkeInit message envelope directly.
+func ParseAkeInitMessage(data []byte) (*AkeMessage, error) {
 	var env ProtocolMessage
 	if err := env.Unmarshal(data); err != nil {
 		return nil, err
 	}
-	if env.Type != TypeAke {
+	if env.Type != TypeAkeInit {
 		return nil, fmt.Errorf("unexpected type %q", env.Type)
 	}
 	var msg AkeMessage
@@ -159,12 +163,65 @@ func ParseAkeMessage(data []byte) (*AkeMessage, error) {
 	return &msg, nil
 }
 
-// CreateByeMessage creates a bye message to signal completion
+// Optional helper to parse an AkeResponse message envelope directly.
+func ParseAkeResponseMessage(data []byte) (*AkeMessage, error) {
+	var env ProtocolMessage
+	if err := env.Unmarshal(data); err != nil {
+		return nil, err
+	}
+	if env.Type != TypeAkeResponse {
+		return nil, fmt.Errorf("unexpected type %q", env.Type)
+	}
+	var msg AkeMessage
+	if err := env.DecodePayload(&msg); err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
+// CreateAkeInitMessage creates an AkeInit message (caller -> recipient)
+func CreateAkeInitMessage(senderId string, payload *AkeMessage) ([]byte, error) {
+	msg := ProtocolMessage{
+		Type:     TypeAkeInit,
+		SenderId: senderId,
+	}
+
+	if err := msg.SetPayload(payload); err != nil {
+		return nil, err
+	}
+
+	return msg.Marshal()
+}
+
+// CreateAkeResponseMessage creates an AkeResponse message (recipient -> caller)
+func CreateAkeResponseMessage(senderId string, payload *AkeMessage) ([]byte, error) {
+	msg := ProtocolMessage{
+		Type:     TypeAkeResponse,
+		SenderId: senderId,
+	}
+
+	if err := msg.SetPayload(payload); err != nil {
+		return nil, err
+	}
+
+	return msg.Marshal()
+}
+
+// CreateAkeCompleteMessage creates an AkeComplete message (caller -> recipient)
+func CreateAkeCompleteMessage(senderId string) ([]byte, error) {
+	msg := ProtocolMessage{
+		Type:     TypeAkeComplete,
+		SenderId: senderId,
+	}
+
+	return msg.Marshal()
+}
+
+// CreateByeMessage creates a bye message to signal session termination
 func CreateByeMessage(senderId string) ([]byte, error) {
 	msg := ProtocolMessage{
 		Type:     TypeBye,
 		SenderId: senderId,
-		Round:    0, // Bye messages don't need rounds
 	}
 
 	return msg.Marshal()
