@@ -3,12 +3,14 @@ FROM golang:1.24-alpine
 # Set the working directory inside the container.
 WORKDIR /app
 
-# Turn off VCS stamping globally
-ENV GOFLAGS=-buildvcs=false
+# Turn off VCS stamping globally and optimize for development
+ENV GOFLAGS="-buildvcs=false"
+ENV GOPROXY="https://proxy.golang.org,direct"
+ENV GOSUMDB="sum.golang.org"
+ENV CGO_ENABLED=1
 
-RUN apk update
-
-RUN apk add --no-cache git build-base cmake gmp-dev
+RUN apk update && \
+    apk add --no-cache git build-base cmake gmp-dev netcat-openbsd
 
 RUN git clone https://github.com/lokingdav/libdia.git && \
     cd libdia && \
@@ -22,12 +24,18 @@ RUN git clone https://github.com/lokingdav/libdia.git && \
 # Install air for live-reloading.
 RUN go install github.com/air-verse/air@latest
 
-# Copy go.mod and go.sum files to leverage Docker cache.
+# Copy go.mod and go.sum files first for better Docker layer caching.
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download && go mod verify
+
+# Pre-build common dependencies to speed up subsequent builds
+RUN go build -a -installsuffix cgo std
 
 # Copy the rest of your application's source code into the container.
 COPY . .
+
+# Create bin directory
+RUN mkdir -p bin
 
 # Expose the gRPC port.
 EXPOSE 50051

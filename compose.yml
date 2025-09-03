@@ -5,22 +5,22 @@ x-denseid-server: &denseid-server-base
   volumes:
     - .:/app
     - go-mod-cache:/go/pkg/mod
+    - go-build-cache:/root/.cache/go-build  # Share build cache
   restart: unless-stopped
   healthcheck:
-    test: ["CMD", "sh", "-c", "nc -z localhost 50051"]
+    test: ["CMD", "nc", "-z", "localhost", "50051"]
     interval: 30s
     timeout: 5s
     retries: 3
+    start_period: 30s  # Give more time for initial build
   logging:
     driver: "json-file"
     options:
       max-size: "10m"
       max-file: "3"
-  deploy:
-    resources:
-      limits:
-        cpus: '1.0'
-        memory: 500M
+  environment:
+    - GOCACHE=/root/.cache/go-build
+    - GOMODCACHE=/go/pkg/mod
 
 services:
   enrollment-server:
@@ -67,7 +67,8 @@ services:
     env_file: .env
     profiles: [rs]
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -76,9 +77,18 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     profiles: [rs]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   go-mod-cache:
+    driver: local
+  go-build-cache:  # New shared build cache
+    driver: local
   redis-data:
+    driver: local
