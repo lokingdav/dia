@@ -62,7 +62,6 @@ func TestProtocolMessageMarshalUnmarshal(t *testing.T) {
 func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 	// Create test AKE message
 	original := AkeMessage{
-		Round: AkeRound1,
 		DhPk:  "abcdef1234567890",
 		Proof: "proof_data_here",
 	}
@@ -70,6 +69,7 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
+		Round:    AkeRound1,
 		SenderId: "alice",
 	}
 
@@ -84,15 +84,27 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 		t.Fatalf("failed to marshal AKE message: %v", err)
 	}
 
-	// Parse using the helper function
-	restored, err := ParseAkeMessage(data)
+	// Parse the protocol message
+	var restoredProtocol ProtocolMessage
+	err = restoredProtocol.Unmarshal(data)
 	if err != nil {
-		t.Fatalf("failed to parse AKE message: %v", err)
+		t.Fatalf("failed to unmarshal protocol message: %v", err)
+	}
+
+	if !restoredProtocol.IsAke() {
+		t.Fatal("expected AKE message")
+	}
+
+	// Decode the AKE payload
+	var restored AkeMessage
+	err = restoredProtocol.DecodePayload(&restored)
+	if err != nil {
+		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
 
 	// Verify all fields
-	if restored.Round != original.Round {
-		t.Errorf("round mismatch: got %d, want %d", restored.Round, original.Round)
+	if restoredProtocol.Round != AkeRound1 {
+		t.Errorf("round mismatch: got %d, want %d", restoredProtocol.Round, AkeRound1)
 	}
 
 	if restored.DhPk != original.DhPk {
@@ -104,11 +116,11 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 	}
 
 	// Test round detection
-	if !restored.IsRoundOne() {
+	if !restoredProtocol.IsRoundOne() {
 		t.Error("should be round one")
 	}
 
-	if restored.IsRoundTwo() {
+	if restoredProtocol.IsRoundTwo() {
 		t.Error("should not be round two")
 	}
 }
@@ -125,7 +137,6 @@ func TestAkeMessageValidation(t *testing.T) {
 		{
 			name: "valid_message",
 			message: AkeMessage{
-				Round: AkeRound1,
 				DhPk:  "valid_dhpk",
 				Proof: "valid_proof",
 			},
@@ -135,7 +146,6 @@ func TestAkeMessageValidation(t *testing.T) {
 		{
 			name: "missing_dhpk",
 			message: AkeMessage{
-				Round: AkeRound1,
 				DhPk:  "", // empty
 				Proof: "valid_proof",
 			},
@@ -145,7 +155,6 @@ func TestAkeMessageValidation(t *testing.T) {
 		{
 			name: "missing_proof",
 			message: AkeMessage{
-				Round: AkeRound1,
 				DhPk:  "valid_dhpk",
 				Proof: "", // empty
 			},
@@ -155,7 +164,6 @@ func TestAkeMessageValidation(t *testing.T) {
 		{
 			name: "empty_sender_id",
 			message: AkeMessage{
-				Round: AkeRound1,
 				DhPk:  "valid_dhpk",
 				Proof: "valid_proof",
 			},
@@ -228,8 +236,8 @@ func TestProtocolMessageValidation(t *testing.T) {
 
 // TestAkeRoundHelpers tests round detection helpers
 func TestAkeRoundHelpers(t *testing.T) {
-	round1Msg := AkeMessage{Round: AkeRound1}
-	round2Msg := AkeMessage{Round: AkeRound2}
+	round1Msg := ProtocolMessage{Type: TypeAke, Round: AkeRound1}
+	round2Msg := ProtocolMessage{Type: TypeAke, Round: AkeRound2}
 
 	// Test Round 1
 	if !round1Msg.IsRoundOne() {
@@ -271,13 +279,13 @@ func TestProtocolMessageIsAke(t *testing.T) {
 func TestComplexPayloadHandling(t *testing.T) {
 	// Create a protocol message with AKE payload
 	akePayload := AkeMessage{
-		Round: AkeRound2,
 		DhPk:  "complex_dhpk_data",
 		Proof: "complex_proof_data",
 	}
 
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
+		Round:    AkeRound2,
 		SenderId: "envelope_sender",
 	}
 
@@ -311,8 +319,8 @@ func TestComplexPayloadHandling(t *testing.T) {
 	}
 
 	// Verify payload
-	if restoredAke.Round != AkeRound2 {
-		t.Errorf("round mismatch: got %d, want %d", restoredAke.Round, AkeRound2)
+	if restoredProtocol.Round != AkeRound2 {
+		t.Errorf("round mismatch: got %d, want %d", restoredProtocol.Round, AkeRound2)
 	}
 
 	if restoredAke.DhPk != "complex_dhpk_data" {
@@ -326,7 +334,6 @@ func TestComplexPayloadHandling(t *testing.T) {
 func TestMessageProcessingLikeRealUsage(t *testing.T) {
 	// Create an AKE message like it would be created in the real flow
 	originalAke := AkeMessage{
-		Round: AkeRound1,
 		DhPk:  "test_dhpk_from_caller",
 		Proof: "test_proof_from_caller",
 	}
@@ -334,6 +341,7 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
+		Round:    AkeRound1,
 		SenderId: "caller_id",
 	}
 
@@ -369,7 +377,7 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 	}
 
 	// Step 4: Check round and handle accordingly (like in main.go)
-	if akeMsg.IsRoundOne() {
+	if receivedProtocolMsg.IsRoundOne() {
 		// This is what would happen in the recipient's callback
 		if akeMsg.DhPk != "test_dhpk_from_caller" {
 			t.Errorf("dhPk mismatch in Round 1: got %s", akeMsg.DhPk)
@@ -392,7 +400,6 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 // TestJsonCompatibility tests JSON compatibility for debugging
 func TestJsonCompatibility(t *testing.T) {
 	akeMsg := AkeMessage{
-		Round: AkeRound1,
 		DhPk:  "test_dhpk",
 		Proof: "test_proof",
 	}
@@ -400,6 +407,7 @@ func TestJsonCompatibility(t *testing.T) {
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
+		Round:    AkeRound1,
 		SenderId: "test_sender",
 	}
 
@@ -430,6 +438,10 @@ func TestJsonCompatibility(t *testing.T) {
 		t.Errorf("JSON sender_id mismatch: got %v, want test_sender", jsonCheck["sender_id"])
 	}
 
+	if jsonCheck["round"] != float64(AkeRound1) { // JSON numbers are float64
+		t.Errorf("envelope round mismatch: got %v, want %d", jsonCheck["round"], AkeRound1)
+	}
+
 	// Payload should be JSON too
 	payload, ok := jsonCheck["payload"]
 	if !ok {
@@ -441,7 +453,8 @@ func TestJsonCompatibility(t *testing.T) {
 		t.Fatal("payload is not a JSON object")
 	}
 
-	if payloadMap["round"] != float64(AkeRound1) { // JSON numbers are float64
-		t.Errorf("payload round mismatch: got %v, want %d", payloadMap["round"], AkeRound1)
+	// Round should no longer be in payload, only in envelope
+	if _, hasRound := payloadMap["round"]; hasRound {
+		t.Error("payload should not contain round field - it should be in the envelope")
 	}
 }

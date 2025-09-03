@@ -142,13 +142,10 @@ func main() {
 		}
 
 		if message.IsAke() {
-			var akeMsg protocol.AkeMessage
-			message.DecodePayload(&akeMsg)
-
-			if akeMsg.IsRoundOne() && callState.IamRecipient() {
+			if message.IsRoundOne() && callState.IamRecipient() {
 				log.Println("Handling Round 1 Message: Recipient --> Caller")
 
-				response, err := protocol.AkeRound2RecipientToCaller(callState, &akeMsg)
+				response, err := protocol.AkeRound2RecipientToCaller(callState, &message)
 				if err != nil {
 					log.Printf("failed responding to ake round 1: %v", err)
 				}
@@ -160,9 +157,9 @@ func main() {
 				stop() // Signal completion
 			}
 
-			if akeMsg.IsRoundTwo() && callState.IamCaller() {
+			if message.IsRoundTwo() && callState.IamCaller() {
 				log.Println("Handling Round 2 Message: Caller Finalize")
-				if err := protocol.AkeRound2CallerFinalize(callState, &akeMsg); err != nil {
+				if err := protocol.AkeRound2CallerFinalize(callState, &message); err != nil {
 					log.Printf("failed to finalize recipients ake message: %v", err)
 				}
 

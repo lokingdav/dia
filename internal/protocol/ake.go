@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
@@ -86,7 +87,6 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	}
 
 	akeMsg := AkeMessage{
-		Round:      AkeRound1,
 		DhPk:       helpers.EncodeToHex(caller.DhPk),
 		PublicKey:  helpers.EncodeToHex(caller.Config.RtuPublicKey),
 		Expiration: helpers.EncodeToHex(caller.Config.EnExpiration),
@@ -94,7 +94,7 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	}
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
-		Round: AkeRound1,
+		Round:    AkeRound1,
 		SenderId: caller.SenderId,
 	}
 	protocolMsg.SetPayload(akeMsg)
@@ -108,22 +108,28 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	return encryption.SymEncrypt(caller.SharedKey, msg)
 }
 
-func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byte, error) {
+func AkeRound2RecipientToCaller(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, error) {
 	if recipient == nil {
 		return nil, errors.New("recipient CallState cannot be nil")
 	}
-	if caller == nil {
-		return nil, errors.New("caller AkeMessage cannot be nil")
+	if callerMsg == nil {
+		return nil, errors.New("caller ProtocolMessage cannot be nil")
 	}
-	if !caller.IsRoundOne() {
+	if !callerMsg.IsRoundOne() {
 		return nil, errors.New("AkeRound2RecipientToCaller can only be called on Round1 message")
+	}
+
+	// Decode the AKE message from the protocol message
+	var caller AkeMessage
+	if err := callerMsg.DecodePayload(&caller); err != nil {
+		return nil, fmt.Errorf("failed to decode AKE payload: %v", err)
 	}
 
 	callerDhPk := caller.GetDhPk()
 	callerProof := caller.GetProof()
 
 	c0 := helpers.Hash256(helpers.ConcatBytes(recipient.SharedKey, callerDhPk, recipient.GetAkeLabel()))
-	if !VerifyZKProof(caller, recipient.CallerId, c0, recipient.Config.RaPublicKey) {
+	if !VerifyZKProof(&caller, recipient.CallerId, c0, recipient.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
@@ -134,7 +140,6 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	}
 
 	akeMsg := AkeMessage{
-		Round:      AkeRound2,
 		DhPk:       helpers.EncodeToHex(recipient.DhPk),
 		PublicKey:  helpers.EncodeToHex(recipient.Config.RtuPublicKey),
 		Expiration: helpers.EncodeToHex(recipient.Config.EnExpiration),
@@ -142,7 +147,7 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	}
 	protocolMsg := ProtocolMessage{
 		Type:     TypeAke,
-		Round: AkeRound2,
+		Round:    AkeRound2,
 		SenderId: recipient.SenderId,
 	}
 	protocolMsg.SetPayload(akeMsg)
@@ -176,15 +181,21 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	return ciphertext, nil
 }
 
-func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
+func AkeRound2CallerFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 	if caller == nil {
 		return errors.New("caller CallState cannot be nil")
 	}
-	if recipient == nil {
-		return errors.New("recipient AkeMessage cannot be nil")
+	if recipientMsg == nil {
+		return errors.New("recipient ProtocolMessage cannot be nil")
 	}
-	if !recipient.IsRoundTwo() {
+	if !recipientMsg.IsRoundTwo() {
 		return errors.New("AkeRound2CallerFinalize can only be called on Round2 message")
+	}
+
+	// Decode the AKE message from the protocol message
+	var recipient AkeMessage
+	if err := recipientMsg.DecodePayload(&recipient); err != nil {
+		return fmt.Errorf("failed to decode AKE payload: %v", err)
 	}
 
 	recipientDhPk, err1 := helpers.DecodeHex(recipient.DhPk)
@@ -194,7 +205,7 @@ func AkeRound2CallerFinalize(caller *CallState, recipient *AkeMessage) error {
 	}
 
 	c1 := helpers.Hash256(helpers.ConcatBytes(caller.Proof, caller.DhPk, recipientDhPk, caller.Chal0))
-	if !VerifyZKProof(recipient, caller.Recipient, c1, caller.Config.RaPublicKey) {
+	if !VerifyZKProof(&recipient, caller.Recipient, c1, caller.Config.RaPublicKey) {
 		return errors.New("unauthenticated")
 	}
 

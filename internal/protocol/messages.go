@@ -17,7 +17,7 @@ const (
 type ProtocolMessage struct {
 	Type     string          `json:"type"`
 	SenderId string          `json:"sender_id"`
-	Round int `json:"round"`
+	Round    int             `json:"round"`
 	Payload  json.RawMessage `json:"payload"`
 }
 
@@ -73,11 +73,10 @@ func (m *ProtocolMessage) IsAke() bool {
 }
 
 type AkeMessage struct {
-	Round    int    `json:"round"`
-	DhPk     string `json:"dhPk"`
-	PublicKey string `json:"pk"`
+	DhPk       string `json:"dhPk"`
+	PublicKey  string `json:"pk"`
 	Expiration string `json:"exp"`
-	Proof    string `json:"proof"`
+	Proof      string `json:"proof"`
 }
 
 func (m *AkeMessage) GetDhPk() []byte {
@@ -128,11 +127,11 @@ func (m *AkeMessage) GetProof() []byte {
 	return data
 }
 
-func (m *AkeMessage) IsRoundOne() bool {
+func (m *ProtocolMessage) IsRoundOne() bool {
 	return m.Round == AkeRound1
 }
 
-func (m *AkeMessage) IsRoundTwo() bool {
+func (m *ProtocolMessage) IsRoundTwo() bool {
 	return m.Round == AkeRound2
 }
 

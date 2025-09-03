@@ -55,7 +55,6 @@ func TestSessionLifecycle(t *testing.T) {
 func TestMessageProcessingWithProtocol(t *testing.T) {
 	// Create an AKE message
 	akeMsg := protocol.AkeMessage{
-		Round: protocol.AkeRound1,
 		DhPk:  "test_dhpk",
 		Proof: "test_proof",
 	}
@@ -63,6 +62,7 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 	// Create protocol message wrapper
 	wrapperMsg := protocol.ProtocolMessage{
 		Type:     protocol.TypeAke,
+		Round:    protocol.AkeRound1,
 		SenderId: "caller",
 	}
 
@@ -106,7 +106,7 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 	}
 
 	// Verify the round and data
-	if !decodedAke.IsRoundOne() {
+	if !protocolMsg.IsRoundOne() {
 		t.Error("expected Round 1 message")
 	}
 
@@ -157,7 +157,6 @@ func TestMessageFiltering(t *testing.T) {
 func TestAkeRoundProcessing(t *testing.T) {
 	// Test Round 1 processing
 	round1Msg := protocol.AkeMessage{
-		Round: protocol.AkeRound1,
 		DhPk:  "caller_dhpk",
 		Proof: "caller_proof",
 	}
@@ -165,6 +164,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 	// Create protocol message wrapper
 	protocolWrapper1 := protocol.ProtocolMessage{
 		Type:     protocol.TypeAke,
+		Round:    protocol.AkeRound1,
 		SenderId: "caller",
 	}
 
@@ -191,7 +191,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 		t.Fatalf("failed to decode: %v", err)
 	}
 
-	if akeMsg.IsRoundOne() {
+	if protocolMsg.IsRoundOne() {
 		// This is what recipient would do
 		if akeMsg.DhPk != "caller_dhpk" {
 			t.Errorf("dhPk mismatch: got %s", akeMsg.DhPk)
@@ -199,7 +199,6 @@ func TestAkeRoundProcessing(t *testing.T) {
 
 		// Create Round 2 response
 		round2Msg := protocol.AkeMessage{
-			Round: protocol.AkeRound2,
 			DhPk:  "recipient_dhpk",
 			Proof: "recipient_proof",
 		}
@@ -207,6 +206,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 		// Create protocol message wrapper for Round 2
 		protocolWrapper2 := protocol.ProtocolMessage{
 			Type:     protocol.TypeAke,
+			Round:    protocol.AkeRound2,
 			SenderId: "recipient",
 		}
 
@@ -233,7 +233,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 			t.Fatalf("failed to decode round 2: %v", err)
 		}
 
-		if !round2Ake.IsRoundTwo() {
+		if !round2Protocol.IsRoundTwo() {
 			t.Error("expected Round 2 message")
 		}
 

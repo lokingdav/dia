@@ -219,7 +219,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// Verify it's Round 1
-	if !akeMsg.IsRoundOne() {
+	if !protocolMsg.IsRoundOne() {
 		t.Fatal("expected Round 1 message")
 	}
 
@@ -237,7 +237,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	// === Round 2: Recipient -> Caller ===
 
 	// Recipient processes Round 1 and creates Round 2 response
-	round2Ciphertext, err := AkeRound2RecipientToCaller(recipientState, &akeMsg)
+	round2Ciphertext, err := AkeRound2RecipientToCaller(recipientState, &protocolMsg)
 	if err != nil {
 		t.Fatalf("failed creating Round 2 response: %v", err)
 	}
@@ -266,13 +266,13 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatalf("failed to decode Round 2 AKE payload: %v", err)
 	}
 
-	if !akeMsg2.IsRoundTwo() {
+	if !protocolMsg2.IsRoundTwo() {
 		t.Fatal("expected Round 2 message")
 	}
 
 	// === Finalization: Caller processes Round 2 ===
 
-	err = AkeRound2CallerFinalize(callerState, &akeMsg2)
+	err = AkeRound2CallerFinalize(callerState, &protocolMsg2)
 	if err != nil {
 		t.Fatalf("failed to finalize AKE: %v", err)
 	}
@@ -322,12 +322,25 @@ func TestAkeRound1CallerToRecipient(t *testing.T) {
 		t.Fatalf("failed to decrypt Round 1 message: %v", err)
 	}
 
-	akeMsg, err := ParseAkeMessage(plaintext)
+	// Parse protocol message
+	var protocolMsg ProtocolMessage
+	err = protocolMsg.Unmarshal(plaintext)
 	if err != nil {
-		t.Fatalf("failed to parse Round 1 AKE message: %v", err)
+		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	if !akeMsg.IsRoundOne() {
+	if !protocolMsg.IsAke() {
+		t.Fatal("expected AKE message")
+	}
+
+	// Decode AKE payload
+	var akeMsg AkeMessage
+	err = protocolMsg.DecodePayload(&akeMsg)
+	if err != nil {
+		t.Fatalf("failed to decode AKE payload: %v", err)
+	}
+
+	if !protocolMsg.IsRoundOne() {
 		t.Fatal("expected Round 1 message")
 	}
 
@@ -382,16 +395,14 @@ func TestAkeErrorCases(t *testing.T) {
 	t.Run("WrongRoundMessage", func(t *testing.T) {
 		recipientState := createTestCallState("alice", false)
 
-		// Create a Round 2 message and try to pass it to the function that expects Round 1
-		wrongRoundMsg := &AkeMessage{
-			Round:      AkeRound2, // Wrong round - function expects Round 1
-			DhPk:       helpers.EncodeToHex([]byte("test_dhpk_32_bytes_for_testing___")),
-			PublicKey:  helpers.EncodeToHex(testRtuPublicKey),
-			Expiration: helpers.EncodeToHex(testExpiration),
-			Proof:      helpers.EncodeToHex([]byte("test_proof_data_32_bytes_test___")),
+		// Create protocol message with wrong round
+		wrongProtocolMsg := &ProtocolMessage{
+			Type:     TypeAke,
+			Round:    AkeRound2, // Wrong round - function expects Round 1
+			SenderId: "test_sender",
 		}
 
-		_, err := AkeRound2RecipientToCaller(recipientState, wrongRoundMsg)
+		_, err := AkeRound2RecipientToCaller(recipientState, wrongProtocolMsg)
 		if err == nil {
 			t.Fatal("expected error for wrong round message")
 		}
@@ -489,13 +500,24 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	// Parse Alice's message like Bob would
-	akeMsg, err := ParseAkeMessage(round1Plaintext)
+	var protocolMsg ProtocolMessage
+	err = protocolMsg.Unmarshal(round1Plaintext)
 	if err != nil {
-		t.Fatalf("failed to parse Round 1 AKE message: %v", err)
+		t.Fatalf("failed to unmarshal protocol message: %v", err)
+	}
+
+	if !protocolMsg.IsAke() {
+		t.Fatal("expected AKE message")
+	}
+
+	var akeMsg AkeMessage
+	err = protocolMsg.DecodePayload(&akeMsg)
+	if err != nil {
+		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
 
 	// This should succeed with real enrollment data
-	_, err = AkeRound2RecipientToCaller(bobState, akeMsg)
+	_, err = AkeRound2RecipientToCaller(bobState, &protocolMsg)
 	if err != nil {
 		t.Fatalf("Bob failed to process Alice's real enrollment proof: %v", err)
 	}
