@@ -23,16 +23,16 @@ x-denseid-server: &denseid-server-base
         memory: 500M
 
 services:
-  # enrollment-server:
-  #   <<: *denseid-server-base
-  #   container_name: enrollment-server
-  #   command:
-  #     - "--build.cmd=go build -o /app/bin/es /app/cmd/enrollment"
-  #     - "--build.bin=/app/bin/es"
-  #   ports:
-  #     - "50051:50051"
-  #   env_file: .env
-  #   profiles: [es]
+  enrollment-server:
+    <<: *denseid-server-base
+    container_name: enrollment-server
+    command:
+      - "--build.cmd=go build -o /app/bin/es /app/cmd/enrollment"
+      - "--build.bin=/app/bin/es"
+    ports:
+      - "50051:50051"
+    env_file: .env
+    profiles: [es]
 
   key-derivation:
     <<: *denseid-server-base

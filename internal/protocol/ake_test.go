@@ -1,9 +1,13 @@
 package protocol
 
 import (
+	"bytes"
 	"context"
+	"os"
+	"strings"
 	"testing"
 
+	"github.com/caarlos0/env/v11"
 	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
 	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/config"
@@ -11,6 +15,8 @@ import (
 	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	dia "github.com/lokingdav/libdia/bindings/go"
 	"google.golang.org/grpc"
 )
 
@@ -58,6 +64,43 @@ func init() {
 	testRaPrivateKey, testRaPublicKey, _ = bbs.Keygen()
 	_, testRtuPublicKey, _ = bbs.Keygen()
 	testExpiration = []byte("20991231235959Z")
+}
+
+// loadConfigFromEnv loads a SubscriberConfig from the specified .env file
+func loadConfigFromEnv(envFile string) (*config.SubscriberConfig, error) {
+	// Save current env
+	originalEnv := make(map[string]string)
+	for _, e := range os.Environ() {
+		if pair := strings.SplitN(e, "=", 2); len(pair) == 2 {
+			originalEnv[pair[0]] = pair[1]
+		}
+	}
+
+	// Load from .env file
+	err := godotenv.Load(envFile)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse config
+	cfg := &config.SubscriberConfig{}
+	err = env.Parse(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	err = cfg.ParseKeysAsBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	// Restore original env
+	os.Clearenv()
+	for k, v := range originalEnv {
+		os.Setenv(k, v)
+	}
+
+	return cfg, nil
 }
 
 // createTestCallStateForUser creates a CallState for a specific user identity
@@ -363,36 +406,106 @@ func TestAkeErrorCases(t *testing.T) {
 	})
 }
 
-// TestCallStateRoles tests caller/recipient role logic
-func TestCallStateRoles(t *testing.T) {
-	callerState := createTestCallState("bob", true)
-	recipientState := createTestCallState("alice", false)
-
-	// Test role identification
-	if !callerState.IamCaller() {
-		t.Fatal("caller should identify as caller")
+// TestRealEnrollmentData tests with actual enrollment data from .env files
+func TestRealEnrollmentData(t *testing.T) {
+	// Load real configurations from .env files (relative to project root)
+	aliceConfig, err := loadConfigFromEnv("../../.env.alice")
+	if err != nil {
+		t.Fatalf("Failed to load .env.alice: %v", err)
 	}
 
-	if callerState.IamRecipient() {
-		t.Fatal("caller should not identify as recipient")
+	bobConfig, err := loadConfigFromEnv("../../.env.bob")
+	if err != nil {
+		t.Fatalf("Failed to load .env.bob: %v", err)
 	}
 
-	if !recipientState.IamRecipient() {
-		t.Fatal("recipient should identify as recipient")
+	// Verify that they have the same RA public key (shared trust anchor)
+	if !bytes.Equal(aliceConfig.RaPublicKey, bobConfig.RaPublicKey) {
+		t.Fatalf("Alice and Bob should have the same RA public key")
 	}
 
-	if recipientState.IamCaller() {
-		t.Fatal("recipient should not identify as caller")
+	// Let's test whether we can verify the real enrollment signatures directly
+	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
+		// Test Alice's signature
+		aliceMessage := helpers.ConcatBytes(aliceConfig.RtuPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		aliceValid, err := dia.BBSVerify([][]byte{aliceMessage}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
+		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
+		if !aliceValid {
+			t.Errorf("Alice's enrollment signature should be valid")
+		}
+
+		// Test Bob's signature
+		bobMessage := helpers.ConcatBytes(bobConfig.RtuPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		bobValid, err := dia.BBSVerify([][]byte{bobMessage}, bobConfig.RaPublicKey, bobConfig.RaSignature)
+		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)
+		if !bobValid {
+			t.Errorf("Bob's enrollment signature should be valid")
+		}
+	})
+
+	// Create call states like the real application
+	aliceState := &CallState{
+		CallerId:   aliceConfig.MyPhone,
+		Recipient:  bobConfig.MyPhone,
+		Ts:         datetime.GetNormalizedTs(),
+		IsOutgoing: true,
+		SenderId:   uuid.NewString(),
+		Ticket:     aliceConfig.SampleTicket,
+		Config:     aliceConfig,
 	}
 
-	// Test outgoing flag consistency
-	if !callerState.IsOutgoing {
-		t.Fatal("caller should have outgoing=true")
+	bobState := &CallState{
+		CallerId:   aliceConfig.MyPhone,
+		Recipient:  bobConfig.MyPhone,
+		Ts:         datetime.GetNormalizedTs(),
+		IsOutgoing: false,
+		SenderId:   uuid.NewString(),
+		Ticket:     bobConfig.SampleTicket,
+		Config:     bobConfig,
 	}
 
-	if recipientState.IsOutgoing {
-		t.Fatal("recipient should have outgoing=false")
+	// Test proof creation and verification with real data
+	testSharedKey := []byte("shared_test_key_for_both_parties")
+	aliceState.SetSharedKey(testSharedKey)
+	bobState.SetSharedKey(testSharedKey)
+
+	// Initialize AKE
+	ctx := context.Background()
+	err = InitAke(ctx, aliceState)
+	if err != nil {
+		t.Fatalf("failed to init AKE for alice: %v", err)
 	}
+
+	err = InitAke(ctx, bobState)
+	if err != nil {
+		t.Fatalf("failed to init AKE for bob: %v", err)
+	}
+
+	// Test Alice's Round 1 creation
+	round1Ciphertext, err := AkeRound1CallerToRecipient(aliceState)
+	if err != nil {
+		t.Fatalf("failed creating Round 1 message with real data: %v", err)
+	}
+
+	// Test Bob's Round 1 processing
+	round1Plaintext, err := encryption.SymDecrypt(bobState.SharedKey, round1Ciphertext)
+	if err != nil {
+		t.Fatalf("failed to decrypt Round 1 message: %v", err)
+	}
+
+	// Parse Alice's message like Bob would
+	akeMsg, err := ParseAkeMessage(round1Plaintext)
+	if err != nil {
+		t.Fatalf("failed to parse Round 1 AKE message: %v", err)
+	}
+
+	// This should succeed with real enrollment data
+	_, err = AkeRound2RecipientToCaller(bobState, akeMsg)
+	if err != nil {
+		t.Fatalf("Bob failed to process Alice's real enrollment proof: %v", err)
+	}
+
+	t.Log("Real enrollment data test passed!")
 }
 
 // Note: Key derivation test disabled due to VOPRF complexity

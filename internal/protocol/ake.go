@@ -239,12 +239,12 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 	}
 
 	proof, err := bbs.ZkCreateProof(bbs.AkeZkProof{
-		Tn: telephoneNumber,
-		PublicKey: prover.Config.RtuPublicKey, 
-		Expiration: prover.Config.EnExpiration, 
-		Nonce: chal, 
-		RaPublicKey: prover.Config.RaPublicKey, 
-		Signature: prover.Config.RaSignature, 
+		Tn:          telephoneNumber,
+		PublicKey:   prover.Config.RtuPublicKey,
+		Expiration:  prover.Config.EnExpiration,
+		Nonce:       chal,
+		RaPublicKey: prover.Config.RaPublicKey,
+		Signature:   prover.Config.RaSignature,
 	})
 
 	if err != nil {
@@ -255,13 +255,17 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 }
 
 func VerifyZKProof(prover *AkeMessage, tn string, chal, raPublicKey []byte) bool {
+	publicKey := prover.GetPublicKey()
+	expiration := prover.GetExpiration()
+	proof := prover.GetProof()
+
 	ok, err := bbs.ZkVerifyProof(bbs.AkeZkProof{
-		Tn: tn,
-		PublicKey: prover.GetPublicKey(), 
-		Expiration: prover.GetExpiration(), 
-		Nonce: chal, 
-		RaPublicKey: raPublicKey, 
-		Proof: prover.GetProof(), 
+		Tn:          tn,
+		PublicKey:   publicKey,
+		Expiration:  expiration,
+		Nonce:       chal,
+		RaPublicKey: raPublicKey,
+		Proof:       proof,
 	})
 
 	if err != nil {

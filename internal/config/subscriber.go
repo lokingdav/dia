@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+
 	"github.com/dense-identity/denseid/internal/signing"
 )
 

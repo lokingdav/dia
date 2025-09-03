@@ -127,6 +127,13 @@ func main() {
 	}
 
 	tickets := voprf.FinalizeTickets(data.blindedTickets, res.EvaluatedTickets)
+
+	// Marshal the expiration timestamp properly
+	expirationBytes, err := proto.Marshal(res.GetExp())
+	if err != nil {
+		log.Fatalf("Error marshaling expiration: %v", err)
+	}
+
 	env := make([]string, 0)
 
 	env = append(env,
@@ -135,7 +142,7 @@ func main() {
 		fmt.Sprintf("MY_LOGO=\"%s\"", *logoUrl),
 
 		fmt.Sprintf("\nENROLLMENT_ID=%s", res.GetEid()),
-		fmt.Sprintf("ENROLLMENT_EXPIRATION=%x", res.GetExp()),
+		fmt.Sprintf("ENROLLMENT_EXPIRATION=%x", expirationBytes),
 		fmt.Sprintf("RA_PUBLIC_KEY=%x", res.GetEpk()),
 		fmt.Sprintf("RA_SIGNATURE=%x", res.GetSigma()),
 
