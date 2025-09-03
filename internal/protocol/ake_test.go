@@ -262,10 +262,6 @@ func TestAkeRound1CallerToRecipient(t *testing.T) {
 	if akeMsg.Proof == "" {
 		t.Fatal("Proof is empty")
 	}
-
-	if akeMsg.SenderId != callerState.SenderId {
-		t.Fatal("SenderId mismatch")
-	}
 }
 
 // TestAkeErrorCases tests error handling
@@ -315,7 +311,6 @@ func TestAkeErrorCases(t *testing.T) {
 			Round:    AkeRound1, // Wrong round
 			DhPk:     "test_dhpk",
 			Proof:    "test_proof",
-			SenderId: "test_sender",
 		}
 
 		_, err := AkeRound2RecipientToCaller(recipientState, wrongRoundMsg)

@@ -74,8 +74,9 @@ func (m *ProtocolMessage) IsAke() bool {
 type AkeMessage struct {
 	Round    int    `json:"round"`
 	DhPk     string `json:"dhPk"`
+	PublicKey string `json:"pk"`
+	Expiration string `json:"exp"`
 	Proof    string `json:"proof"`
-	SenderId string `json:"sender_id"`
 }
 
 func (m *AkeMessage) GetDhPk() []byte {
@@ -84,6 +85,30 @@ func (m *AkeMessage) GetDhPk() []byte {
 	}
 
 	data, err := helpers.DecodeHex(m.DhPk)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+func (m *AkeMessage) GetPublicKey() []byte {
+	if m == nil {
+		return nil
+	}
+
+	data, err := helpers.DecodeHex(m.PublicKey)
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+func (m *AkeMessage) GetExpiration() []byte {
+	if m == nil {
+		return nil
+	}
+
+	data, err := helpers.DecodeHex(m.Expiration)
 	if err != nil {
 		return nil
 	}
@@ -108,23 +133,6 @@ func (m *AkeMessage) IsRoundOne() bool {
 
 func (m *AkeMessage) IsRoundTwo() bool {
 	return m.Round == AkeRound2
-}
-
-func (m *AkeMessage) Marshal() ([]byte, error) {
-	if m == nil {
-		return nil, fmt.Errorf("nil AkeMessage")
-	}
-	if m.DhPk == "" || m.Proof == "" || m.SenderId == "" {
-		return nil, fmt.Errorf("missing dhPk or proof (both required)")
-	}
-	env := ProtocolMessage{
-		Type:     TypeAke,
-		SenderId: m.SenderId,
-	}
-	if err := env.SetPayload(m); err != nil {
-		return nil, err
-	}
-	return env.Marshal()
 }
 
 // Optional helper to parse an Ake envelope directly.

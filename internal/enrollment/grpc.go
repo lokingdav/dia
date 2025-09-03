@@ -7,6 +7,7 @@ import (
 
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
 	"github.com/dense-identity/denseid/internal/datetime"
+	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
 	"google.golang.org/grpc/codes"
@@ -59,21 +60,8 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		return nil, status.Errorf(codes.Internal, "failed to generate expiry: %v", err)
 	}
 
-	// Set attributes and sign
-	attributes := []string{
-		eid,
-		signing.EncodeToHex(expiryBytes),
-		req.GetIden().Name,
-		req.GetIden().LogoUrl,
-		signing.EncodeToHex(req.GetPk()),
-		signing.EncodeToHex(req.GetIpk()),
-		req.Nonce,
-	}
-	for i, v := range attributes {
-		attributes[i] = v + req.Tn
-	}
-
-	Sigma, err := signing.BbsSign(s.cfg.CiPrivateKey, attributes)
+	message := helpers.ConcatBytes(req.GetPk(), expiryBytes, []byte(req.GetTn()))
+	Sigma, err := signing.BbsSign(s.cfg.CiPrivateKey, [][]byte{message,})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate credential: %v", err)
 	}

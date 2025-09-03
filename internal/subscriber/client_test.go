@@ -55,14 +55,24 @@ func TestSessionLifecycle(t *testing.T) {
 func TestMessageProcessingWithProtocol(t *testing.T) {
 	// Create an AKE message
 	akeMsg := protocol.AkeMessage{
-		Round:    protocol.AkeRound1,
-		DhPk:     "test_dhpk",
-		Proof:    "test_proof",
+		Round: protocol.AkeRound1,
+		DhPk:  "test_dhpk",
+		Proof: "test_proof",
+	}
+
+	// Create protocol message wrapper
+	wrapperMsg := protocol.ProtocolMessage{
+		Type:     protocol.TypeAke,
 		SenderId: "caller",
 	}
 
+	err := wrapperMsg.SetPayload(akeMsg)
+	if err != nil {
+		t.Fatalf("failed to set payload: %v", err)
+	}
+
 	// Marshal it (this creates the protocol envelope)
-	messageData, err := akeMsg.Marshal()
+	messageData, err := wrapperMsg.Marshal()
 	if err != nil {
 		t.Fatalf("failed to marshal AKE message: %v", err)
 	}
@@ -147,13 +157,23 @@ func TestMessageFiltering(t *testing.T) {
 func TestAkeRoundProcessing(t *testing.T) {
 	// Test Round 1 processing
 	round1Msg := protocol.AkeMessage{
-		Round:    protocol.AkeRound1,
-		DhPk:     "caller_dhpk",
-		Proof:    "caller_proof",
+		Round: protocol.AkeRound1,
+		DhPk:  "caller_dhpk",
+		Proof: "caller_proof",
+	}
+
+	// Create protocol message wrapper
+	protocolWrapper1 := protocol.ProtocolMessage{
+		Type:     protocol.TypeAke,
 		SenderId: "caller",
 	}
 
-	round1Data, err := round1Msg.Marshal()
+	err := protocolWrapper1.SetPayload(round1Msg)
+	if err != nil {
+		t.Fatalf("failed to set round 1 payload: %v", err)
+	}
+
+	round1Data, err := protocolWrapper1.Marshal()
 	if err != nil {
 		t.Fatalf("failed to marshal round 1: %v", err)
 	}
@@ -179,13 +199,23 @@ func TestAkeRoundProcessing(t *testing.T) {
 
 		// Create Round 2 response
 		round2Msg := protocol.AkeMessage{
-			Round:    protocol.AkeRound2,
-			DhPk:     "recipient_dhpk",
-			Proof:    "recipient_proof",
+			Round: protocol.AkeRound2,
+			DhPk:  "recipient_dhpk",
+			Proof: "recipient_proof",
+		}
+
+		// Create protocol message wrapper for Round 2
+		protocolWrapper2 := protocol.ProtocolMessage{
+			Type:     protocol.TypeAke,
 			SenderId: "recipient",
 		}
 
-		round2Data, err := round2Msg.Marshal()
+		err = protocolWrapper2.SetPayload(round2Msg)
+		if err != nil {
+			t.Fatalf("failed to set round 2 payload: %v", err)
+		}
+
+		round2Data, err := protocolWrapper2.Marshal()
 		if err != nil {
 			t.Fatalf("failed to marshal round 2: %v", err)
 		}

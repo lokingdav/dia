@@ -75,6 +75,9 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	if caller == nil {
 		return nil, errors.New("caller CallState cannot be nil")
 	}
+	if len(caller.DhPk) == 0 {
+		return nil, errors.New("AKE not initialized: DhPk is empty")
+	}
 
 	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
 	proof, err := bbs.ZkProof(c0)
@@ -83,14 +86,18 @@ func AkeRound1CallerToRecipient(caller *CallState) ([]byte, error) {
 	}
 
 	akeMsg := AkeMessage{
-		Round:    AkeRound1,
-		SenderId: caller.SenderId,
-		DhPk:     helpers.EncodeToHex(caller.DhPk),
-		Proof:    helpers.EncodeToHex(proof),
+		Round:      AkeRound1,
+		DhPk:       helpers.EncodeToHex(caller.DhPk),
+		PublicKey:  helpers.EncodeToHex(caller.Config.RtuPublicKey),
+		Expiration: helpers.EncodeToHex(caller.Config.EnExpiration),
+		Proof:      helpers.EncodeToHex(proof),
 	}
-
-	msg, err := akeMsg.Marshal()
-
+	protocolMsg := ProtocolMessage{
+		Type:     TypeAke,
+		SenderId: caller.SenderId,
+	}
+	protocolMsg.SetPayload(akeMsg)
+	msg, err := protocolMsg.Marshal()
 	if err != nil {
 		return nil, err
 	}
@@ -126,13 +133,18 @@ func AkeRound2RecipientToCaller(recipient *CallState, caller *AkeMessage) ([]byt
 	}
 
 	akeMsg := AkeMessage{
-		Round:    AkeRound2,
-		SenderId: recipient.SenderId,
-		DhPk:     helpers.EncodeToHex(recipient.DhPk),
-		Proof:    helpers.EncodeToHex(proof),
+		Round:      AkeRound2,
+		DhPk:       helpers.EncodeToHex(recipient.DhPk),
+		PublicKey:  helpers.EncodeToHex(recipient.Config.RtuPublicKey),
+		Expiration: helpers.EncodeToHex(recipient.Config.EnExpiration),
+		Proof:      helpers.EncodeToHex(proof),
 	}
-
-	msg, err := akeMsg.Marshal()
+	protocolMsg := ProtocolMessage{
+		Type:     TypeAke,
+		SenderId: recipient.SenderId,
+	}
+	protocolMsg.SetPayload(akeMsg)
+	msg, err := protocolMsg.Marshal()
 	if err != nil {
 		return nil, err
 	}
