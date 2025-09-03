@@ -142,29 +142,38 @@ func main() {
 		}
 
 		if message.IsAke() {
-			if message.IsRoundOne() && callState.IamRecipient() {
-				log.Println("Handling Round 1 Message: Recipient --> Caller")
+			// === Recipient Logic ===
+			if callState.IamRecipient() {
+				if message.IsRoundOne() {
+					log.Println("Handling Round 1 Message: Recipient --> Caller")
 
-				response, err := protocol.AkeRound2RecipientToCaller(callState, &message)
-				if err != nil {
-					log.Printf("failed responding to ake round 1: %v", err)
-				}
-				if err := oobController.Send(response); err != nil {
-					log.Printf("failed responding to ake round 1: %v", err)
-				}
+					response, err := protocol.AkeRound2RecipientToCaller(callState, &message)
+					if err != nil {
+						log.Printf("failed responding to ake round 1: %v", err)
+						return
+					}
+					if err := oobController.Send(response); err != nil {
+						log.Printf("failed responding to ake round 1: %v", err)
+						return
+					}
 
-				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
-				stop() // Signal completion
+					log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+					stop() // Signal completion
+				}
 			}
 
-			if message.IsRoundTwo() && callState.IamCaller() {
-				log.Println("Handling Round 2 Message: Caller Finalize")
-				if err := protocol.AkeRound2CallerFinalize(callState, &message); err != nil {
-					log.Printf("failed to finalize recipients ake message: %v", err)
-				}
+			// === Caller Logic ===
+			if callState.IamCaller() {
+				if message.IsRoundTwo() {
+					log.Println("Handling Round 2 Message: Caller Finalize")
+					if err := protocol.AkeRound2CallerFinalize(callState, &message); err != nil {
+						log.Printf("failed to finalize recipients ake message: %v", err)
+						return
+					}
 
-				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
-				stop() // Signal completion
+					log.Printf("Computed Shared Secret: %x", callState.SharedKey)
+					stop() // Signal completion
+				}
 			}
 		}
 	})
