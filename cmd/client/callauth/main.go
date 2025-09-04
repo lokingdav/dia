@@ -23,22 +23,18 @@ func createCallState() *protocol.CallState {
 	if *dial == "" && *receive == "" {
 		log.Fatal("--dial or --receive option is required")
 	}
-
 	if *dial != "" && *receive != "" {
 		log.Fatal("You cannot specify both --dial or --receive. Make your mind up.")
 	}
-
 	if *envfile == "" {
 		log.Fatal("--env is required for subscriber authentication")
 	}
-
 	if err := config.LoadEnv(*envfile); err != nil {
 		log.Printf("warning loading %s: %v", *envfile, err)
 	}
 
 	var outgoing bool
 	var phoneNumber string
-
 	if *dial == "" {
 		outgoing = false
 		phoneNumber = *receive
@@ -47,16 +43,15 @@ func createCallState() *protocol.CallState {
 		phoneNumber = *dial
 	}
 
-	config, err := config.New[config.SubscriberConfig]()
+	cfg, err := config.New[config.SubscriberConfig]()
 	if err != nil {
 		log.Fatalf("failed to load subscriber config: %v", err)
 	}
-	err = config.ParseKeysAsBytes()
-	if err != nil {
+	if err := cfg.ParseKeysAsBytes(); err != nil {
 		log.Fatalf("failed to parse config: %v", err)
 	}
 
-	state := protocol.NewCallState(config, phoneNumber, outgoing)
+	state := protocol.NewCallState(cfg, phoneNumber, outgoing)
 
 	fmt.Println("===== Call Details =====")
 	fmt.Printf("--> Outgoing: %v\n", outgoing)
@@ -75,86 +70,71 @@ func RunKeyDerivation(ctx context.Context, callState *protocol.CallState) {
 	if err != nil {
 		log.Fatalf("error deriving key: %v", err)
 	}
-	err = kdClient.Close()
-	if err != nil {
+	if err := kdClient.Close(); err != nil {
 		log.Fatalf("unable to close keyderivation client: %v", err)
 	}
 	callState.SetSharedKey(sharedKey)
 }
 
 func akeInit(oob *subscriber.Controller, callState *protocol.CallState) {
-	err := protocol.InitAke(callState)
-	if err != nil {
+	if err := protocol.InitAke(callState); err != nil {
 		log.Fatalf("failed to init AKE: %v", err)
 	}
-
 	if callState.IsOutgoing {
 		ciphertext, err := protocol.AkeInitCallerToRecipient(callState)
-
 		if err != nil {
 			log.Fatalf("failed creating AkeInit Caller --> Recipient: %v", err)
 		}
-
 		if err := oob.Send(ciphertext); err != nil {
 			log.Fatalf("publish failed: %v", err)
 		}
-
 		log.Println("Sent AkeInit Message: Caller --> Recipient")
 	}
 }
-
-// func rtuRound1(oob *subscriber.Controller, callState *protocol.CallState) {
-
-// }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	// Initialize call state
 	callState := createCallState()
-
-	// Derive shared key and update state
 	RunKeyDerivation(ctx, callState)
 
-	// create controller to handle pub-sub communication
+	// Tunnel-based controller
 	oobController, err := subscriber.NewController(callState)
 	if err != nil {
 		panic(err)
 	}
 
-	//to-do: add check to run akeInit only if no state is found
+	// For outgoing, send AKE init first
 	akeInit(oobController, callState)
-	//else rtuRound1(oobController, callState)
 
-	// Now start the subscription service
+	// Start Tunnel: subscribes to current topic with replay and begins receiving EVENTs
 	oobController.Start(func(data []byte) {
 		message, err := getMessage(callState, data)
 		if err != nil {
 			log.Printf("error getting message stream: %v", err)
+			return
 		}
 
 		log.Printf("New Message. Type:%s, Sender:%s, Topic:%s", message.Type, message.SenderId, message.Topic)
 
+		// extra safety (server suppresses self-echo already)
 		if message.SenderId == callState.SenderId {
 			log.Printf("Ignoring self-authored message")
 			return
 		}
-
-		// Filter by current topic - only process messages for the active topic
+		// Filter by locally-active topic
 		if message.Topic != callState.GetCurrentTopic() {
 			log.Printf("Ignoring message from inactive topic: %s (current: %s)", message.Topic, callState.GetCurrentTopic())
 			return
 		}
-
-		// Check for bye message - applies to both roles
 		if message.IsBye() {
 			log.Println("Received bye message - shutting down")
 			stop()
 			return
 		}
 
-		// === Recipient Logic ===
+		// === Recipient (Bob) ===
 		if callState.IamRecipient() {
 			if message.IsAkeInit() {
 				log.Println("Handling AkeInit Message: Recipient --> Caller")
@@ -168,32 +148,31 @@ func main() {
 					log.Printf("failed responding to ake init: %v", err)
 					return
 				}
-
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 			}
 
 			if message.IsAkeComplete() {
 				log.Println("Received AkeComplete message - AKE protocol finished")
 
-				// Compute RTU topic and transition
 				rtuTopic := protocol.DeriveRtuTopic(callState.SharedKey)
-				callState.TransitionToRtu(rtuTopic)
 
-				// Subscribe to the new RTU topic
-				if err := oobController.SubscribeToNewTopic(rtuTopic); err != nil {
-					log.Printf("failed to subscribe to RTU topic: %v", err)
+				// Move with replay (server will replay new topic)
+				if err := oobController.SwapToTopic(rtuTopic, nil, nil); err != nil {
+					log.Printf("failed to swap to RTU topic: %v", err)
 					return
 				}
-				log.Printf("Transitioned and subscribed to RTU topic: %s", rtuTopic)
+				// Local state update after move
+				callState.TransitionToRtu(rtuTopic)
+				log.Printf("Swapped to RTU topic: %s", rtuTopic)
 			}
 
 			if message.IsRtuInit() {
 				log.Println("Received RtuInit message - RTU protocol started")
-				// Here we would handle RTU initialization
+				// Handle RTU init logic...
 			}
 		}
 
-		// === Caller Logic ===
+		// === Caller (Alice) ===
 		if callState.IamCaller() {
 			if message.IsAkeResponse() {
 				log.Println("Handling AkeResponse Message: Caller Finalize")
@@ -201,41 +180,42 @@ func main() {
 					log.Printf("failed to finalize ake response: %v", err)
 					return
 				}
-
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 
-				// Create RTU topic and publish RtuInit message
+				// IMPORTANT: capture old topic BEFORE CreateRtuInitForCaller (it transitions state)
+				oldTopic := callState.GetCurrentTopic()
+
+				// Create RTU topic + ciphertext; this also TransitionToRtu inside
 				rtuTopic, rtuInitMsg, err := protocol.CreateRtuInitForCaller(callState)
 				if err != nil {
 					log.Printf("failed to create RTU init: %v", err)
 					return
 				}
-				if err := oobController.SendToTopic(rtuTopic, rtuInitMsg, callState.Ticket); err != nil {
-					log.Printf("failed to send RTU init message: %v", err)
+
+				// Subscribe to RTU with piggy-backed RTU init
+				if err := oobController.SubscribeToNewTopicWithPayload(rtuTopic, rtuInitMsg, callState.Ticket); err != nil {
+					log.Printf("failed to subscribe+init on RTU topic: %v", err)
 					return
 				}
-				log.Printf("Sent RtuInit message to new topic: %s", rtuTopic)
+				log.Printf("Subscribed to RTU topic (with init): %s", rtuTopic)
 
-				// Send AkeComplete to signal protocol completion
+				// Notify Bob on the OLD topic so he can swap
 				completeMsg, err := protocol.AkeCompleteSendToCaller(callState)
 				if err != nil {
 					log.Printf("failed to create ake complete message: %v", err)
 					return
 				}
-				if err := oobController.Send(completeMsg); err != nil {
-					log.Printf("failed to send ake complete message: %v", err)
+				if err := oobController.SendToTopic(oldTopic, completeMsg, nil); err != nil {
+					log.Printf("failed to send AkeComplete on old topic: %v", err)
 					return
 				}
-				log.Println("Sent AkeComplete message to recipient")
+				log.Println("Sent AkeComplete on old topic")
 			}
 		}
 	})
 
 	log.Printf("Topic: %s", callState.Topic)
-
-	// Wait for completion or Ctrl-C
 	<-ctx.Done()
-
 	_ = oobController.Close()
 }
 
@@ -243,9 +223,9 @@ func getMessage(callState *protocol.CallState, data []byte) (protocol.ProtocolMe
 	plaintext, err := encryption.SymDecrypt(callState.SharedKey, data)
 	if err != nil {
 		return protocol.ProtocolMessage{}, err
-		//to-do: decrypt with public key encryption if symmetric fails
+		// TODO: fallback to public-key decrypt if needed
 	}
-	message := protocol.ProtocolMessage{}
-	message.Unmarshal(plaintext)
+	var message protocol.ProtocolMessage
+	_ = message.Unmarshal(plaintext)
 	return message, nil
 }
