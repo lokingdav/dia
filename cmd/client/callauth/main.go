@@ -76,39 +76,27 @@ func RunKeyDerivation(ctx context.Context, callState *protocol.CallState) {
 	callState.SetSharedKey(sharedKey)
 }
 
-func akeInit(oob *subscriber.Controller, callState *protocol.CallState) {
-	if err := protocol.InitAke(callState); err != nil {
-		log.Fatalf("failed to init AKE: %v", err)
-	}
-	if callState.IsOutgoing {
-		ciphertext, err := protocol.AkeInitCallerToRecipient(callState)
-		if err != nil {
-			log.Fatalf("failed creating AkeInit Caller --> Recipient: %v", err)
-		}
-		if err := oob.Send(ciphertext); err != nil {
-			log.Fatalf("publish failed: %v", err)
-		}
-		log.Println("Sent AkeInit Message: Caller --> Recipient")
-	}
-}
-
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
+	// 1) Call state & key derivation
 	callState := createCallState()
 	RunKeyDerivation(ctx, callState)
 
-	// Tunnel-based controller
+	// 2) IMPORTANT: Initialize AKE BEFORE creating the Relay controller
+	if err := protocol.InitAke(callState); err != nil {
+		log.Fatalf("failed to init AKE: %v", err)
+	}
+	log.Printf("AKE Topic: %s", callState.AkeTopic)
+
+	// 3) Now create the controller (Session will subscribe to CurrentTopic = AkeTopic)
 	oobController, err := subscriber.NewController(callState)
 	if err != nil {
 		panic(err)
 	}
 
-	// For outgoing, send AKE init first
-	akeInit(oobController, callState)
-
-	// Start Tunnel: subscribes to current topic with replay and begins receiving EVENTs
+	// 4) Start the Tunnel (initial SUBSCRIBE will use AkeTopic)
 	oobController.Start(func(data []byte) {
 		message, err := getMessage(callState, data)
 		if err != nil {
@@ -118,16 +106,18 @@ func main() {
 
 		log.Printf("New Message. Type:%s, Sender:%s, Topic:%s", message.Type, message.SenderId, message.Topic)
 
-		// extra safety (server suppresses self-echo already)
+		// (Server already suppresses self-echo; this is extra safety)
 		if message.SenderId == callState.SenderId {
 			log.Printf("Ignoring self-authored message")
 			return
 		}
-		// Filter by locally-active topic
+
+		// Filter by current active topic
 		if message.Topic != callState.GetCurrentTopic() {
 			log.Printf("Ignoring message from inactive topic: %s (current: %s)", message.Topic, callState.GetCurrentTopic())
 			return
 		}
+
 		if message.IsBye() {
 			log.Println("Received bye message - shutting down")
 			stop()
@@ -153,24 +143,26 @@ func main() {
 
 			if message.IsAkeComplete() {
 				log.Println("Received AkeComplete message - AKE protocol finished")
-				
+
+				// Derive RTU topic
 				rtuTopic := protocol.DeriveRtuTopic(callState.SharedKey)
 
-				// Local state update after move
+				// FIX: move our state FIRST so replay from rtuTopic isn't filtered
 				callState.TransitionToRtu(rtuTopic)
 
-				// Move with replay (server will replay new topic)
+				// Ask server to swap (replay then live)
 				if err := oobController.SwapToTopic(rtuTopic, nil, nil); err != nil {
 					log.Printf("failed to swap to RTU topic: %v", err)
+					// (Optional) revert: callState.TransitionToRtu(callState.AkeTopic)
 					return
 				}
-				
+
 				log.Printf("Swapped to RTU topic: %s", rtuTopic)
 			}
 
 			if message.IsRtuInit() {
 				log.Println("Received RtuInit message - RTU protocol started")
-				// Handle RTU init logic...
+				// Handle RTU init...
 			}
 		}
 
@@ -184,24 +176,24 @@ func main() {
 				}
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 
-				// IMPORTANT: capture old topic BEFORE CreateRtuInitForCaller (it transitions state)
-				oldTopic := callState.GetCurrentTopic()
+				// Capture old (AKE) topic BEFORE switching
+				oldTopic := callState.AkeTopic
 
-				// Create RTU topic + ciphertext; this also TransitionToRtu inside
+				// Create RTU init (transitions state to RTU inside)
 				rtuTopic, rtuInitMsg, err := protocol.CreateRtuInitForCaller(callState)
 				if err != nil {
 					log.Printf("failed to create RTU init: %v", err)
 					return
 				}
 
-				// Subscribe to RTU with piggy-backed RTU init
+				// Subscribe to RTU and piggy-back RTU init
 				if err := oobController.SubscribeToNewTopicWithPayload(rtuTopic, rtuInitMsg, callState.Ticket); err != nil {
 					log.Printf("failed to subscribe+init on RTU topic: %v", err)
 					return
 				}
 				log.Printf("Subscribed to RTU topic (with init): %s", rtuTopic)
 
-				// Notify Bob on the OLD topic so he can swap
+				// Notify Bob on the OLD AKE topic to move
 				completeMsg, err := protocol.AkeCompleteSendToCaller(callState)
 				if err != nil {
 					log.Printf("failed to create ake complete message: %v", err)
@@ -216,7 +208,20 @@ func main() {
 		}
 	})
 
-	log.Printf("Topic: %s", callState.CurrentTopic)
+	// 5) For outgoing calls, after Tunnel is started, send AkeInit
+	if callState.IsOutgoing {
+		ciphertext, err := protocol.AkeInitCallerToRecipient(callState)
+		if err != nil {
+			log.Fatalf("failed creating AkeInit Caller --> Recipient: %v", err)
+		}
+		if err := oobController.Send(ciphertext); err != nil {
+			log.Fatalf("publish failed: %v", err)
+		}
+		log.Println("Sent AkeInit Message: Caller --> Recipient")
+	}
+
+	log.Printf("Active Topic: %s", callState.GetCurrentTopic())
+
 	<-ctx.Done()
 	_ = oobController.Close()
 }
@@ -225,7 +230,7 @@ func getMessage(callState *protocol.CallState, data []byte) (protocol.ProtocolMe
 	plaintext, err := encryption.SymDecrypt(callState.SharedKey, data)
 	if err != nil {
 		return protocol.ProtocolMessage{}, err
-		// TODO: fallback to public-key decrypt if needed
+		// TODO: fallback to public key encryption if symmetric fails
 	}
 	var message protocol.ProtocolMessage
 	_ = message.Unmarshal(plaintext)
