@@ -26,19 +26,30 @@ func (c *Controller) Start(onMessage func([]byte)) {
 	c.Session.Start(onMessage)
 }
 
-// Send publishes one payload (unauthenticated publish as per server policy).
+// Send publishes one payload (ticket is used only if topic creation is needed).
 func (c *Controller) Send(payload []byte) error {
 	return c.Session.Send(payload)
 }
 
-// SendToTopic publishes payload to a specific topic
+// SendToTopic publishes payload to a specific topic (optionally with ticket).
 func (c *Controller) SendToTopic(topic string, payload []byte, ticket []byte) error {
 	return c.Session.SendToTopic(topic, payload, ticket)
 }
 
-// SubscribeToNewTopic subscribes to a new topic
+// SubscribeToNewTopic keeps the old signature (no piggy-back).
 func (c *Controller) SubscribeToNewTopic(newTopic string) error {
 	return c.Session.SubscribeToNewTopic(newTopic)
+}
+
+// SubscribeToNewTopicWithPayload lets you piggy-back a one-shot publish on subscribe.
+func (c *Controller) SubscribeToNewTopicWithPayload(newTopic string, payload []byte, ticket []byte) error {
+	return c.Session.SubscribeToNewTopicWithPayload(newTopic, payload, ticket)
+}
+
+
+// Optional convenience for Bob's flow (swap with replay and optional hello).
+func (c *Controller) SwapToTopic(toTopic string, hello []byte, ticket []byte) error {
+	return c.Session.SwapToTopic(toTopic, hello, ticket)
 }
 
 // Close shuts down the session and the underlying client connection.

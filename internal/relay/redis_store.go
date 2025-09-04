@@ -7,9 +7,15 @@ import (
 	"log"
 	"time"
 
-	pb "github.com/dense-identity/denseid/api/go/relay/v1"
 	"github.com/redis/go-redis/v9"
 )
+
+// storedMsg is internal-only; not exposed in the public proto.
+type storedMsg struct {
+	Topic    string `json:"topic"`
+	Payload  []byte `json:"payload"`
+	SenderID string `json:"sender_id"`
+}
 
 // RedisStore handles message storage and retrieval using Redis
 type RedisStore struct {
@@ -47,27 +53,30 @@ func (rs *RedisStore) Close() error {
 }
 
 // StoreMessage stores a message in Redis with TTL
-func (rs *RedisStore) StoreMessage(ctx context.Context, topic string, message *pb.RelayMessage) error {
-	// Serialize the message
-	data, err := json.Marshal(message)
+func (rs *RedisStore) StoreMessage(ctx context.Context, topic string, payload []byte, senderID string) error {
+	msg := storedMsg{
+		Topic:    topic,
+		Payload:  payload,
+		SenderID: senderID,
+	}
+	data, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
-	// Use a list to store messages for each topic (FIFO order)
 	listKey := fmt.Sprintf("topic:%s:messages", topic)
 
-	// Add message to the list
+	// Add message to the list (newest at head)
 	if err := rs.client.LPush(ctx, listKey, data).Err(); err != nil {
 		return fmt.Errorf("failed to store message: %w", err)
 	}
 
-	// Set TTL on the list (refreshed on each message)
+	// Set/refresh TTL
 	if err := rs.client.Expire(ctx, listKey, rs.messageTTL).Err(); err != nil {
 		log.Printf("Warning: failed to set TTL on topic %s: %v", topic, err)
 	}
 
-	// Trim the list to keep only the last 100 messages (configurable)
+	// Trim list to last 100 messages
 	if err := rs.client.LTrim(ctx, listKey, 0, 99).Err(); err != nil {
 		log.Printf("Warning: failed to trim topic %s: %v", topic, err)
 	}
@@ -75,31 +84,28 @@ func (rs *RedisStore) StoreMessage(ctx context.Context, topic string, message *p
 	return nil
 }
 
-// GetMessageHistory retrieves message history for a topic
-func (rs *RedisStore) GetMessageHistory(ctx context.Context, topic string) ([]*pb.RelayMessage, error) {
+// GetMessageHistory retrieves message history for a topic (oldest → newest)
+func (rs *RedisStore) GetMessageHistory(ctx context.Context, topic string) ([]storedMsg, error) {
 	listKey := fmt.Sprintf("topic:%s:messages", topic)
 
-	// Get all messages from the list (LRANGE 0 -1 gets all)
 	data, err := rs.client.LRange(ctx, listKey, 0, -1).Result()
 	if err != nil {
 		if err == redis.Nil {
-			return []*pb.RelayMessage{}, nil // No messages found
+			return []storedMsg{}, nil // No messages found
 		}
 		return nil, fmt.Errorf("failed to get message history: %w", err)
 	}
 
-	// Deserialize messages
-	messages := make([]*pb.RelayMessage, 0, len(data))
-	for i := len(data) - 1; i >= 0; i-- { // Reverse order since LPUSH stores newest first
-		var message pb.RelayMessage
-		if err := json.Unmarshal([]byte(data[i]), &message); err != nil {
+	msgs := make([]storedMsg, 0, len(data))
+	for i := len(data) - 1; i >= 0; i-- { // LPUSH => reverse to deliver oldest→newest
+		var m storedMsg
+		if err := json.Unmarshal([]byte(data[i]), &m); err != nil {
 			log.Printf("Warning: failed to unmarshal message: %v", err)
 			continue
 		}
-		messages = append(messages, &message)
+		msgs = append(msgs, m)
 	}
-
-	return messages, nil
+	return msgs, nil
 }
 
 // TopicExists checks if a topic exists (has any messages or is tracked)
@@ -107,7 +113,6 @@ func (rs *RedisStore) TopicExists(ctx context.Context, topic string) (bool, erro
 	listKey := fmt.Sprintf("topic:%s:messages", topic)
 	topicKey := fmt.Sprintf("topic:%s:exists", topic)
 
-	// Check if either the message list exists or the topic is explicitly tracked
 	exists1, err := rs.client.Exists(ctx, listKey).Result()
 	if err != nil {
 		return false, fmt.Errorf("failed to check topic existence: %w", err)
@@ -124,30 +129,21 @@ func (rs *RedisStore) TopicExists(ctx context.Context, topic string) (bool, erro
 // CreateTopic explicitly creates/tracks a topic
 func (rs *RedisStore) CreateTopic(ctx context.Context, topic string) error {
 	topicKey := fmt.Sprintf("topic:%s:exists", topic)
-
-	// Set a marker that this topic exists
 	if err := rs.client.Set(ctx, topicKey, "1", rs.messageTTL).Err(); err != nil {
 		return fmt.Errorf("failed to create topic: %w", err)
 	}
-
 	return nil
 }
 
-// CleanupExpiredTopics removes expired topics (called periodically)
-func (rs *RedisStore) CleanupExpiredTopics(ctx context.Context) error {
-	// Redis handles TTL automatically, but we can implement additional cleanup if needed
-	// For now, Redis will automatically clean up expired keys
-	return nil
-}
+// CleanupExpiredTopics: TTL cleanup is handled by Redis; no-op for now.
+func (rs *RedisStore) CleanupExpiredTopics(ctx context.Context) error { return nil }
 
 // GetTopicStats returns statistics about a topic
 func (rs *RedisStore) GetTopicStats(ctx context.Context, topic string) (int64, error) {
 	listKey := fmt.Sprintf("topic:%s:messages", topic)
-
 	count, err := rs.client.LLen(ctx, listKey).Result()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get topic stats: %w", err)
 	}
-
 	return count, nil
 }

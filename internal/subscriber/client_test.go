@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	relaypb "github.com/dense-identity/denseid/api/go/relay/v1"
 	"github.com/dense-identity/denseid/internal/protocol"
 )
 
@@ -104,7 +103,7 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
 
-	// Verify the data (no round check needed anymore)
+	// Verify the data
 	if decodedAke.DhPk != "test_dhpk" {
 		t.Errorf("dhPk mismatch: got %s, want test_dhpk", decodedAke.DhPk)
 	}
@@ -114,38 +113,29 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 	}
 }
 
-// TestMessageFiltering tests message filtering by sender ID
-func TestMessageFiltering(t *testing.T) {
+// TestNoClientSideFiltering documents the new flow:
+// clients receive payload bytes and do NOT filter self-messages;
+// self-echo suppression is enforced by the server.
+func TestNoClientSideFiltering(t *testing.T) {
 	selfSenderID := "my_sender_id"
 
-	// Simulate filtering logic like in main.go
-	filterSelfMessages := func(msg *relaypb.RelayMessage) bool {
-		return msg.SenderId != selfSenderID
-	}
+	// In the new flow, the client callback receives raw payload bytes.
+	// We'll simulate two payloads (one hypothetically from self and one from others).
+	rcvd := make([][]byte, 0, 2)
+	onMessage := func(p []byte) { rcvd = append(rcvd, p) }
 
-	// Test self-message (should be filtered)
-	selfMsg := &relaypb.RelayMessage{
-		Topic:    "test_topic",
-		Payload:  []byte("self message"),
-		SenderId: selfSenderID,
-		CorrId:   "self_corr",
-	}
+	// Simulate delivery
+	selfPayload := []byte("self message (server should've suppressed this in practice)")
+	otherPayload := []byte("other message")
 
-	if filterSelfMessages(selfMsg) {
-		t.Error("self message should be filtered out")
-	}
+	// Client-side: deliver whatever arrives (no filtering)
+	onMessage(selfPayload)
+	onMessage(otherPayload)
 
-	// Test other-message (should pass)
-	otherMsg := &relaypb.RelayMessage{
-		Topic:    "test_topic",
-		Payload:  []byte("other message"),
-		SenderId: "other_sender",
-		CorrId:   "other_corr",
+	if len(rcvd) != 2 {
+		t.Fatalf("expected 2 delivered payloads, got %d", len(rcvd))
 	}
-
-	if !filterSelfMessages(otherMsg) {
-		t.Error("other message should not be filtered")
-	}
+	_ = selfSenderID // kept to mirror original test variables
 }
 
 // TestAkeRoundProcessing tests processing of AKE round messages

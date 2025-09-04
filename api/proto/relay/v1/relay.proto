@@ -1,32 +1,43 @@
 syntax = "proto3";
 package denseid.relay.v1;
 
-import "google/protobuf/timestamp.proto";
-
 option go_package = "github.com/dense-identity/denseid/api/go/relay/v1;relaypb";
 
-message SubscribeRequest {
-  string topic    = 1;
-  string sender_id = 2;
-}
-
-message RelayMessage {
-  string topic    = 1;
-  bytes  payload    = 2;
-}
-
-message PublishRequest {
-  string topic = 1;
-  bytes ticket = 2;
-  RelayMessage message = 3;
-}
-
-message PublishResponse {
-  string status = 1;
-  google.protobuf.Timestamp relay_at = 2;
-}
-
 service RelayService {
-  rpc Publish  (PublishRequest)   returns (PublishResponse);
-  rpc Subscribe(SubscribeRequest) returns (stream RelayMessage);
+  rpc Tunnel(stream RelayRequest) returns (stream RelayResponse);
+}
+
+/************** CLIENT → SERVER **************/
+message RelayRequest {
+  string sender_id = 1;  // required; used for self-echo suppression and replay filtering
+  Type   type      = 2;  // PUBLISH | SUBSCRIBE | UNSUBSCRIBE | SWAP
+
+  string topic     = 3;  // target topic (all ops)
+  string to_topic  = 4;  // SWAP only (new topic)
+  bytes  payload   = 5;  // body for PUBLISH; optional one-shot publish on SUBSCRIBE/SWAP
+  bytes  ticket    = 6;  // required only if a publish would create a new topic
+
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    PUBLISH          = 1;
+    SUBSCRIBE        = 2;
+    UNSUBSCRIBE      = 3;
+    SWAP             = 4;
+  }
+}
+
+/************** SERVER → CLIENT **************/
+message RelayResponse {
+  Type   type    = 1;   // EVENT | ERROR
+  string topic   = 2;
+  bytes  payload = 3;   // set on EVENT
+
+  int32  code    = 4;   // set on ERROR (e.g., 3 INVALID_ARGUMENT, 7 PERMISSION_DENIED)
+  string message = 5;   // set on ERROR
+
+  enum Type {
+    TYPE_UNSPECIFIED = 0;
+    EVENT            = 1;
+    ERROR            = 2;
+  }
 }
