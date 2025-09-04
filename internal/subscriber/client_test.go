@@ -119,16 +119,15 @@ func TestMessageFiltering(t *testing.T) {
 	selfSenderID := "my_sender_id"
 
 	// Simulate filtering logic like in main.go
-	filterSelfMessages := func(msg *relaypb.RelayMessage) bool {
+	filterSelfMessages := func(msg *relaypb.MessageDelivery) bool {
 		return msg.SenderId != selfSenderID
 	}
 
 	// Test self-message (should be filtered)
-	selfMsg := &relaypb.RelayMessage{
+	selfMsg := &relaypb.MessageDelivery{
 		Topic:    "test_topic",
 		Payload:  []byte("self message"),
 		SenderId: selfSenderID,
-		CorrId:   "self_corr",
 	}
 
 	if filterSelfMessages(selfMsg) {
@@ -136,11 +135,10 @@ func TestMessageFiltering(t *testing.T) {
 	}
 
 	// Test other-message (should pass)
-	otherMsg := &relaypb.RelayMessage{
+	otherMsg := &relaypb.MessageDelivery{
 		Topic:    "test_topic",
 		Payload:  []byte("other message"),
 		SenderId: "other_sender",
-		CorrId:   "other_corr",
 	}
 
 	if !filterSelfMessages(otherMsg) {

@@ -3,22 +3,19 @@ package subscriber
 import (
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	relaypb "github.com/dense-identity/denseid/api/go/relay/v1"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // Session holds one subscription (topic, ticket, senderID) over a Client.
+// This is a compatibility wrapper around the new StreamSession.
 type Session struct {
-	client   *RelayClient
-	topic    string
-	ticket   []byte
-	senderID string
+	streamSession *StreamSession
+	client        *RelayClient
+	topic         string
+	ticket        []byte
+	senderID      string
 
 	onMessage func([]byte)
 
@@ -55,8 +52,17 @@ func (s *Session) Start(onMessage func([]byte)) {
 		return
 	}
 	s.onMessage = onMessage
-	s.wg.Add(1)
-	go s.recvLoop()
+
+	// Create and start the new streaming session
+	s.streamSession = NewStreamSession(s.client, s.senderID)
+	if err := s.streamSession.Start(onMessage); err != nil {
+		return
+	}
+
+	// Subscribe to the initial topic if provided
+	if s.topic != "" {
+		s.streamSession.Subscribe(s.topic, s.ticket, true)
+	}
 }
 
 // Send publishes one payload with the configured senderID. Returns error on failure.
@@ -65,24 +71,12 @@ func (s *Session) Send(payload []byte) error {
 	if s.closed.Load() {
 		return errors.New("session closed")
 	}
-	// Short per-call deadline for snappy UX
-	ctx, cancel := context.WithTimeout(s.ctx, s.publishTimeout)
-	defer cancel()
 
-	_, err := s.client.Stub.Publish(ctx, &relaypb.PublishRequest{
-		Topic:  s.topic,
-		Ticket: s.ticket, // Use ticket if available for topic creation
-		Message: &relaypb.RelayMessage{
-			Topic:    s.topic,
-			Payload:  payload,
-			SenderId: s.senderID,
-		},
-	})
-	if err != nil {
-		// For app logic, you might want to surface NotFound (topic missing) distinctly.
-		return err
+	if s.streamSession == nil {
+		return errors.New("session not started")
 	}
-	return nil
+
+	return s.streamSession.Publish(payload)
 }
 
 // SendToTopic publishes one payload to a specific topic (different from the subscribed topic)
@@ -90,23 +84,12 @@ func (s *Session) SendToTopic(topic string, payload []byte, ticket []byte) error
 	if s.closed.Load() {
 		return errors.New("session closed")
 	}
-	// Short per-call deadline for snappy UX
-	ctx, cancel := context.WithTimeout(s.ctx, s.publishTimeout)
-	defer cancel()
 
-	_, err := s.client.Stub.Publish(ctx, &relaypb.PublishRequest{
-		Topic:  topic,
-		Ticket: ticket, // Use provided ticket for topic creation
-		Message: &relaypb.RelayMessage{
-			Topic:    topic,
-			Payload:  payload,
-			SenderId: s.senderID,
-		},
-	})
-	if err != nil {
-		return err
+	if s.streamSession == nil {
+		return errors.New("session not started")
 	}
-	return nil
+
+	return s.streamSession.PublishToTopic(topic, payload, ticket)
 }
 
 // SubscribeToNewTopic creates a new subscription to a different topic
@@ -115,16 +98,15 @@ func (s *Session) SubscribeToNewTopic(newTopic string) error {
 		return errors.New("session closed")
 	}
 
-	// Update the session's topic for future subscriptions
+	if s.streamSession == nil {
+		return errors.New("session not started")
+	}
+
+	// Update our stored topic for future reference
 	s.topic = newTopic
 
-	// Force reconnection by canceling and recreating the context
-	// This will cause the recvLoop to reconnect with the new topic
-	oldCancel := s.cancel
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	oldCancel() // This will close the old stream and force reconnection
-
-	return nil
+	// Use the new SwitchTopic functionality
+	return s.streamSession.SwitchTopic(newTopic, s.ticket, true)
 }
 
 // Close stops receiving and waits for cleanup.
@@ -132,98 +114,11 @@ func (s *Session) Close() {
 	if s.closed.Swap(true) {
 		return
 	}
+
+	if s.streamSession != nil {
+		s.streamSession.Close()
+	}
+
 	s.cancel()
 	s.wg.Wait()
-}
-
-func (s *Session) recvLoop() {
-	defer s.wg.Done()
-
-	backoffIdx := 0
-	for {
-		if s.ctx.Err() != nil {
-			return
-		}
-
-		// Start/Restart the Subscribe stream
-		stream, err := s.client.Stub.Subscribe(s.ctx, &relaypb.SubscribeRequest{
-			Topic:    s.topic,
-			SenderId: s.senderID,
-		})
-		if err != nil {
-			// Transient failures: back off and retry
-			if s.transient(err) && s.sleepBackoff(backoffIdx) {
-				backoffIdx++
-				continue
-			}
-			// Permanent or context canceled: exit
-			return
-		}
-
-		// Successful connect: reset backoff
-		backoffIdx = 0
-
-		// Read loop
-		for {
-			m, err := stream.Recv()
-			if err == nil {
-				if m != nil && s.onMessage != nil {
-					// Deliver bytes immediately; app can decode
-					s.onMessage(m.GetPayload())
-				}
-				continue
-			}
-
-			// Handle stream termination
-			if err == io.EOF {
-				// Server closed cleanly; attempt reconnect
-			} else if st, ok := status.FromError(err); ok {
-				// Context canceled? we're shutting down.
-				if st.Code() == codes.Canceled || st.Code() == codes.DeadlineExceeded {
-					return
-				}
-				// Otherwise, treat as transient and reconnect.
-			} else {
-				// Non-status error; treat as transient for POC.
-			}
-
-			// Reconnect with backoff unless we're closed
-			if s.sleepBackoff(backoffIdx) {
-				backoffIdx++
-				break
-			}
-			return
-		}
-	}
-}
-
-func (s *Session) sleepBackoff(idx int) bool {
-	if s.ctx.Err() != nil {
-		return false
-	}
-	if idx >= len(s.retryBackoff) {
-		idx = len(s.retryBackoff) - 1
-	}
-	select {
-	case <-time.After(s.retryBackoff[idx]):
-		return true
-	case <-s.ctx.Done():
-		return false
-	}
-}
-
-func (s *Session) transient(err error) bool {
-	if s.ctx.Err() != nil {
-		return false
-	}
-	st, ok := status.FromError(err)
-	if !ok {
-		return true // assume transient for non-status errors in POC
-	}
-	switch st.Code() {
-	case codes.Unavailable, codes.ResourceExhausted, codes.Canceled, codes.DeadlineExceeded:
-		return true
-	default:
-		return false
-	}
 }

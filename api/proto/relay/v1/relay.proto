@@ -5,28 +5,102 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/dense-identity/denseid/api/go/relay/v1;relaypb";
 
-message SubscribeRequest {
-  string topic    = 1;
+// Message types for different relay operations
+enum RelayMessageType {
+  RELAY_MESSAGE_TYPE_UNSPECIFIED = 0;
+  RELAY_MESSAGE_TYPE_HELLO = 1;        // Initial client registration
+  RELAY_MESSAGE_TYPE_PUBLISH = 2;      // Publish a message to a topic
+  RELAY_MESSAGE_TYPE_SUBSCRIBE = 3;    // Subscribe to a topic
+  RELAY_MESSAGE_TYPE_UNSUBSCRIBE = 4;  // Unsubscribe from a topic
+  RELAY_MESSAGE_TYPE_REPLACE = 5;      // Replace current subscription with new topic
+  RELAY_MESSAGE_TYPE_BYE = 6;          // Close the connection gracefully
+}
+
+// Client-to-server request in the bidirectional stream
+message RelayRequest {
+  RelayMessageType type = 1;
   string sender_id = 2;
+  
+  oneof operation {
+    HelloOperation hello = 9;
+    PublishOperation publish = 10;
+    SubscribeOperation subscribe = 11;
+    UnsubscribeOperation unsubscribe = 12;
+    ReplaceOperation replace = 13;
+    ByeOperation bye = 14;
+  }
 }
 
-message RelayMessage {
-  string topic    = 1;
-  bytes  payload    = 2;
+// Server-to-client response in the bidirectional stream
+message RelayResponse {
+  RelayMessageType type = 1;
+  
+  oneof response {
+    MessageDelivery message = 10;
+    OperationAck ack = 11;
+    ErrorResponse error = 12;
+  }
 }
 
-message PublishRequest {
+// Operations
+message HelloOperation {
+  // Initial client registration - no additional fields needed
+  // The sender_id in the parent RelayRequest provides the client identity
+}
+
+message PublishOperation {
   string topic = 1;
-  bytes ticket = 2;
-  RelayMessage message = 3;
+  bytes ticket = 2;  // Required for new topics
+  bytes payload = 3;
+  string message_id = 4;  // Optional client-generated ID for tracking
 }
 
-message PublishResponse {
-  string status = 1;
-  google.protobuf.Timestamp relay_at = 2;
+message SubscribeOperation {
+  string topic = 1;
+  bool replay_history = 2;  // Whether to replay message history
+}
+
+message UnsubscribeOperation {
+  string topic = 1;
+}
+
+message ReplaceOperation {
+  string old_topic = 1;
+  string new_topic = 2;
+  bytes ticket = 3;  // Required if new topic doesn't exist
+  bool replay_history = 4;  // Whether to replay history for new topic
+}
+
+message ByeOperation {
+  string reason = 1;  // Optional reason for disconnection
+}
+
+// Responses
+message MessageDelivery {
+  string topic = 1;
+  bytes payload = 2;
+  string sender_id = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  string message_id = 5;  // Server-generated or client-provided ID
+}
+
+message OperationAck {
+  RelayMessageType operation_type = 1;
+  string topic = 2;
+  bool success = 3;
+  string message = 4;  // Success/error message
+  google.protobuf.Timestamp timestamp = 5;
+}
+
+message ErrorResponse {
+  RelayMessageType operation_type = 1;
+  string topic = 2;
+  string error_code = 3;
+  string error_message = 4;
+  google.protobuf.Timestamp timestamp = 5;
 }
 
 service RelayService {
-  rpc Publish  (PublishRequest)   returns (PublishResponse);
-  rpc Subscribe(SubscribeRequest) returns (stream RelayMessage);
+  // Single bidirectional streaming RPC for all relay operations
+  rpc Relay(stream RelayRequest) returns (stream RelayResponse);
 }

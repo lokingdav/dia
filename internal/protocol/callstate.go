@@ -6,7 +6,6 @@ import (
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/helpers"
-	"github.com/google/uuid"
 )
 
 type CallState struct {
@@ -94,7 +93,7 @@ func NewCallState(config *config.SubscriberConfig, phoneNumber string, outgoing 
 		Recipient:  recipient,
 		Ts:         datetime.GetNormalizedTs(),
 		IsOutgoing: outgoing,
-		SenderId:   uuid.NewString(),
+		SenderId:   config.MyPhone, // todo: replace with uuid.NewString(),
 		Ticket:     config.SampleTicket,
 		Config:     config,
 	}

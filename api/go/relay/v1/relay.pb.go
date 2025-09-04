@@ -22,83 +22,101 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type SubscribeRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	SenderId      string                 `protobuf:"bytes,2,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
+// Message types for different relay operations
+type RelayMessageType int32
 
-func (x *SubscribeRequest) Reset() {
-	*x = SubscribeRequest{}
-	mi := &file_relay_v1_relay_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
+const (
+	RelayMessageType_RELAY_MESSAGE_TYPE_UNSPECIFIED RelayMessageType = 0
+	RelayMessageType_RELAY_MESSAGE_TYPE_HELLO       RelayMessageType = 1 // Initial client registration
+	RelayMessageType_RELAY_MESSAGE_TYPE_PUBLISH     RelayMessageType = 2 // Publish a message to a topic
+	RelayMessageType_RELAY_MESSAGE_TYPE_SUBSCRIBE   RelayMessageType = 3 // Subscribe to a topic
+	RelayMessageType_RELAY_MESSAGE_TYPE_UNSUBSCRIBE RelayMessageType = 4 // Unsubscribe from a topic
+	RelayMessageType_RELAY_MESSAGE_TYPE_REPLACE     RelayMessageType = 5 // Replace current subscription with new topic
+	RelayMessageType_RELAY_MESSAGE_TYPE_BYE         RelayMessageType = 6 // Close the connection gracefully
+)
 
-func (x *SubscribeRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*SubscribeRequest) ProtoMessage() {}
-
-func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_relay_v1_relay_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
+// Enum value maps for RelayMessageType.
+var (
+	RelayMessageType_name = map[int32]string{
+		0: "RELAY_MESSAGE_TYPE_UNSPECIFIED",
+		1: "RELAY_MESSAGE_TYPE_HELLO",
+		2: "RELAY_MESSAGE_TYPE_PUBLISH",
+		3: "RELAY_MESSAGE_TYPE_SUBSCRIBE",
+		4: "RELAY_MESSAGE_TYPE_UNSUBSCRIBE",
+		5: "RELAY_MESSAGE_TYPE_REPLACE",
+		6: "RELAY_MESSAGE_TYPE_BYE",
 	}
-	return mi.MessageOf(x)
+	RelayMessageType_value = map[string]int32{
+		"RELAY_MESSAGE_TYPE_UNSPECIFIED": 0,
+		"RELAY_MESSAGE_TYPE_HELLO":       1,
+		"RELAY_MESSAGE_TYPE_PUBLISH":     2,
+		"RELAY_MESSAGE_TYPE_SUBSCRIBE":   3,
+		"RELAY_MESSAGE_TYPE_UNSUBSCRIBE": 4,
+		"RELAY_MESSAGE_TYPE_REPLACE":     5,
+		"RELAY_MESSAGE_TYPE_BYE":         6,
+	}
+)
+
+func (x RelayMessageType) Enum() *RelayMessageType {
+	p := new(RelayMessageType)
+	*p = x
+	return p
 }
 
-// Deprecated: Use SubscribeRequest.ProtoReflect.Descriptor instead.
-func (*SubscribeRequest) Descriptor() ([]byte, []int) {
+func (x RelayMessageType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RelayMessageType) Descriptor() protoreflect.EnumDescriptor {
+	return file_relay_v1_relay_proto_enumTypes[0].Descriptor()
+}
+
+func (RelayMessageType) Type() protoreflect.EnumType {
+	return &file_relay_v1_relay_proto_enumTypes[0]
+}
+
+func (x RelayMessageType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RelayMessageType.Descriptor instead.
+func (RelayMessageType) EnumDescriptor() ([]byte, []int) {
 	return file_relay_v1_relay_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *SubscribeRequest) GetTopic() string {
-	if x != nil {
-		return x.Topic
-	}
-	return ""
-}
-
-func (x *SubscribeRequest) GetSenderId() string {
-	if x != nil {
-		return x.SenderId
-	}
-	return ""
-}
-
-type RelayMessage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	CorrId        string                 `protobuf:"bytes,2,opt,name=corr_id,json=corrId,proto3" json:"corr_id,omitempty"`
-	SenderId      string                 `protobuf:"bytes,3,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
-	Payload       []byte                 `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"`
+// Client-to-server request in the bidirectional stream
+type RelayRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Type     RelayMessageType       `protobuf:"varint,1,opt,name=type,proto3,enum=denseid.relay.v1.RelayMessageType" json:"type,omitempty"`
+	SenderId string                 `protobuf:"bytes,2,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
+	// Types that are valid to be assigned to Operation:
+	//
+	//	*RelayRequest_Hello
+	//	*RelayRequest_Publish
+	//	*RelayRequest_Subscribe
+	//	*RelayRequest_Unsubscribe
+	//	*RelayRequest_Replace
+	//	*RelayRequest_Bye
+	Operation     isRelayRequest_Operation `protobuf_oneof:"operation"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *RelayMessage) Reset() {
-	*x = RelayMessage{}
-	mi := &file_relay_v1_relay_proto_msgTypes[1]
+func (x *RelayRequest) Reset() {
+	*x = RelayRequest{}
+	mi := &file_relay_v1_relay_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *RelayMessage) String() string {
+func (x *RelayRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*RelayMessage) ProtoMessage() {}
+func (*RelayRequest) ProtoMessage() {}
 
-func (x *RelayMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_relay_v1_relay_proto_msgTypes[1]
+func (x *RelayRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -109,62 +127,254 @@ func (x *RelayMessage) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use RelayMessage.ProtoReflect.Descriptor instead.
-func (*RelayMessage) Descriptor() ([]byte, []int) {
-	return file_relay_v1_relay_proto_rawDescGZIP(), []int{1}
+// Deprecated: Use RelayRequest.ProtoReflect.Descriptor instead.
+func (*RelayRequest) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *RelayMessage) GetTopic() string {
+func (x *RelayRequest) GetType() RelayMessageType {
 	if x != nil {
-		return x.Topic
+		return x.Type
 	}
-	return ""
+	return RelayMessageType_RELAY_MESSAGE_TYPE_UNSPECIFIED
 }
 
-func (x *RelayMessage) GetCorrId() string {
-	if x != nil {
-		return x.CorrId
-	}
-	return ""
-}
-
-func (x *RelayMessage) GetSenderId() string {
+func (x *RelayRequest) GetSenderId() string {
 	if x != nil {
 		return x.SenderId
 	}
 	return ""
 }
 
-func (x *RelayMessage) GetPayload() []byte {
+func (x *RelayRequest) GetOperation() isRelayRequest_Operation {
 	if x != nil {
-		return x.Payload
+		return x.Operation
 	}
 	return nil
 }
 
-type PublishRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	Ticket        []byte                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"`
-	Message       *RelayMessage          `protobuf:"bytes,3,opt,name=message,proto3" json:"message,omitempty"`
+func (x *RelayRequest) GetHello() *HelloOperation {
+	if x != nil {
+		if x, ok := x.Operation.(*RelayRequest_Hello); ok {
+			return x.Hello
+		}
+	}
+	return nil
+}
+
+func (x *RelayRequest) GetPublish() *PublishOperation {
+	if x != nil {
+		if x, ok := x.Operation.(*RelayRequest_Publish); ok {
+			return x.Publish
+		}
+	}
+	return nil
+}
+
+func (x *RelayRequest) GetSubscribe() *SubscribeOperation {
+	if x != nil {
+		if x, ok := x.Operation.(*RelayRequest_Subscribe); ok {
+			return x.Subscribe
+		}
+	}
+	return nil
+}
+
+func (x *RelayRequest) GetUnsubscribe() *UnsubscribeOperation {
+	if x != nil {
+		if x, ok := x.Operation.(*RelayRequest_Unsubscribe); ok {
+			return x.Unsubscribe
+		}
+	}
+	return nil
+}
+
+func (x *RelayRequest) GetReplace() *ReplaceOperation {
+	if x != nil {
+		if x, ok := x.Operation.(*RelayRequest_Replace); ok {
+			return x.Replace
+		}
+	}
+	return nil
+}
+
+func (x *RelayRequest) GetBye() *ByeOperation {
+	if x != nil {
+		if x, ok := x.Operation.(*RelayRequest_Bye); ok {
+			return x.Bye
+		}
+	}
+	return nil
+}
+
+type isRelayRequest_Operation interface {
+	isRelayRequest_Operation()
+}
+
+type RelayRequest_Hello struct {
+	Hello *HelloOperation `protobuf:"bytes,9,opt,name=hello,proto3,oneof"`
+}
+
+type RelayRequest_Publish struct {
+	Publish *PublishOperation `protobuf:"bytes,10,opt,name=publish,proto3,oneof"`
+}
+
+type RelayRequest_Subscribe struct {
+	Subscribe *SubscribeOperation `protobuf:"bytes,11,opt,name=subscribe,proto3,oneof"`
+}
+
+type RelayRequest_Unsubscribe struct {
+	Unsubscribe *UnsubscribeOperation `protobuf:"bytes,12,opt,name=unsubscribe,proto3,oneof"`
+}
+
+type RelayRequest_Replace struct {
+	Replace *ReplaceOperation `protobuf:"bytes,13,opt,name=replace,proto3,oneof"`
+}
+
+type RelayRequest_Bye struct {
+	Bye *ByeOperation `protobuf:"bytes,14,opt,name=bye,proto3,oneof"`
+}
+
+func (*RelayRequest_Hello) isRelayRequest_Operation() {}
+
+func (*RelayRequest_Publish) isRelayRequest_Operation() {}
+
+func (*RelayRequest_Subscribe) isRelayRequest_Operation() {}
+
+func (*RelayRequest_Unsubscribe) isRelayRequest_Operation() {}
+
+func (*RelayRequest_Replace) isRelayRequest_Operation() {}
+
+func (*RelayRequest_Bye) isRelayRequest_Operation() {}
+
+// Server-to-client response in the bidirectional stream
+type RelayResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Type  RelayMessageType       `protobuf:"varint,1,opt,name=type,proto3,enum=denseid.relay.v1.RelayMessageType" json:"type,omitempty"`
+	// Types that are valid to be assigned to Response:
+	//
+	//	*RelayResponse_Message
+	//	*RelayResponse_Ack
+	//	*RelayResponse_Error
+	Response      isRelayResponse_Response `protobuf_oneof:"response"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *PublishRequest) Reset() {
-	*x = PublishRequest{}
+func (x *RelayResponse) Reset() {
+	*x = RelayResponse{}
+	mi := &file_relay_v1_relay_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RelayResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RelayResponse) ProtoMessage() {}
+
+func (x *RelayResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RelayResponse.ProtoReflect.Descriptor instead.
+func (*RelayResponse) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RelayResponse) GetType() RelayMessageType {
+	if x != nil {
+		return x.Type
+	}
+	return RelayMessageType_RELAY_MESSAGE_TYPE_UNSPECIFIED
+}
+
+func (x *RelayResponse) GetResponse() isRelayResponse_Response {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
+func (x *RelayResponse) GetMessage() *MessageDelivery {
+	if x != nil {
+		if x, ok := x.Response.(*RelayResponse_Message); ok {
+			return x.Message
+		}
+	}
+	return nil
+}
+
+func (x *RelayResponse) GetAck() *OperationAck {
+	if x != nil {
+		if x, ok := x.Response.(*RelayResponse_Ack); ok {
+			return x.Ack
+		}
+	}
+	return nil
+}
+
+func (x *RelayResponse) GetError() *ErrorResponse {
+	if x != nil {
+		if x, ok := x.Response.(*RelayResponse_Error); ok {
+			return x.Error
+		}
+	}
+	return nil
+}
+
+type isRelayResponse_Response interface {
+	isRelayResponse_Response()
+}
+
+type RelayResponse_Message struct {
+	Message *MessageDelivery `protobuf:"bytes,10,opt,name=message,proto3,oneof"`
+}
+
+type RelayResponse_Ack struct {
+	Ack *OperationAck `protobuf:"bytes,11,opt,name=ack,proto3,oneof"`
+}
+
+type RelayResponse_Error struct {
+	Error *ErrorResponse `protobuf:"bytes,12,opt,name=error,proto3,oneof"`
+}
+
+func (*RelayResponse_Message) isRelayResponse_Response() {}
+
+func (*RelayResponse_Ack) isRelayResponse_Response() {}
+
+func (*RelayResponse_Error) isRelayResponse_Response() {}
+
+// Operations
+type HelloOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HelloOperation) Reset() {
+	*x = HelloOperation{}
 	mi := &file_relay_v1_relay_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *PublishRequest) String() string {
+func (x *HelloOperation) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PublishRequest) ProtoMessage() {}
+func (*HelloOperation) ProtoMessage() {}
 
-func (x *PublishRequest) ProtoReflect() protoreflect.Message {
+func (x *HelloOperation) ProtoReflect() protoreflect.Message {
 	mi := &file_relay_v1_relay_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -176,55 +386,102 @@ func (x *PublishRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use PublishRequest.ProtoReflect.Descriptor instead.
-func (*PublishRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use HelloOperation.ProtoReflect.Descriptor instead.
+func (*HelloOperation) Descriptor() ([]byte, []int) {
 	return file_relay_v1_relay_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *PublishRequest) GetTopic() string {
+type PublishOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	Ticket        []byte                 `protobuf:"bytes,2,opt,name=ticket,proto3" json:"ticket,omitempty"` // Required for new topics
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"`
+	MessageId     string                 `protobuf:"bytes,4,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"` // Optional client-generated ID for tracking
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishOperation) Reset() {
+	*x = PublishOperation{}
+	mi := &file_relay_v1_relay_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishOperation) ProtoMessage() {}
+
+func (x *PublishOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishOperation.ProtoReflect.Descriptor instead.
+func (*PublishOperation) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *PublishOperation) GetTopic() string {
 	if x != nil {
 		return x.Topic
 	}
 	return ""
 }
 
-func (x *PublishRequest) GetTicket() []byte {
+func (x *PublishOperation) GetTicket() []byte {
 	if x != nil {
 		return x.Ticket
 	}
 	return nil
 }
 
-func (x *PublishRequest) GetMessage() *RelayMessage {
+func (x *PublishOperation) GetPayload() []byte {
 	if x != nil {
-		return x.Message
+		return x.Payload
 	}
 	return nil
 }
 
-type PublishResponse struct {
+func (x *PublishOperation) GetMessageId() string {
+	if x != nil {
+		return x.MessageId
+	}
+	return ""
+}
+
+type SubscribeOperation struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	RelayAt       *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=relay_at,json=relayAt,proto3" json:"relay_at,omitempty"`
+	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	ReplayHistory bool                   `protobuf:"varint,2,opt,name=replay_history,json=replayHistory,proto3" json:"replay_history,omitempty"` // Whether to replay message history
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *PublishResponse) Reset() {
-	*x = PublishResponse{}
-	mi := &file_relay_v1_relay_proto_msgTypes[3]
+func (x *SubscribeOperation) Reset() {
+	*x = SubscribeOperation{}
+	mi := &file_relay_v1_relay_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *PublishResponse) String() string {
+func (x *SubscribeOperation) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*PublishResponse) ProtoMessage() {}
+func (*SubscribeOperation) ProtoMessage() {}
 
-func (x *PublishResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_relay_v1_relay_proto_msgTypes[3]
+func (x *SubscribeOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -235,21 +492,406 @@ func (x *PublishResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use PublishResponse.ProtoReflect.Descriptor instead.
-func (*PublishResponse) Descriptor() ([]byte, []int) {
-	return file_relay_v1_relay_proto_rawDescGZIP(), []int{3}
+// Deprecated: Use SubscribeOperation.ProtoReflect.Descriptor instead.
+func (*SubscribeOperation) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *PublishResponse) GetStatus() string {
+func (x *SubscribeOperation) GetTopic() string {
 	if x != nil {
-		return x.Status
+		return x.Topic
 	}
 	return ""
 }
 
-func (x *PublishResponse) GetRelayAt() *timestamppb.Timestamp {
+func (x *SubscribeOperation) GetReplayHistory() bool {
 	if x != nil {
-		return x.RelayAt
+		return x.ReplayHistory
+	}
+	return false
+}
+
+type UnsubscribeOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnsubscribeOperation) Reset() {
+	*x = UnsubscribeOperation{}
+	mi := &file_relay_v1_relay_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnsubscribeOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnsubscribeOperation) ProtoMessage() {}
+
+func (x *UnsubscribeOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnsubscribeOperation.ProtoReflect.Descriptor instead.
+func (*UnsubscribeOperation) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *UnsubscribeOperation) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+type ReplaceOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OldTopic      string                 `protobuf:"bytes,1,opt,name=old_topic,json=oldTopic,proto3" json:"old_topic,omitempty"`
+	NewTopic      string                 `protobuf:"bytes,2,opt,name=new_topic,json=newTopic,proto3" json:"new_topic,omitempty"`
+	Ticket        []byte                 `protobuf:"bytes,3,opt,name=ticket,proto3" json:"ticket,omitempty"`                                     // Required if new topic doesn't exist
+	ReplayHistory bool                   `protobuf:"varint,4,opt,name=replay_history,json=replayHistory,proto3" json:"replay_history,omitempty"` // Whether to replay history for new topic
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplaceOperation) Reset() {
+	*x = ReplaceOperation{}
+	mi := &file_relay_v1_relay_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplaceOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplaceOperation) ProtoMessage() {}
+
+func (x *ReplaceOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplaceOperation.ProtoReflect.Descriptor instead.
+func (*ReplaceOperation) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *ReplaceOperation) GetOldTopic() string {
+	if x != nil {
+		return x.OldTopic
+	}
+	return ""
+}
+
+func (x *ReplaceOperation) GetNewTopic() string {
+	if x != nil {
+		return x.NewTopic
+	}
+	return ""
+}
+
+func (x *ReplaceOperation) GetTicket() []byte {
+	if x != nil {
+		return x.Ticket
+	}
+	return nil
+}
+
+func (x *ReplaceOperation) GetReplayHistory() bool {
+	if x != nil {
+		return x.ReplayHistory
+	}
+	return false
+}
+
+type ByeOperation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Reason        string                 `protobuf:"bytes,1,opt,name=reason,proto3" json:"reason,omitempty"` // Optional reason for disconnection
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ByeOperation) Reset() {
+	*x = ByeOperation{}
+	mi := &file_relay_v1_relay_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ByeOperation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ByeOperation) ProtoMessage() {}
+
+func (x *ByeOperation) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ByeOperation.ProtoReflect.Descriptor instead.
+func (*ByeOperation) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *ByeOperation) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+// Responses
+type MessageDelivery struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"`
+	SenderId      string                 `protobuf:"bytes,3,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	MessageId     string                 `protobuf:"bytes,5,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"` // Server-generated or client-provided ID
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MessageDelivery) Reset() {
+	*x = MessageDelivery{}
+	mi := &file_relay_v1_relay_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MessageDelivery) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MessageDelivery) ProtoMessage() {}
+
+func (x *MessageDelivery) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MessageDelivery.ProtoReflect.Descriptor instead.
+func (*MessageDelivery) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *MessageDelivery) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+func (x *MessageDelivery) GetPayload() []byte {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *MessageDelivery) GetSenderId() string {
+	if x != nil {
+		return x.SenderId
+	}
+	return ""
+}
+
+func (x *MessageDelivery) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *MessageDelivery) GetMessageId() string {
+	if x != nil {
+		return x.MessageId
+	}
+	return ""
+}
+
+type OperationAck struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationType RelayMessageType       `protobuf:"varint,1,opt,name=operation_type,json=operationType,proto3,enum=denseid.relay.v1.RelayMessageType" json:"operation_type,omitempty"`
+	Topic         string                 `protobuf:"bytes,2,opt,name=topic,proto3" json:"topic,omitempty"`
+	Success       bool                   `protobuf:"varint,3,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"` // Success/error message
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperationAck) Reset() {
+	*x = OperationAck{}
+	mi := &file_relay_v1_relay_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperationAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperationAck) ProtoMessage() {}
+
+func (x *OperationAck) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperationAck.ProtoReflect.Descriptor instead.
+func (*OperationAck) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *OperationAck) GetOperationType() RelayMessageType {
+	if x != nil {
+		return x.OperationType
+	}
+	return RelayMessageType_RELAY_MESSAGE_TYPE_UNSPECIFIED
+}
+
+func (x *OperationAck) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+func (x *OperationAck) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *OperationAck) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *OperationAck) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+type ErrorResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OperationType RelayMessageType       `protobuf:"varint,1,opt,name=operation_type,json=operationType,proto3,enum=denseid.relay.v1.RelayMessageType" json:"operation_type,omitempty"`
+	Topic         string                 `protobuf:"bytes,2,opt,name=topic,proto3" json:"topic,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,3,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	Timestamp     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ErrorResponse) Reset() {
+	*x = ErrorResponse{}
+	mi := &file_relay_v1_relay_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ErrorResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ErrorResponse) ProtoMessage() {}
+
+func (x *ErrorResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_relay_v1_relay_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ErrorResponse.ProtoReflect.Descriptor instead.
+func (*ErrorResponse) Descriptor() ([]byte, []int) {
+	return file_relay_v1_relay_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *ErrorResponse) GetOperationType() RelayMessageType {
+	if x != nil {
+		return x.OperationType
+	}
+	return RelayMessageType_RELAY_MESSAGE_TYPE_UNSPECIFIED
+}
+
+func (x *ErrorResponse) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+func (x *ErrorResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *ErrorResponse) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *ErrorResponse) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
 	}
 	return nil
 }
@@ -258,25 +900,75 @@ var File_relay_v1_relay_proto protoreflect.FileDescriptor
 
 const file_relay_v1_relay_proto_rawDesc = "" +
 	"\n" +
-	"\x14relay/v1/relay.proto\x12\x10denseid.relay.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"E\n" +
-	"\x10SubscribeRequest\x12\x14\n" +
-	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x1b\n" +
-	"\tsender_id\x18\x02 \x01(\tR\bsenderId\"t\n" +
-	"\fRelayMessage\x12\x14\n" +
-	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x17\n" +
-	"\acorr_id\x18\x02 \x01(\tR\x06corrId\x12\x1b\n" +
-	"\tsender_id\x18\x03 \x01(\tR\bsenderId\x12\x18\n" +
-	"\apayload\x18\x04 \x01(\fR\apayload\"x\n" +
-	"\x0ePublishRequest\x12\x14\n" +
+	"\x14relay/v1/relay.proto\x12\x10denseid.relay.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xf0\x03\n" +
+	"\fRelayRequest\x126\n" +
+	"\x04type\x18\x01 \x01(\x0e2\".denseid.relay.v1.RelayMessageTypeR\x04type\x12\x1b\n" +
+	"\tsender_id\x18\x02 \x01(\tR\bsenderId\x128\n" +
+	"\x05hello\x18\t \x01(\v2 .denseid.relay.v1.HelloOperationH\x00R\x05hello\x12>\n" +
+	"\apublish\x18\n" +
+	" \x01(\v2\".denseid.relay.v1.PublishOperationH\x00R\apublish\x12D\n" +
+	"\tsubscribe\x18\v \x01(\v2$.denseid.relay.v1.SubscribeOperationH\x00R\tsubscribe\x12J\n" +
+	"\vunsubscribe\x18\f \x01(\v2&.denseid.relay.v1.UnsubscribeOperationH\x00R\vunsubscribe\x12>\n" +
+	"\areplace\x18\r \x01(\v2\".denseid.relay.v1.ReplaceOperationH\x00R\areplace\x122\n" +
+	"\x03bye\x18\x0e \x01(\v2\x1e.denseid.relay.v1.ByeOperationH\x00R\x03byeB\v\n" +
+	"\toperation\"\xff\x01\n" +
+	"\rRelayResponse\x126\n" +
+	"\x04type\x18\x01 \x01(\x0e2\".denseid.relay.v1.RelayMessageTypeR\x04type\x12=\n" +
+	"\amessage\x18\n" +
+	" \x01(\v2!.denseid.relay.v1.MessageDeliveryH\x00R\amessage\x122\n" +
+	"\x03ack\x18\v \x01(\v2\x1e.denseid.relay.v1.OperationAckH\x00R\x03ack\x127\n" +
+	"\x05error\x18\f \x01(\v2\x1f.denseid.relay.v1.ErrorResponseH\x00R\x05errorB\n" +
+	"\n" +
+	"\bresponse\"\x10\n" +
+	"\x0eHelloOperation\"y\n" +
+	"\x10PublishOperation\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x16\n" +
-	"\x06ticket\x18\x02 \x01(\fR\x06ticket\x128\n" +
-	"\amessage\x18\x03 \x01(\v2\x1e.denseid.relay.v1.RelayMessageR\amessage\"`\n" +
-	"\x0fPublishResponse\x12\x16\n" +
-	"\x06status\x18\x01 \x01(\tR\x06status\x125\n" +
-	"\brelay_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\arelayAt2\xb1\x01\n" +
-	"\fRelayService\x12N\n" +
-	"\aPublish\x12 .denseid.relay.v1.PublishRequest\x1a!.denseid.relay.v1.PublishResponse\x12Q\n" +
-	"\tSubscribe\x12\".denseid.relay.v1.SubscribeRequest\x1a\x1e.denseid.relay.v1.RelayMessage0\x01B;Z9github.com/dense-identity/denseid/api/go/relay/v1;relaypbb\x06proto3"
+	"\x06ticket\x18\x02 \x01(\fR\x06ticket\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\x12\x1d\n" +
+	"\n" +
+	"message_id\x18\x04 \x01(\tR\tmessageId\"Q\n" +
+	"\x12SubscribeOperation\x12\x14\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\x12%\n" +
+	"\x0ereplay_history\x18\x02 \x01(\bR\rreplayHistory\",\n" +
+	"\x14UnsubscribeOperation\x12\x14\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\"\x8b\x01\n" +
+	"\x10ReplaceOperation\x12\x1b\n" +
+	"\told_topic\x18\x01 \x01(\tR\boldTopic\x12\x1b\n" +
+	"\tnew_topic\x18\x02 \x01(\tR\bnewTopic\x12\x16\n" +
+	"\x06ticket\x18\x03 \x01(\fR\x06ticket\x12%\n" +
+	"\x0ereplay_history\x18\x04 \x01(\bR\rreplayHistory\"&\n" +
+	"\fByeOperation\x12\x16\n" +
+	"\x06reason\x18\x01 \x01(\tR\x06reason\"\xb7\x01\n" +
+	"\x0fMessageDelivery\x12\x14\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x18\n" +
+	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1b\n" +
+	"\tsender_id\x18\x03 \x01(\tR\bsenderId\x128\n" +
+	"\ttimestamp\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1d\n" +
+	"\n" +
+	"message_id\x18\x05 \x01(\tR\tmessageId\"\xdd\x01\n" +
+	"\fOperationAck\x12I\n" +
+	"\x0eoperation_type\x18\x01 \x01(\x0e2\".denseid.relay.v1.RelayMessageTypeR\roperationType\x12\x14\n" +
+	"\x05topic\x18\x02 \x01(\tR\x05topic\x12\x18\n" +
+	"\asuccess\x18\x03 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x128\n" +
+	"\ttimestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xee\x01\n" +
+	"\rErrorResponse\x12I\n" +
+	"\x0eoperation_type\x18\x01 \x01(\x0e2\".denseid.relay.v1.RelayMessageTypeR\roperationType\x12\x14\n" +
+	"\x05topic\x18\x02 \x01(\tR\x05topic\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x03 \x01(\tR\terrorCode\x12#\n" +
+	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\x128\n" +
+	"\ttimestamp\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp*\xf6\x01\n" +
+	"\x10RelayMessageType\x12\"\n" +
+	"\x1eRELAY_MESSAGE_TYPE_UNSPECIFIED\x10\x00\x12\x1c\n" +
+	"\x18RELAY_MESSAGE_TYPE_HELLO\x10\x01\x12\x1e\n" +
+	"\x1aRELAY_MESSAGE_TYPE_PUBLISH\x10\x02\x12 \n" +
+	"\x1cRELAY_MESSAGE_TYPE_SUBSCRIBE\x10\x03\x12\"\n" +
+	"\x1eRELAY_MESSAGE_TYPE_UNSUBSCRIBE\x10\x04\x12\x1e\n" +
+	"\x1aRELAY_MESSAGE_TYPE_REPLACE\x10\x05\x12\x1a\n" +
+	"\x16RELAY_MESSAGE_TYPE_BYE\x10\x062\\\n" +
+	"\fRelayService\x12L\n" +
+	"\x05Relay\x12\x1e.denseid.relay.v1.RelayRequest\x1a\x1f.denseid.relay.v1.RelayResponse(\x010\x01B;Z9github.com/dense-identity/denseid/api/go/relay/v1;relaypbb\x06proto3"
 
 var (
 	file_relay_v1_relay_proto_rawDescOnce sync.Once
@@ -290,26 +982,47 @@ func file_relay_v1_relay_proto_rawDescGZIP() []byte {
 	return file_relay_v1_relay_proto_rawDescData
 }
 
-var file_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_relay_v1_relay_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_relay_v1_relay_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_relay_v1_relay_proto_goTypes = []any{
-	(*SubscribeRequest)(nil),      // 0: denseid.relay.v1.SubscribeRequest
-	(*RelayMessage)(nil),          // 1: denseid.relay.v1.RelayMessage
-	(*PublishRequest)(nil),        // 2: denseid.relay.v1.PublishRequest
-	(*PublishResponse)(nil),       // 3: denseid.relay.v1.PublishResponse
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(RelayMessageType)(0),         // 0: denseid.relay.v1.RelayMessageType
+	(*RelayRequest)(nil),          // 1: denseid.relay.v1.RelayRequest
+	(*RelayResponse)(nil),         // 2: denseid.relay.v1.RelayResponse
+	(*HelloOperation)(nil),        // 3: denseid.relay.v1.HelloOperation
+	(*PublishOperation)(nil),      // 4: denseid.relay.v1.PublishOperation
+	(*SubscribeOperation)(nil),    // 5: denseid.relay.v1.SubscribeOperation
+	(*UnsubscribeOperation)(nil),  // 6: denseid.relay.v1.UnsubscribeOperation
+	(*ReplaceOperation)(nil),      // 7: denseid.relay.v1.ReplaceOperation
+	(*ByeOperation)(nil),          // 8: denseid.relay.v1.ByeOperation
+	(*MessageDelivery)(nil),       // 9: denseid.relay.v1.MessageDelivery
+	(*OperationAck)(nil),          // 10: denseid.relay.v1.OperationAck
+	(*ErrorResponse)(nil),         // 11: denseid.relay.v1.ErrorResponse
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_relay_v1_relay_proto_depIdxs = []int32{
-	1, // 0: denseid.relay.v1.PublishRequest.message:type_name -> denseid.relay.v1.RelayMessage
-	4, // 1: denseid.relay.v1.PublishResponse.relay_at:type_name -> google.protobuf.Timestamp
-	2, // 2: denseid.relay.v1.RelayService.Publish:input_type -> denseid.relay.v1.PublishRequest
-	0, // 3: denseid.relay.v1.RelayService.Subscribe:input_type -> denseid.relay.v1.SubscribeRequest
-	3, // 4: denseid.relay.v1.RelayService.Publish:output_type -> denseid.relay.v1.PublishResponse
-	1, // 5: denseid.relay.v1.RelayService.Subscribe:output_type -> denseid.relay.v1.RelayMessage
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0,  // 0: denseid.relay.v1.RelayRequest.type:type_name -> denseid.relay.v1.RelayMessageType
+	3,  // 1: denseid.relay.v1.RelayRequest.hello:type_name -> denseid.relay.v1.HelloOperation
+	4,  // 2: denseid.relay.v1.RelayRequest.publish:type_name -> denseid.relay.v1.PublishOperation
+	5,  // 3: denseid.relay.v1.RelayRequest.subscribe:type_name -> denseid.relay.v1.SubscribeOperation
+	6,  // 4: denseid.relay.v1.RelayRequest.unsubscribe:type_name -> denseid.relay.v1.UnsubscribeOperation
+	7,  // 5: denseid.relay.v1.RelayRequest.replace:type_name -> denseid.relay.v1.ReplaceOperation
+	8,  // 6: denseid.relay.v1.RelayRequest.bye:type_name -> denseid.relay.v1.ByeOperation
+	0,  // 7: denseid.relay.v1.RelayResponse.type:type_name -> denseid.relay.v1.RelayMessageType
+	9,  // 8: denseid.relay.v1.RelayResponse.message:type_name -> denseid.relay.v1.MessageDelivery
+	10, // 9: denseid.relay.v1.RelayResponse.ack:type_name -> denseid.relay.v1.OperationAck
+	11, // 10: denseid.relay.v1.RelayResponse.error:type_name -> denseid.relay.v1.ErrorResponse
+	12, // 11: denseid.relay.v1.MessageDelivery.timestamp:type_name -> google.protobuf.Timestamp
+	0,  // 12: denseid.relay.v1.OperationAck.operation_type:type_name -> denseid.relay.v1.RelayMessageType
+	12, // 13: denseid.relay.v1.OperationAck.timestamp:type_name -> google.protobuf.Timestamp
+	0,  // 14: denseid.relay.v1.ErrorResponse.operation_type:type_name -> denseid.relay.v1.RelayMessageType
+	12, // 15: denseid.relay.v1.ErrorResponse.timestamp:type_name -> google.protobuf.Timestamp
+	1,  // 16: denseid.relay.v1.RelayService.Relay:input_type -> denseid.relay.v1.RelayRequest
+	2,  // 17: denseid.relay.v1.RelayService.Relay:output_type -> denseid.relay.v1.RelayResponse
+	17, // [17:18] is the sub-list for method output_type
+	16, // [16:17] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_relay_v1_relay_proto_init() }
@@ -317,18 +1030,32 @@ func file_relay_v1_relay_proto_init() {
 	if File_relay_v1_relay_proto != nil {
 		return
 	}
+	file_relay_v1_relay_proto_msgTypes[0].OneofWrappers = []any{
+		(*RelayRequest_Hello)(nil),
+		(*RelayRequest_Publish)(nil),
+		(*RelayRequest_Subscribe)(nil),
+		(*RelayRequest_Unsubscribe)(nil),
+		(*RelayRequest_Replace)(nil),
+		(*RelayRequest_Bye)(nil),
+	}
+	file_relay_v1_relay_proto_msgTypes[1].OneofWrappers = []any{
+		(*RelayResponse_Message)(nil),
+		(*RelayResponse_Ack)(nil),
+		(*RelayResponse_Error)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_relay_v1_relay_proto_rawDesc), len(file_relay_v1_relay_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   4,
+			NumEnums:      1,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_relay_v1_relay_proto_goTypes,
 		DependencyIndexes: file_relay_v1_relay_proto_depIdxs,
+		EnumInfos:         file_relay_v1_relay_proto_enumTypes,
 		MessageInfos:      file_relay_v1_relay_proto_msgTypes,
 	}.Build()
 	File_relay_v1_relay_proto = out.File

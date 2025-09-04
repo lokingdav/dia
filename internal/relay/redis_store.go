@@ -47,7 +47,7 @@ func (rs *RedisStore) Close() error {
 }
 
 // StoreMessage stores a message in Redis with TTL
-func (rs *RedisStore) StoreMessage(ctx context.Context, topic string, message *pb.RelayMessage) error {
+func (rs *RedisStore) StoreMessage(ctx context.Context, topic string, message *pb.MessageDelivery) error {
 	// Serialize the message
 	data, err := json.Marshal(message)
 	if err != nil {
@@ -76,22 +76,22 @@ func (rs *RedisStore) StoreMessage(ctx context.Context, topic string, message *p
 }
 
 // GetMessageHistory retrieves message history for a topic
-func (rs *RedisStore) GetMessageHistory(ctx context.Context, topic string) ([]*pb.RelayMessage, error) {
+func (rs *RedisStore) GetMessageHistory(ctx context.Context, topic string) ([]*pb.MessageDelivery, error) {
 	listKey := fmt.Sprintf("topic:%s:messages", topic)
 
 	// Get all messages from the list (LRANGE 0 -1 gets all)
 	data, err := rs.client.LRange(ctx, listKey, 0, -1).Result()
 	if err != nil {
 		if err == redis.Nil {
-			return []*pb.RelayMessage{}, nil // No messages found
+			return []*pb.MessageDelivery{}, nil // No messages found
 		}
 		return nil, fmt.Errorf("failed to get message history: %w", err)
 	}
 
 	// Deserialize messages
-	messages := make([]*pb.RelayMessage, 0, len(data))
+	messages := make([]*pb.MessageDelivery, 0, len(data))
 	for i := len(data) - 1; i >= 0; i-- { // Reverse order since LPUSH stores newest first
-		var message pb.RelayMessage
+		var message pb.MessageDelivery
 		if err := json.Unmarshal([]byte(data[i]), &message); err != nil {
 			log.Printf("Warning: failed to unmarshal message: %v", err)
 			continue
