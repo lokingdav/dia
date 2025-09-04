@@ -33,9 +33,9 @@ func NewRelayClient(addr string, useTLS bool, extraOpts ...grpc.DialOption) (*Re
 	}
 
 	kacp := keepalive.ClientParameters{
-		Time:                30 * time.Second, // send pings every 30s if idle
-		Timeout:             10 * time.Second, // wait 10s for ping ack
-		PermitWithoutStream: true,             // keepalive even with no active RPCs
+		Time:                5 * time.Minute,
+		Timeout:             20 * time.Second,
+		PermitWithoutStream: false,
 	}
 
 	opts := []grpc.DialOption{
