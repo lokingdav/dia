@@ -153,16 +153,18 @@ func main() {
 
 			if message.IsAkeComplete() {
 				log.Println("Received AkeComplete message - AKE protocol finished")
-
+				
 				rtuTopic := protocol.DeriveRtuTopic(callState.SharedKey)
+
+				// Local state update after move
+				callState.TransitionToRtu(rtuTopic)
 
 				// Move with replay (server will replay new topic)
 				if err := oobController.SwapToTopic(rtuTopic, nil, nil); err != nil {
 					log.Printf("failed to swap to RTU topic: %v", err)
 					return
 				}
-				// Local state update after move
-				callState.TransitionToRtu(rtuTopic)
+				
 				log.Printf("Swapped to RTU topic: %s", rtuTopic)
 			}
 
@@ -214,7 +216,7 @@ func main() {
 		}
 	})
 
-	log.Printf("Topic: %s", callState.Topic)
+	log.Printf("Topic: %s", callState.CurrentTopic)
 	<-ctx.Done()
 	_ = oobController.Close()
 }

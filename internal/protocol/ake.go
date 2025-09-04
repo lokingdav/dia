@@ -19,12 +19,10 @@ func AkeDeriveKey(ctx context.Context, client keypb.KeyDerivationServiceClient, 
 	if client == nil {
 		return nil, errors.New("nil KeyDerivationServiceClient")
 	}
-
 	if callState == nil {
 		return nil, errors.New("nil CallState")
 	}
 
-	// Deadline for Evaluate
 	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -46,16 +44,14 @@ func AkeDeriveKey(ctx context.Context, client keypb.KeyDerivationServiceClient, 
 	}
 
 	out, err := voprf.Finalize(eval, blind)
-
 	helpers.WipeBytes(blind)
-
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// DeriveRtuTopic creates a new topic for RTU phase based on shared secret
+// DeriveRtuTopic creates a new topic for RTU phase based on shared secret.
 func DeriveRtuTopic(sharedSecret []byte) string {
 	return helpers.Hash256Hex(helpers.ConcatBytes(sharedSecret, []byte("2")))
 }
@@ -65,15 +61,14 @@ func InitAke(callState *CallState) error {
 		return errors.New("nil CallState")
 	}
 
-	topic := helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("1")))
+	akeTopic := helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("1")))
 
 	dhSk, dhPk, err := dia.DHKeygen()
 	if err != nil {
 		return err
 	}
 
-	callState.InitAke(dhSk, dhPk, topic)
-
+	callState.InitAke(dhSk, dhPk, akeTopic)
 	return nil
 }
 
@@ -98,13 +93,13 @@ func AkeInitCallerToRecipient(caller *CallState) ([]byte, error) {
 		Proof:      helpers.EncodeToHex(proof),
 	}
 
-	msg, err := CreateAkeInitMessage(caller.SenderId, caller.Topic, &akeMsg)
+	// Send on AKE topic
+	msg, err := CreateAkeInitMessage(caller.SenderId, caller.AkeTopic, &akeMsg)
 	if err != nil {
 		return nil, err
 	}
 
 	caller.UpdateR1(c0, proof)
-
 	return encryption.SymEncrypt(caller.SharedKey, msg)
 }
 
@@ -146,7 +141,8 @@ func AkeResponseRecipientToCaller(recipient *CallState, callerMsg *ProtocolMessa
 		Proof:      helpers.EncodeToHex(proof),
 	}
 
-	msg, err := CreateAkeResponseMessage(recipient.SenderId, recipient.Topic, &akeMsg)
+	// Respond on AKE topic
+	msg, err := CreateAkeResponseMessage(recipient.SenderId, recipient.AkeTopic, &akeMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -163,7 +159,7 @@ func AkeResponseRecipientToCaller(recipient *CallState, callerMsg *ProtocolMessa
 
 	recipient.SetSharedKey(ComputeSharedKey(
 		recipient.SharedKey,
-		recipient.MarshalTopic(),
+		recipient.MarshalAkeTopic(), // AKE topic binds the transcript
 		callerProof,
 		proof,
 		callerDhPk,
@@ -211,7 +207,7 @@ func AkeFinalizeCaller(caller *CallState, recipientMsg *ProtocolMessage) error {
 
 	caller.SetSharedKey(ComputeSharedKey(
 		caller.SharedKey,
-		caller.MarshalTopic(),
+		caller.MarshalAkeTopic(), // AKE topic binds the transcript
 		caller.Proof,
 		recipientProof,
 		caller.DhPk,
@@ -224,19 +220,17 @@ func AkeFinalizeCaller(caller *CallState, recipientMsg *ProtocolMessage) error {
 	return nil
 }
 
-// CreateRtuInitForCaller creates RtuInit message and transitions to RTU topic after AKE finalization
+// CreateRtuInitForCaller creates RtuInit message and transitions to RTU topic after AKE finalization.
 func CreateRtuInitForCaller(caller *CallState) (string, []byte, error) {
 	if caller == nil {
 		return "", nil, errors.New("caller CallState cannot be nil")
 	}
 
-	// Derive new RTU topic from shared secret
+	// Derive and set RTU topic
 	rtuTopic := DeriveRtuTopic(caller.SharedKey)
-
-	// Transition caller to RTU topic
 	caller.TransitionToRtu(rtuTopic)
 
-	// Create RTU init message (similar to AKE message structure for now)
+	// RTU init (re-uses AKE message structure for now)
 	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
 	proof, err := CreateZKProof(caller, c0)
 	if err != nil {
@@ -263,30 +257,20 @@ func CreateRtuInitForCaller(caller *CallState) (string, []byte, error) {
 	return rtuTopic, ciphertext, nil
 }
 
-// AkeCompleteSendToCaller sends the AkeComplete message from caller to recipient
+// AkeCompleteSendToCaller sends the AkeComplete message from caller to recipient on the AKE topic.
 func AkeCompleteSendToCaller(caller *CallState) ([]byte, error) {
 	if caller == nil {
 		return nil, errors.New("caller CallState cannot be nil")
 	}
 
-	msg, err := CreateAkeCompleteMessage(caller.SenderId, caller.Topic)
+	msg, err := CreateAkeCompleteMessage(caller.SenderId, caller.AkeTopic)
 	if err != nil {
 		return nil, err
 	}
-
 	return encryption.SymEncrypt(caller.SharedKey, msg)
 }
 
 func ComputeSharedKey(k, tpc, pieA, pieB, A, B, c0, c1, sec []byte) []byte {
-	// fmt.Printf("\nk:\t%x\n", k)
-	// fmt.Printf("tpc:\t%x\n", tpc)
-	// fmt.Printf("pieA:\t%x\n", pieA)
-	// fmt.Printf("pieB:\t%x\n", pieB)
-	// fmt.Printf("A:\t%x\n", A)
-	// fmt.Printf("B:\t%x\n", B)
-	// fmt.Printf("c0:\t%x\n", c0)
-	// fmt.Printf("c1:\t%x\n", c1)
-	// fmt.Printf("sec:\t%x\n\n", sec)
 	keybytes := helpers.ConcatBytes(k, tpc, pieA, pieB, A, B, c0, c1, sec)
 	return helpers.Hash256(keybytes)
 }
@@ -307,11 +291,9 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 		RaPublicKey: prover.Config.RaPublicKey,
 		Signature:   prover.Config.RaSignature,
 	})
-
 	if err != nil {
 		return nil, err
 	}
-
 	return proof, nil
 }
 
@@ -328,10 +310,8 @@ func VerifyZKProof(prover *AkeMessage, tn string, chal, raPublicKey []byte) bool
 		RaPublicKey: raPublicKey,
 		Proof:       proof,
 	})
-
 	if err != nil {
 		return false
 	}
-
 	return ok
 }

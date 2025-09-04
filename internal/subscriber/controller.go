@@ -14,7 +14,10 @@ func NewController(callState *protocol.CallState) (*Controller, error) {
 	if err != nil {
 		return nil, err
 	}
-	sess := NewSession(c, callState.Topic, callState.Ticket, callState.SenderId)
+	
+	initialTopic := callState.GetCurrentTopic()
+
+	sess := NewSession(c, initialTopic, callState.Ticket, callState.SenderId)
 	return &Controller{
 		Client:  c,
 		Session: sess,
@@ -45,7 +48,6 @@ func (c *Controller) SubscribeToNewTopic(newTopic string) error {
 func (c *Controller) SubscribeToNewTopicWithPayload(newTopic string, payload []byte, ticket []byte) error {
 	return c.Session.SubscribeToNewTopicWithPayload(newTopic, payload, ticket)
 }
-
 
 // Optional convenience for Bob's flow (swap with replay and optional hello).
 func (c *Controller) SwapToTopic(toTopic string, hello []byte, ticket []byte) error {
