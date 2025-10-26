@@ -22,21 +22,16 @@ func CreateRuaInitForCaller(caller *CallState) (string, []byte, error) {
 	ruaTopic := DeriveRuaTopic(caller.SharedKey)
 	caller.TransitionToRua(ruaTopic)
 
-	// RUA init (re-uses AKE message structure for now)
-	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
-	proof, err := CreateZKProof(caller, c0)
-	if err != nil {
-		return "", nil, err
+	ruaMsg := RuaMessage{
+		Reason: caller.CallReason,
+		DhPk: helpers.EncodeToHex(caller.DhPk),
+		TnName: caller.Config.MyName,
+		TnPublicKey:  helpers.EncodeToHex(caller.Config.RuaPublicKey),
+		TnExp: helpers.EncodeToHex(caller.Config.EnExpiration),
+		TnSig: helpers.EncodeToHex(caller.Config.RaSignature),
 	}
 
-	ruaMsg := AkeMessage{
-		DhPk:       helpers.EncodeToHex(caller.DhPk),
-		PublicKey:  helpers.EncodeToHex(caller.Config.RuaPublicKey),
-		Expiration: helpers.EncodeToHex(caller.Config.EnExpiration),
-		Proof:      helpers.EncodeToHex(proof),
-	}
-
-	msg, err := CreateRuaInitMessage(caller.SenderId, ruaTopic, &ruaMsg)
+	msg, err := CreateRuaMessage(caller.SenderId, ruaTopic, TypeRuaInit, &ruaMsg)
 	if err != nil {
 		return "", nil, err
 	}

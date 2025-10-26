@@ -89,7 +89,7 @@ func AkeInitCallerToRecipient(caller *CallState) ([]byte, error) {
 	}
 
 	// Send on AKE topic
-	msg, err := CreateAkeInitMessage(caller.SenderId, caller.AkeTopic, &akeMsg)
+	msg, err := CreateAkeMessage(caller.SenderId, caller.AkeTopic, TypeAkeInit, &akeMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func AkeResponseRecipientToCaller(recipient *CallState, callerMsg *ProtocolMessa
 	}
 
 	// Respond on AKE topic
-	msg, err := CreateAkeResponseMessage(recipient.SenderId, recipient.AkeTopic, &akeMsg)
+	msg, err := CreateAkeMessage(recipient.SenderId, recipient.AkeTopic, TypeAkeResponse, &akeMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ func AkeCompleteSendToRecipient(caller *CallState) ([]byte, error) {
 		return nil, errors.New("caller CallState cannot be nil")
 	}
 
-	msg, err := CreateAkeCompleteMessage(caller.SenderId, caller.AkeTopic)
+	msg, err := CreateAkeMessage(caller.SenderId, caller.AkeTopic, TypeAkeComplete, nil)
 	if err != nil {
 		return nil, err
 	}

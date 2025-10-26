@@ -12,6 +12,8 @@ const (
 	TypeAkeResponse = "AkeResponse"
 	TypeAkeComplete = "AkeComplete"
 	TypeRuaInit     = "RuaInit"
+	TypeRuaResponse = "RuaResponse"
+	TypeHeartBeat = "HeartBeat"
 	TypeBye         = "Bye"
 )
 
@@ -94,6 +96,20 @@ func (m *ProtocolMessage) IsRuaInit() bool {
 	return m.Type == TypeRuaInit
 }
 
+func (m *ProtocolMessage) IsRuaResponse() bool {
+	if m == nil {
+		return false
+	}
+	return m.Type == TypeRuaResponse
+}
+
+func (m *ProtocolMessage) IsHeartBeat() bool {
+	if m == nil {
+		return false
+	}
+	return m.Type == TypeHeartBeat
+}
+
 func (m *ProtocolMessage) IsBye() bool {
 	if m == nil {
 		return false
@@ -156,89 +172,44 @@ func (m *AkeMessage) GetProof() []byte {
 	return data
 }
 
-// Optional helper to parse an AkeInit message envelope directly.
-func ParseAkeInitMessage(data []byte) (*AkeMessage, error) {
-	var env ProtocolMessage
-	if err := env.Unmarshal(data); err != nil {
-		return nil, err
-	}
-	if env.Type != TypeAkeInit {
-		return nil, fmt.Errorf("unexpected type %q", env.Type)
-	}
-	var msg AkeMessage
-	if err := env.DecodePayload(&msg); err != nil {
-		return nil, err
-	}
-	return &msg, nil
-}
-
-// Optional helper to parse an AkeResponse message envelope directly.
-func ParseAkeResponseMessage(data []byte) (*AkeMessage, error) {
-	var env ProtocolMessage
-	if err := env.Unmarshal(data); err != nil {
-		return nil, err
-	}
-	if env.Type != TypeAkeResponse {
-		return nil, fmt.Errorf("unexpected type %q", env.Type)
-	}
-	var msg AkeMessage
-	if err := env.DecodePayload(&msg); err != nil {
-		return nil, err
-	}
-	return &msg, nil
-}
-
-// CreateAkeInitMessage creates an AkeInit message (caller -> recipient)
-func CreateAkeInitMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
+// CreateAkeMessage creates an AkeInit message (caller -> recipient)
+func CreateAkeMessage(senderId, topic, akeType string, payload *AkeMessage) ([]byte, error) {
 	msg := ProtocolMessage{
-		Type:     TypeAkeInit,
+		Type:     akeType,
+		SenderId: senderId,
+		Topic:    topic,
+	}
+
+	if payload != nil {
+		if err := msg.SetPayload(payload); err != nil {
+			return nil, err
+		}
+	}
+
+	return msg.Marshal()
+}
+
+type RuaMessage struct {
+	Reason string `json:"reason"`
+	DhPk       string `json:"dhPk"`
+	TnName string `json:"name"`
+	TnPublicKey  string `json:"tnpk"`
+	TnExp string `json:"texp"`
+	TnSig      string `json:"esig"`
+	PublicKey string `json:"pk"`
+	DelgExp string `json:"dexp"`
+}
+
+// CreateRuaMessage creates an RuaInit message (caller -> recipient)
+func CreateRuaMessage(senderId, topic, ruaType string, payload *RuaMessage) ([]byte, error) {
+	msg := ProtocolMessage{
+		Type:     ruaType,
 		SenderId: senderId,
 		Topic:    topic,
 	}
 
 	if err := msg.SetPayload(payload); err != nil {
 		return nil, err
-	}
-
-	return msg.Marshal()
-}
-
-// CreateAkeResponseMessage creates an AkeResponse message (recipient -> caller)
-func CreateAkeResponseMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
-	msg := ProtocolMessage{
-		Type:     TypeAkeResponse,
-		SenderId: senderId,
-		Topic:    topic,
-	}
-
-	if err := msg.SetPayload(payload); err != nil {
-		return nil, err
-	}
-
-	return msg.Marshal()
-}
-
-// CreateRuaInitMessage creates an RuaInit message (caller -> recipient)
-func CreateRuaInitMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
-	msg := ProtocolMessage{
-		Type:     TypeRuaInit,
-		SenderId: senderId,
-		Topic:    topic,
-	}
-
-	if err := msg.SetPayload(payload); err != nil {
-		return nil, err
-	}
-
-	return msg.Marshal()
-}
-
-// CreateAkeCompleteMessage creates an AkeComplete message (caller -> recipient)
-func CreateAkeCompleteMessage(senderId, topic string) ([]byte, error) {
-	msg := ProtocolMessage{
-		Type:     TypeAkeComplete,
-		SenderId: senderId,
-		Topic:    topic,
 	}
 
 	return msg.Marshal()
@@ -248,6 +219,17 @@ func CreateAkeCompleteMessage(senderId, topic string) ([]byte, error) {
 func CreateByeMessage(senderId, topic string) ([]byte, error) {
 	msg := ProtocolMessage{
 		Type:     TypeBye,
+		SenderId: senderId,
+		Topic:    topic,
+	}
+
+	return msg.Marshal()
+}
+
+// CreateHeartBeatMessage creates a heartbeat message to signal session liveness
+func CreateHeartBeatMessage(senderId, topic string) ([]byte, error) {
+	msg := ProtocolMessage{
+		Type:     TypeHeartBeat,
 		SenderId: senderId,
 		Topic:    topic,
 	}

@@ -12,7 +12,7 @@ import (
 type CallState struct {
 	mu                                   sync.Mutex
 	IsOutgoing                           bool
-	CallerId, Recipient, Ts, SenderId    string
+	CallerId, Recipient, Ts, SenderId, CallReason    string
 	AkeTopic, RuaTopic, CurrentTopic     string // Explicit topics; CurrentTopic for filtering
 	RuaActive                            bool   // Protocol phase flag
 	DhSk, DhPk, Ticket, SharedKey, Chal0 []byte
