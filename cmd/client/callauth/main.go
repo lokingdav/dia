@@ -160,7 +160,7 @@ func main() {
 				log.Printf("Swapped to RTU topic: %s", rtuTopic)
 			}
 
-			if message.IsRtuInit() {
+			if message.IsRuaInit() {
 				log.Println("Received RtuInit message - RTU protocol started")
 				// Handle RTU init...
 			}
@@ -194,7 +194,7 @@ func main() {
 				log.Printf("Subscribed to RTU topic (with init): %s", rtuTopic)
 
 				// Notify Bob on the OLD AKE topic to move
-				completeMsg, err := protocol.AkeCompleteSendToCaller(callState)
+				completeMsg, err := protocol.AkeCompleteSendToRecipient(callState)
 				if err != nil {
 					log.Printf("failed to create ake complete message: %v", err)
 					return

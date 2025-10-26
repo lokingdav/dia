@@ -11,7 +11,7 @@ const (
 	TypeAkeInit     = "AkeInit"
 	TypeAkeResponse = "AkeResponse"
 	TypeAkeComplete = "AkeComplete"
-	TypeRtuInit     = "RtuInit"
+	TypeRuaInit     = "RuaInit"
 	TypeBye         = "Bye"
 )
 
@@ -87,11 +87,11 @@ func (m *ProtocolMessage) IsAkeComplete() bool {
 	return m.Type == TypeAkeComplete
 }
 
-func (m *ProtocolMessage) IsRtuInit() bool {
+func (m *ProtocolMessage) IsRuaInit() bool {
 	if m == nil {
 		return false
 	}
-	return m.Type == TypeRtuInit
+	return m.Type == TypeRuaInit
 }
 
 func (m *ProtocolMessage) IsBye() bool {
@@ -221,7 +221,7 @@ func CreateAkeResponseMessage(senderId, topic string, payload *AkeMessage) ([]by
 // CreateRtuInitMessage creates an RtuInit message (caller -> recipient)
 func CreateRtuInitMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
 	msg := ProtocolMessage{
-		Type:     TypeRtuInit,
+		Type:     TypeRuaInit,
 		SenderId: senderId,
 		Topic:    topic,
 	}
