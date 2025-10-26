@@ -26,9 +26,9 @@ type SubscriberConfig struct {
 	EnExpiration, RaPublicKey, RaSignature []byte
 
 	// Right-To-Use
-	RtuPrivateKeyStr            string `env:"RTU_PRIVATE_KEY,required"`
-	RtuPublicKeyStr             string `env:"RTU_PUBLIC_KEY,required"`
-	RtuPrivateKey, RtuPublicKey []byte
+	RuaPrivateKeyStr            string `env:"RUA_PRIVATE_KEY,required"`
+	RuaPublicKeyStr             string `env:"RUA_PUBLIC_KEY,required"`
+	RuaPrivateKey, RuaPublicKey []byte
 
 	// Access Ticket
 	AccessTicketVkStr            string `env:"ACCESS_TICKET_VK,required"`
@@ -62,11 +62,11 @@ func (conf *SubscriberConfig) ParseKeysAsBytes() error {
 	}
 
 	// Right-To-Use
-	conf.RtuPrivateKey, err = signing.DecodeHex(conf.RtuPrivateKeyStr)
+	conf.RuaPrivateKey, err = signing.DecodeHex(conf.RuaPrivateKeyStr)
 	if err != nil {
 		return err
 	}
-	conf.RtuPublicKey, err = signing.DecodeHex(conf.RtuPublicKeyStr)
+	conf.RuaPublicKey, err = signing.DecodeHex(conf.RuaPublicKeyStr)
 	if err != nil {
 		return err
 	}

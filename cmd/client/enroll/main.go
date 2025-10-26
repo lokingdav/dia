@@ -146,8 +146,8 @@ func main() {
 		fmt.Sprintf("RA_PUBLIC_KEY=%x", res.GetEpk()),
 		fmt.Sprintf("RA_SIGNATURE=%x", res.GetSigma()),
 
-		fmt.Sprintf("\nRTU_PRIVATE_KEY=%x", data.amfSk),
-		fmt.Sprintf("RTU_PUBLIC_KEY=%x", data.amfPk),
+		fmt.Sprintf("\nRUA_PRIVATE_KEY=%x", data.amfSk),
+		fmt.Sprintf("RUA_PUBLIC_KEY=%x", data.amfPk),
 
 		fmt.Sprintf("\nSUBSCRIBER_PRIVATE_KEY=%x", data.isk),
 		fmt.Sprintf("SUBSCRIBER_PUBLIC_KEY=%x", data.ipk),

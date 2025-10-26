@@ -218,8 +218,8 @@ func CreateAkeResponseMessage(senderId, topic string, payload *AkeMessage) ([]by
 	return msg.Marshal()
 }
 
-// CreateRtuInitMessage creates an RtuInit message (caller -> recipient)
-func CreateRtuInitMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
+// CreateRuaInitMessage creates an RuaInit message (caller -> recipient)
+func CreateRuaInitMessage(senderId, topic string, payload *AkeMessage) ([]byte, error) {
 	msg := ProtocolMessage{
 		Type:     TypeRuaInit,
 		SenderId: senderId,

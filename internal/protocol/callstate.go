@@ -10,14 +10,14 @@ import (
 )
 
 type CallState struct {
-	mu                                     sync.Mutex
-	IsOutgoing                             bool
-	CallerId, Recipient, Ts, SenderId      string
-	AkeTopic, RtuTopic, CurrentTopic       string // Explicit topics; CurrentTopic for filtering
-	RtuActive                              bool   // Protocol phase flag
-	DhSk, DhPk, Ticket, SharedKey, Chal0   []byte
-	Proof                                  []byte
-	Config                                 *config.SubscriberConfig
+	mu                                   sync.Mutex
+	IsOutgoing                           bool
+	CallerId, Recipient, Ts, SenderId    string
+	AkeTopic, RuaTopic, CurrentTopic     string // Explicit topics; CurrentTopic for filtering
+	RuaActive                            bool   // Protocol phase flag
+	DhSk, DhPk, Ticket, SharedKey, Chal0 []byte
+	Proof                                []byte
+	Config                               *config.SubscriberConfig
 }
 
 func (s *CallState) GetAkeLabel() []byte {
@@ -31,8 +31,8 @@ func (s *CallState) MarshalAkeTopic() []byte {
 }
 
 // Optional helper if you ever need it.
-func (s *CallState) MarshalRtuTopic() []byte {
-	b, _ := helpers.DecodeHex(s.RtuTopic)
+func (s *CallState) MarshalRuaTopic() []byte {
+	b, _ := helpers.DecodeHex(s.RuaTopic)
 	return b
 }
 
@@ -45,17 +45,17 @@ func (s *CallState) InitAke(dhSk, dhPk []byte, akeTopic string) {
 	s.DhPk = dhPk
 	s.AkeTopic = akeTopic
 	s.CurrentTopic = akeTopic // start on AKE topic
-	s.RtuActive = false
+	s.RuaActive = false
 	s.mu.Unlock()
 }
 
-// TransitionToRtu sets the RTU topic and flips the active topic to RTU.
+// TransitionToRua sets the RUA topic and flips the active topic to RUA.
 // NOTE: AkeTopic is intentionally preserved so AkeComplete can still be sent on it.
-func (s *CallState) TransitionToRtu(rtuTopic string) {
+func (s *CallState) TransitionToRua(ruaTopic string) {
 	s.mu.Lock()
-	s.RtuTopic = rtuTopic
-	s.CurrentTopic = rtuTopic
-	s.RtuActive = true
+	s.RuaTopic = ruaTopic
+	s.CurrentTopic = ruaTopic
+	s.RuaActive = true
 	s.mu.Unlock()
 }
 
@@ -65,10 +65,10 @@ func (s *CallState) GetCurrentTopic() string {
 	return s.CurrentTopic
 }
 
-func (s *CallState) IsRtuActive() bool {
+func (s *CallState) IsRuaActive() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.RtuActive
+	return s.RuaActive
 }
 
 func (s *CallState) SetSharedKey(k []byte) {

@@ -55,14 +55,14 @@ func (e *mockError) Error() string {
 var (
 	testRaPrivateKey []byte
 	testRaPublicKey  []byte
-	testRtuPublicKey []byte
+	testRuaPublicKey []byte
 	testExpiration   []byte
 )
 
 func init() {
 	// Initialize shared test keys once
 	testRaPrivateKey, testRaPublicKey, _ = bbs.Keygen()
-	_, testRtuPublicKey, _ = bbs.Keygen()
+	_, testRuaPublicKey, _ = bbs.Keygen()
 	testExpiration = []byte("20991231235959Z")
 }
 
@@ -116,7 +116,7 @@ func createTestCallStateForUser(myPhone, otherPhone string, outgoing bool) *Call
 	}
 
 	// Create signature for this user's credential
-	message := helpers.ConcatBytes(testRtuPublicKey, testExpiration, []byte(myPhone))
+	message := helpers.ConcatBytes(testRuaPublicKey, testExpiration, []byte(myPhone))
 
 	// Sign the message with shared RA private key
 	raSignature, _ := bbs.Sign(testRaPrivateKey, [][]byte{message})
@@ -126,7 +126,7 @@ func createTestCallStateForUser(myPhone, otherPhone string, outgoing bool) *Call
 		SampleTicket: []byte("test_ticket_32_bytes_for_testing"),
 
 		// BBS keys and signatures for ZK proofs (shared RA keys)
-		RtuPublicKey: testRtuPublicKey,
+		RuaPublicKey: testRuaPublicKey,
 		EnExpiration: testExpiration,
 		RaPublicKey:  testRaPublicKey,
 		RaSignature:  raSignature,
@@ -415,7 +415,7 @@ func TestRealEnrollmentData(t *testing.T) {
 	// Let's test whether we can verify the real enrollment signatures directly
 	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
 		// Test Alice's signature
-		aliceMessage := helpers.ConcatBytes(aliceConfig.RtuPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		aliceMessage := helpers.ConcatBytes(aliceConfig.RuaPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
 		aliceValid, err := dia.BBSVerify([][]byte{aliceMessage}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
 		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
 		if !aliceValid {
@@ -423,7 +423,7 @@ func TestRealEnrollmentData(t *testing.T) {
 		}
 
 		// Test Bob's signature
-		bobMessage := helpers.ConcatBytes(bobConfig.RtuPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		bobMessage := helpers.ConcatBytes(bobConfig.RuaPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
 		bobValid, err := dia.BBSVerify([][]byte{bobMessage}, bobConfig.RaPublicKey, bobConfig.RaSignature)
 		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)
 		if !bobValid {

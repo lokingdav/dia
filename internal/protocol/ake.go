@@ -83,7 +83,7 @@ func AkeInitCallerToRecipient(caller *CallState) ([]byte, error) {
 
 	akeMsg := AkeMessage{
 		DhPk:       helpers.EncodeToHex(caller.DhPk),
-		PublicKey:  helpers.EncodeToHex(caller.Config.RtuPublicKey),
+		PublicKey:  helpers.EncodeToHex(caller.Config.RuaPublicKey),
 		Expiration: helpers.EncodeToHex(caller.Config.EnExpiration),
 		Proof:      helpers.EncodeToHex(proof),
 	}
@@ -131,7 +131,7 @@ func AkeResponseRecipientToCaller(recipient *CallState, callerMsg *ProtocolMessa
 
 	akeMsg := AkeMessage{
 		DhPk:       helpers.EncodeToHex(recipient.DhPk),
-		PublicKey:  helpers.EncodeToHex(recipient.Config.RtuPublicKey),
+		PublicKey:  helpers.EncodeToHex(recipient.Config.RuaPublicKey),
 		Expiration: helpers.EncodeToHex(recipient.Config.EnExpiration),
 		Proof:      helpers.EncodeToHex(proof),
 	}
@@ -243,7 +243,7 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 
 	proof, err := bbs.ZkCreateProof(bbs.AkeZkProof{
 		Tn:          telephoneNumber,
-		PublicKey:   prover.Config.RtuPublicKey,
+		PublicKey:   prover.Config.RuaPublicKey,
 		Expiration:  prover.Config.EnExpiration,
 		Nonce:       chal,
 		RaPublicKey: prover.Config.RaPublicKey,

@@ -7,36 +7,36 @@ import (
 	"github.com/dense-identity/denseid/internal/helpers"
 )
 
-// DeriveRtuTopic creates a new topic for RTU phase based on shared secret.
-func DeriveRtuTopic(sharedSecret []byte) string {
+// DeriveRuaTopic creates a new topic for RUA phase based on shared secret.
+func DeriveRuaTopic(sharedSecret []byte) string {
 	return helpers.Hash256Hex(helpers.ConcatBytes(sharedSecret, []byte("2")))
 }
 
-// CreateRtuInitForCaller creates RtuInit message and transitions to RTU topic after AKE finalization.
-func CreateRtuInitForCaller(caller *CallState) (string, []byte, error) {
+// CreateRuaInitForCaller creates RuaInit message and transitions to RUA topic after AKE finalization.
+func CreateRuaInitForCaller(caller *CallState) (string, []byte, error) {
 	if caller == nil {
 		return "", nil, errors.New("caller CallState cannot be nil")
 	}
 
-	// Derive and set RTU topic
-	rtuTopic := DeriveRtuTopic(caller.SharedKey)
-	caller.TransitionToRtu(rtuTopic)
+	// Derive and set RUA topic
+	ruaTopic := DeriveRuaTopic(caller.SharedKey)
+	caller.TransitionToRua(ruaTopic)
 
-	// RTU init (re-uses AKE message structure for now)
+	// RUA init (re-uses AKE message structure for now)
 	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
 	proof, err := CreateZKProof(caller, c0)
 	if err != nil {
 		return "", nil, err
 	}
 
-	rtuMsg := AkeMessage{
+	ruaMsg := AkeMessage{
 		DhPk:       helpers.EncodeToHex(caller.DhPk),
-		PublicKey:  helpers.EncodeToHex(caller.Config.RtuPublicKey),
+		PublicKey:  helpers.EncodeToHex(caller.Config.RuaPublicKey),
 		Expiration: helpers.EncodeToHex(caller.Config.EnExpiration),
 		Proof:      helpers.EncodeToHex(proof),
 	}
 
-	msg, err := CreateRtuInitMessage(caller.SenderId, rtuTopic, &rtuMsg)
+	msg, err := CreateRuaInitMessage(caller.SenderId, ruaTopic, &ruaMsg)
 	if err != nil {
 		return "", nil, err
 	}
@@ -46,5 +46,5 @@ func CreateRtuInitForCaller(caller *CallState) (string, []byte, error) {
 		return "", nil, err
 	}
 
-	return rtuTopic, ciphertext, nil
+	return ruaTopic, ciphertext, nil
 }
