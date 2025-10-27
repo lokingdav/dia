@@ -99,7 +99,7 @@ func createGRPCClient(addr string) pb.EnrollmentServiceClient {
 
 func main() {
 	serverAddr := flag.String("host", "localhost:50051", "Server address")
-	phone := flag.String("phone", "", "Phone number/callerId to be enrolled with")
+	phone := flag.String("phone", "", "Phone number to be enrolled with")
 	name := flag.String("name", "", "Name of subscriber")
 	logoUrl := flag.String("logo", "", "Logo url")
 	flag.Parse()

@@ -11,8 +11,8 @@ import (
 func DeriveRuaTopic(callState *CallState) string {
 	message := helpers.HashAll(
 		callState.SharedKey, 
-		[]byte(callState.CallerId), 
-		[]byte(callState.Recipient),
+		[]byte(callState.Src), 
+		[]byte(callState.Dst),
 		[]byte(callState.Ts),
 	)
 	return helpers.EncodeToHex(message)

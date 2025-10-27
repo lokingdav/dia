@@ -12,7 +12,7 @@ import (
 type CallState struct {
 	mu                                   sync.Mutex
 	IsOutgoing                           bool
-	CallerId, Recipient, Ts, SenderId, CallReason    string
+	Src, Dst, Ts, SenderId, CallReason    string
 	AkeTopic, RuaTopic, CurrentTopic     string // Explicit topics; CurrentTopic for filtering
 	RuaActive                            bool   // Protocol phase flag
 	DhSk, DhPk, Ticket, SharedKey, Chal0 []byte
@@ -21,7 +21,7 @@ type CallState struct {
 }
 
 func (s *CallState) GetAkeLabel() []byte {
-	return []byte(s.CallerId + s.Ts)
+	return []byte(s.Src + s.Ts)
 }
 
 // MarshalAkeTopic returns the AKE topic in bytes (used by key derivation).
@@ -85,18 +85,18 @@ func (s *CallState) UpdateR1(chal, proof []byte) {
 }
 
 func NewCallState(config *config.SubscriberConfig, phoneNumber string, outgoing bool) CallState {
-	var callerId, recipient string
+	var src, dst string
 	if outgoing {
-		callerId = config.MyPhone
-		recipient = phoneNumber
+		src = config.MyPhone
+		dst = phoneNumber
 	} else {
-		callerId = phoneNumber
-		recipient = config.MyPhone
+		src = phoneNumber
+		dst = config.MyPhone
 	}
 
 	return CallState{
-		CallerId:   callerId,
-		Recipient:  recipient,
+		Src:   src,
+		Dst:  dst,
 		Ts:         datetime.GetNormalizedTs(),
 		IsOutgoing: outgoing,
 		SenderId:   uuid.NewString(),

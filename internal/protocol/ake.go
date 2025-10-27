@@ -119,7 +119,7 @@ func AkeResponseRecipientToCaller(recipient *CallState, callerMsg *ProtocolMessa
 	callerProof := caller.GetProof()
 
 	c0 := helpers.HashAll(recipient.SharedKey, callerDhPk, recipient.GetAkeLabel())
-	if !VerifyZKProof(&caller, recipient.CallerId, c0, recipient.Config.RaPublicKey) {
+	if !VerifyZKProof(&caller, recipient.Src, c0, recipient.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
@@ -191,7 +191,7 @@ func AkeFinalizeCaller(caller *CallState, recipientMsg *ProtocolMessage) error {
 	}
 
 	c1 := helpers.HashAll(caller.Proof, caller.DhPk, recipientDhPk, caller.Chal0)
-	if !VerifyZKProof(&recipient, caller.Recipient, c1, caller.Config.RaPublicKey) {
+	if !VerifyZKProof(&recipient, caller.Dst, c1, caller.Config.RaPublicKey) {
 		return errors.New("unauthenticated")
 	}
 
@@ -235,9 +235,9 @@ func ComputeSharedKey(k, tpc, pieA, pieB, A, B, c0, c1, sec []byte) []byte {
 func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 	var telephoneNumber string
 	if prover.IamCaller() {
-		telephoneNumber = prover.CallerId
+		telephoneNumber = prover.Src
 	} else {
-		telephoneNumber = prover.Recipient
+		telephoneNumber = prover.Dst
 	}
 
 	proof, err := bbs.ZkCreateProof(bbs.AkeZkProof{

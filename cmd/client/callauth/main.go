@@ -55,8 +55,8 @@ func createCallState() *protocol.CallState {
 
 	fmt.Println("===== Call Details =====")
 	fmt.Printf("--> Outgoing: %v\n", outgoing)
-	fmt.Printf("--> CallerID: %s\n", state.CallerId)
-	fmt.Printf("--> Recipient: %s\n\n", state.Recipient)
+	fmt.Printf("--> Src: %s\n", state.Src)
+	fmt.Printf("--> Dst: %s\n\n", state.Dst)
 
 	return &state
 }

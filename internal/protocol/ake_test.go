@@ -107,13 +107,13 @@ func loadConfigFromEnv(envFile string) (*config.SubscriberConfig, error) {
 // createTestCallStateForUser creates a CallState for a specific user identity
 func createTestCallStateForUser(myPhone, otherPhone string, outgoing bool) *CallState {
 	// Determine roles
-	var callerId, recipient string
+	var src, dst string
 	if outgoing {
-		callerId = myPhone
-		recipient = otherPhone
+		src = myPhone
+		dst = otherPhone
 	} else {
-		callerId = otherPhone
-		recipient = myPhone
+		src = otherPhone
+		dst = myPhone
 	}
 
 	config, err := loadConfigFromEnv(fmt.Sprintf("../../.env.%s", myPhone))
@@ -123,8 +123,8 @@ func createTestCallStateForUser(myPhone, otherPhone string, outgoing bool) *Call
 	}
 
 	return &CallState{
-		CallerId:   callerId,
-		Recipient:  recipient,
+		Src:   src,
+		Dst:  dst,
 		Ts:         datetime.GetNormalizedTs(),
 		IsOutgoing: outgoing,
 		SenderId:   uuid.NewString(),
@@ -425,8 +425,8 @@ func TestRealEnrollmentData(t *testing.T) {
 
 	// Create call states like the real application
 	aliceState := &CallState{
-		CallerId:   aliceConfig.MyPhone,
-		Recipient:  bobConfig.MyPhone,
+		Src:   aliceConfig.MyPhone,
+		Dst:  bobConfig.MyPhone,
 		Ts:         datetime.GetNormalizedTs(),
 		IsOutgoing: true,
 		SenderId:   uuid.NewString(),
@@ -435,8 +435,8 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	bobState := &CallState{
-		CallerId:   aliceConfig.MyPhone,
-		Recipient:  bobConfig.MyPhone,
+		Src:   aliceConfig.MyPhone,
+		Dst:  bobConfig.MyPhone,
 		Ts:         datetime.GetNormalizedTs(),
 		IsOutgoing: false,
 		SenderId:   uuid.NewString(),
