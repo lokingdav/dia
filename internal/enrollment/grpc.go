@@ -61,8 +61,9 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		return nil, status.Errorf(codes.Internal, "failed to generate expiry: %v", err)
 	}
 
-	message := helpers.ConcatBytes(req.GetPk(), expiryBytes, []byte(req.GetTn()))
-	Sigma, err := bbs.Sign(s.cfg.CiPrivateKey, [][]byte{message,})
+	message1 := helpers.ConcatBytes(req.GetPk(), expiryBytes, []byte(req.GetTn()))
+	message2 := []byte(req.GetIden().GetName())
+	sigma, err := bbs.Sign(s.cfg.CiPrivateKey, [][]byte{message1, message2})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "failed to generate credential: %v", err)
 	}
@@ -76,7 +77,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		Eid:              eid,
 		Exp:              expiryPb,
 		Epk:              s.cfg.CiPublicKey,
-		Sigma:            Sigma,
+		Sigma:            sigma,
 		Mpk:              s.cfg.AmfPublicKey,
 		Avk:              s.cfg.AtPublicKey,
 		EvaluatedTickets: evaluatedTickets,

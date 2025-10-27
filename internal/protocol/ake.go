@@ -243,6 +243,7 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 
 	proof, err := bbs.ZkCreateProof(bbs.AkeZkProof{
 		Tn:          telephoneNumber,
+		Name: prover.Config.MyName,
 		PublicKey:   prover.Config.RuaPublicKey,
 		Expiration:  prover.Config.EnExpiration,
 		Nonce:       chal,

@@ -8,8 +8,8 @@ import (
 )
 
 // DeriveRuaTopic creates a new topic for RUA phase based on shared secret.
-func DeriveRuaTopic(sharedSecret []byte) string {
-	return helpers.Hash256Hex(helpers.ConcatBytes(sharedSecret, []byte("2")))
+func DeriveRuaTopic(callState *CallState) string {
+	return helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("2")))
 }
 
 // CreateRuaInitForCaller creates RuaInit message and transitions to RUA topic after AKE finalization.
@@ -19,7 +19,7 @@ func CreateRuaInitForCaller(caller *CallState) (string, []byte, error) {
 	}
 
 	// Derive and set RUA topic
-	ruaTopic := DeriveRuaTopic(caller.SharedKey)
+	ruaTopic := DeriveRuaTopic(caller)
 	caller.TransitionToRua(ruaTopic)
 
 	ruaMsg := RuaMessage{
@@ -30,6 +30,8 @@ func CreateRuaInitForCaller(caller *CallState) (string, []byte, error) {
 		TnExp: helpers.EncodeToHex(caller.Config.EnExpiration),
 		TnSig: helpers.EncodeToHex(caller.Config.RaSignature),
 	}
+
+	// Sign message here
 
 	msg, err := CreateRuaMessage(caller.SenderId, ruaTopic, TypeRuaInit, &ruaMsg)
 	if err != nil {

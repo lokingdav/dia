@@ -6,15 +6,16 @@ import (
 )
 
 type AkeZkProof struct {
-	Tn                                                          string
+	Tn, Name                                                          string
 	PublicKey, Expiration, Nonce, RaPublicKey, Signature, Proof []byte
 }
 
 func ZkCreateProof(params AkeZkProof) ([]byte, error) {
-	message := helpers.ConcatBytes(params.PublicKey, params.Expiration, []byte(params.Tn))
+	message1 := helpers.ConcatBytes(params.PublicKey, params.Expiration, []byte(params.Tn))
+	message2 := []byte(params.Name)
 
 	return dia.BBSCreateProof(
-		[][]byte{message},
+		[][]byte{message1, message2},
 		[]uint32{1},
 		params.RaPublicKey,
 		params.Signature,
@@ -23,10 +24,10 @@ func ZkCreateProof(params AkeZkProof) ([]byte, error) {
 }
 
 func ZkVerifyProof(params AkeZkProof) (bool, error) {
-	message := helpers.ConcatBytes(params.PublicKey, params.Expiration, []byte(params.Tn))
+	message1 := helpers.ConcatBytes(params.PublicKey, params.Expiration, []byte(params.Tn))
 	return dia.BBSVerifyProof(
 		[]uint32{1},
-		[][]byte{message},
+		[][]byte{message1},
 		params.RaPublicKey,
 		params.Nonce,
 		params.Proof,

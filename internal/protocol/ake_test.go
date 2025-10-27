@@ -3,6 +3,7 @@ package protocol
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -115,21 +116,10 @@ func createTestCallStateForUser(myPhone, otherPhone string, outgoing bool) *Call
 		recipient = myPhone
 	}
 
-	// Create signature for this user's credential
-	message := helpers.ConcatBytes(testRuaPublicKey, testExpiration, []byte(myPhone))
+	config, err := loadConfigFromEnv(fmt.Sprintf("../../.env.%s", myPhone))
 
-	// Sign the message with shared RA private key
-	raSignature, _ := bbs.Sign(testRaPrivateKey, [][]byte{message})
-
-	config := &config.SubscriberConfig{
-		MyPhone:      myPhone,
-		SampleTicket: []byte("test_ticket_32_bytes_for_testing"),
-
-		// BBS keys and signatures for ZK proofs (shared RA keys)
-		RuaPublicKey: testRuaPublicKey,
-		EnExpiration: testExpiration,
-		RaPublicKey:  testRaPublicKey,
-		RaSignature:  raSignature,
+	if err != nil {
+		panic(fmt.Sprintf("failed to load env for %s: %v", myPhone, err))
 	}
 
 	return &CallState{
@@ -415,16 +405,18 @@ func TestRealEnrollmentData(t *testing.T) {
 	// Let's test whether we can verify the real enrollment signatures directly
 	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
 		// Test Alice's signature
-		aliceMessage := helpers.ConcatBytes(aliceConfig.RuaPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
-		aliceValid, err := dia.BBSVerify([][]byte{aliceMessage}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
+		aliceMessage1 := helpers.ConcatBytes(aliceConfig.RuaPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		aliceMessage2 := []byte(aliceConfig.MyName)
+		aliceValid, err := dia.BBSVerify([][]byte{aliceMessage1, aliceMessage2}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
 		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
 		if !aliceValid {
 			t.Errorf("Alice's enrollment signature should be valid")
 		}
 
 		// Test Bob's signature
-		bobMessage := helpers.ConcatBytes(bobConfig.RuaPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
-		bobValid, err := dia.BBSVerify([][]byte{bobMessage}, bobConfig.RaPublicKey, bobConfig.RaSignature)
+		bobMessage1 := helpers.ConcatBytes(bobConfig.RuaPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		bobMessage2 := []byte(bobConfig.MyName)
+		bobValid, err := dia.BBSVerify([][]byte{bobMessage1, bobMessage2}, bobConfig.RaPublicKey, bobConfig.RaSignature)
 		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)
 		if !bobValid {
 			t.Errorf("Bob's enrollment signature should be valid")
@@ -505,37 +497,3 @@ func TestRealEnrollmentData(t *testing.T) {
 
 	t.Log("Real enrollment data test passed!")
 }
-
-// Note: Key derivation test disabled due to VOPRF complexity
-// Real testing would require proper cryptographic setup
-/*
-func TestKeyDerivationWithMock(t *testing.T) {
-	ctx := context.Background()
-
-	state := createTestCallState("bob", true)
-
-	testEvaluated := []byte("custom_evaluated_element_32bytes_")
-	mockClient := &mockKeyDerivationClient{
-		evaluatedElement: testEvaluated,
-	}
-
-	derivedKey, err := AkeDeriveKey(ctx, mockClient, state)
-	if err != nil {
-		t.Fatalf("key derivation failed: %v", err)
-	}
-
-	if len(derivedKey) == 0 {
-		t.Fatal("derived key is empty")
-	}
-
-	// Test that the same inputs produce the same output
-	derivedKey2, err := AkeDeriveKey(ctx, mockClient, state)
-	if err != nil {
-		t.Fatalf("second key derivation failed: %v", err)
-	}
-
-	if string(derivedKey) != string(derivedKey2) {
-		t.Fatal("key derivation is not deterministic")
-	}
-}
-*/

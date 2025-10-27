@@ -145,7 +145,7 @@ func main() {
 				log.Println("Received AkeComplete message - AKE protocol finished")
 
 				// Derive RUA topic
-				ruaTopic := protocol.DeriveRuaTopic(callState.SharedKey)
+				ruaTopic := protocol.DeriveRuaTopic(callState)
 
 				// FIX: move our state FIRST so replay from ruaTopic isn't filtered
 				callState.TransitionToRua(ruaTopic)
