@@ -9,7 +9,7 @@ import (
 
 // DeriveRuaTopic creates a new topic for RUA phase based on shared secret.
 func DeriveRuaTopic(callState *CallState) string {
-	return helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("2")))
+	return helpers.EncodeToHex(helpers.HashAll(callState.SharedKey, []byte("2")))
 }
 
 // CreateRuaInitForCaller creates RuaInit message and transitions to RUA topic after AKE finalization.

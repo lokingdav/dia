@@ -10,6 +10,11 @@ func Hash256(data []byte) []byte {
 	return sum[:]
 }
 
+func HashAll(items ...[]byte) []byte {
+	concats := ConcatBytes(items...)
+	return Hash256(concats)
+}
+
 func Hash256Hex(data []byte) string {
 	return hex.EncodeToString(Hash256(data))
 }

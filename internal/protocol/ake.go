@@ -56,7 +56,7 @@ func InitAke(callState *CallState) error {
 		return errors.New("nil CallState")
 	}
 
-	akeTopic := helpers.Hash256Hex(helpers.ConcatBytes(callState.SharedKey, []byte("1")))
+	akeTopic := helpers.EncodeToHex(helpers.HashAll(callState.SharedKey, []byte("1")))
 
 	dhSk, dhPk, err := dia.DHKeygen()
 	if err != nil {
@@ -75,7 +75,7 @@ func AkeInitCallerToRecipient(caller *CallState) ([]byte, error) {
 		return nil, errors.New("AKE not initialized: DhPk is empty")
 	}
 
-	c0 := helpers.Hash256(helpers.ConcatBytes(caller.SharedKey, caller.DhPk, caller.GetAkeLabel()))
+	c0 := helpers.HashAll(caller.SharedKey, caller.DhPk, caller.GetAkeLabel())
 	proof, err := CreateZKProof(caller, c0)
 	if err != nil {
 		return nil, err
@@ -118,12 +118,12 @@ func AkeResponseRecipientToCaller(recipient *CallState, callerMsg *ProtocolMessa
 	callerDhPk := caller.GetDhPk()
 	callerProof := caller.GetProof()
 
-	c0 := helpers.Hash256(helpers.ConcatBytes(recipient.SharedKey, callerDhPk, recipient.GetAkeLabel()))
+	c0 := helpers.HashAll(recipient.SharedKey, callerDhPk, recipient.GetAkeLabel())
 	if !VerifyZKProof(&caller, recipient.CallerId, c0, recipient.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
-	c1 := helpers.Hash256(helpers.ConcatBytes(callerProof, callerDhPk, recipient.DhPk, c0))
+	c1 := helpers.HashAll(callerProof, callerDhPk, recipient.DhPk, c0)
 	proof, err := CreateZKProof(recipient, c1)
 	if err != nil {
 		return nil, err
@@ -190,7 +190,7 @@ func AkeFinalizeCaller(caller *CallState, recipientMsg *ProtocolMessage) error {
 		return errors.New("something unexpected happened")
 	}
 
-	c1 := helpers.Hash256(helpers.ConcatBytes(caller.Proof, caller.DhPk, recipientDhPk, caller.Chal0))
+	c1 := helpers.HashAll(caller.Proof, caller.DhPk, recipientDhPk, caller.Chal0)
 	if !VerifyZKProof(&recipient, caller.Recipient, c1, caller.Config.RaPublicKey) {
 		return errors.New("unauthenticated")
 	}
@@ -229,8 +229,7 @@ func AkeCompleteSendToRecipient(caller *CallState) ([]byte, error) {
 }
 
 func ComputeSharedKey(k, tpc, pieA, pieB, A, B, c0, c1, sec []byte) []byte {
-	keybytes := helpers.ConcatBytes(k, tpc, pieA, pieB, A, B, c0, c1, sec)
-	return helpers.Hash256(keybytes)
+	return helpers.HashAll(k, tpc, pieA, pieB, A, B, c0, c1, sec)
 }
 
 func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
