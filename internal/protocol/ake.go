@@ -134,6 +134,10 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		Proof:      helpers.EncodeToHex(proof),
 	}
 
+	// Store proofs for later use in AkeFinalize
+	recipient.CallerProof = caller.GetProof()
+	recipient.RecipientProof = proof
+
 	// Respond on AKE topic
 	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, &akeMsg)
 	if err != nil {
@@ -150,23 +154,6 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-
-	// secret, err := dia.DHComputeSecret(recipient.DhSk, callerDhPk)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// recipient.SetSharedKey(ComputeSharedKey(
-	// 	recipient.SharedKey,
-	// 	recipient.MarshalAkeTopic(), // AKE topic binds the transcript
-	// 	callerProof,
-	// 	proof,
-	// 	callerDhPk,
-	// 	recipient.DhPk,
-	// 	c0,
-	// 	c1,
-	// 	secret,
-	// ))
 
 	return ciphertext, nil
 }
@@ -257,9 +244,6 @@ func AkeFinalize(recipient *CallState, callerMsg *ProtocolMessage) error {
 	if !bytes.Equal(dhPk[32:], recipient.DhPk) {
 		return errors.New("Recipient DH PK do not match")
 	}
-
-	// callerDhPk := make([]byte, len(recipient.DhPk))
-	// copy(callerDhPk, dhPk[:32])
 
 	secret, err := dia.DHComputeSecret(recipient.DhSk, dhPk[:32])
 	if err != nil {

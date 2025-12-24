@@ -74,7 +74,7 @@ func main() {
 	if err := protocol.InitAke(callState); err != nil {
 		log.Fatalf("failed to init AKE: %v", err)
 	}
-	log.Printf("AKE Topic: %s", callState.AkeTopic)
+	log.Printf("AKE Topic:\n\t%s", callState.GetAkeTopic())
 
 	// 3) Now create the controller (Session will subscribe to CurrentTopic = AkeTopic)
 	oobController, err := subscriber.NewController(callState)
@@ -124,11 +124,17 @@ func main() {
 					log.Printf("failed responding to ake init: %v", err)
 					return
 				}
-				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 			}
 
 			if message.IsAkeComplete() {
 				log.Println("Received AkeComplete message - AKE protocol finished")
+				err := protocol.AkeFinalize(callState, &message);
+
+				if err != nil {
+					log.Printf("failed to finalize ake: %v", err)
+				}
+
+				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 
 				// Derive RUA topic
 				ruaTopic := protocol.DeriveRuaTopic(callState)
@@ -155,11 +161,13 @@ func main() {
 		if callState.IamCaller() {
 			if message.IsAkeResponse() {
 				log.Println("Handling AkeResponse Message: Caller Finalize")
-				response, err := protocol.AkeComplete(callState, &message)
+				complete, err := protocol.AkeComplete(callState, &message)
 				if err != nil {
 					log.Printf("failed to process AkeResponse: %v", err)
 					return
 				}
+
+				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 
 				// Capture old (AKE) topic BEFORE switching
 				oldTopic := callState.AkeTopic
@@ -181,7 +189,7 @@ func main() {
 				log.Printf("Subscribed to RUA topic (with init): %s", ruaTopic)
 
 				// Send response to Bob
-				if err := oobController.SendToTopic(helpers.EncodeToHex(oldTopic), response, nil); err != nil {
+				if err := oobController.SendToTopic(helpers.EncodeToHex(oldTopic), complete, nil); err != nil {
 					log.Printf("failed to send AkeComplete on old topic: %v", err)
 					return
 				}
@@ -202,7 +210,7 @@ func main() {
 		log.Println("Sent AkeRequest Message: Caller --> Recipient")
 	}
 
-	log.Printf("Active Topic: %s", callState.GetCurrentTopic())
+	log.Printf("Active Topic:\n\t%s", callState.GetCurrentTopic())
 
 	<-ctx.Done()
 	_ = oobController.Close()
