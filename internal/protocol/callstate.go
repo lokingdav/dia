@@ -9,38 +9,57 @@ import (
 	"github.com/google/uuid"
 )
 
+type Rtu struct {
+	Pk, Exp, ETkn []byte
+	Name          string
+}
+
+type AkeState struct {
+	Topic                       []byte
+	DhSk, DhPk                  []byte
+	Chal0                       []byte
+	CallerProof, RecipientProof []byte
+}
+
+type RuaState struct {
+	Topic      []byte
+	DhSk, DhPk []byte
+	Rtu        *Rtu
+}
+
 type CallState struct {
-	mu                                   sync.Mutex
-	IsOutgoing                           bool
-	Src, Dst, Ts, SenderId, CallReason    string
-	AkeTopic, RuaTopic, CurrentTopic     []byte
-	RuaActive                            bool   // Protocol phase flag
-	DhSk, DhPk, Ticket, SharedKey, Chal0 []byte
-	CallerProof, RecipientProof          []byte
-	Config                               *config.SubscriberConfig
+	mu                                 sync.Mutex
+	IsOutgoing                         bool
+	Src, Dst, Ts, SenderId, CallReason string
+	CurrentTopic                       []byte
+	RuaActive                          bool // Protocol phase flag
+	Ticket, SharedKey                  []byte
+	Config                             *config.SubscriberConfig
+	Ake                                AkeState
+	Rua                                RuaState
 }
 
 func (s *CallState) GetAkeLabel() []byte {
 	return []byte(s.Src + s.Ts)
 }
 
-func (s *CallState) GetAkeTopic() string { 
-	return helpers.EncodeToHex(s.AkeTopic)
+func (s *CallState) GetAkeTopic() string {
+	return helpers.EncodeToHex(s.Ake.Topic)
 }
 
-func (s *CallState) IamCaller() bool    { 
-	return s.IsOutgoing 
+func (s *CallState) IamCaller() bool {
+	return s.IsOutgoing
 }
 
-func (s *CallState) IamRecipient() bool { 
-	return !s.IsOutgoing 
+func (s *CallState) IamRecipient() bool {
+	return !s.IsOutgoing
 }
 
 func (s *CallState) InitAke(dhSk, dhPk []byte, akeTopic []byte) {
 	s.mu.Lock()
-	s.DhSk = dhSk
-	s.DhPk = dhPk
-	s.AkeTopic = akeTopic
+	s.Ake.DhSk = dhSk
+	s.Ake.DhPk = dhPk
+	s.Ake.Topic = akeTopic
 	s.CurrentTopic = akeTopic // start on AKE topic
 	s.RuaActive = false
 	s.mu.Unlock()
@@ -50,7 +69,7 @@ func (s *CallState) InitAke(dhSk, dhPk []byte, akeTopic []byte) {
 // NOTE: AkeTopic is intentionally preserved so AkeComplete can still be sent on it.
 func (s *CallState) TransitionToRua(ruaTopic []byte) {
 	s.mu.Lock()
-	s.RuaTopic = ruaTopic
+	s.Rua.Topic = ruaTopic
 	s.CurrentTopic = ruaTopic
 	s.RuaActive = true
 	s.mu.Unlock()
@@ -76,8 +95,8 @@ func (s *CallState) SetSharedKey(k []byte) {
 
 func (s *CallState) UpdateCaller(chal, proof []byte) {
 	s.mu.Lock()
-	s.Chal0 = chal
-	s.CallerProof = proof
+	s.Ake.Chal0 = chal
+	s.Ake.CallerProof = proof
 	s.mu.Unlock()
 }
 
@@ -92,8 +111,8 @@ func NewCallState(config *config.SubscriberConfig, phoneNumber string, outgoing 
 	}
 
 	return CallState{
-		Src:   src,
-		Dst:  dst,
+		Src:        src,
+		Dst:        dst,
 		Ts:         datetime.GetNormalizedTs(),
 		IsOutgoing: outgoing,
 		SenderId:   uuid.NewString(),

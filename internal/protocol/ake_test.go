@@ -2,14 +2,12 @@ package protocol
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/caarlos0/env/v11"
-	keypb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
 	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
@@ -18,39 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	dia "github.com/lokingdav/libdia/bindings/go"
-	"google.golang.org/grpc"
 )
-
-// mockKeyDerivationClient simulates the key derivation service
-type mockKeyDerivationClient struct {
-	evaluatedElement []byte
-	shouldError      bool
-	errorMsg         string
-}
-
-func (m *mockKeyDerivationClient) Evaluate(ctx context.Context, req *keypb.EvaluateRequest, opts ...grpc.CallOption) (*keypb.EvaluateResponse, error) {
-	if m.shouldError {
-		return nil, &mockError{msg: m.errorMsg}
-	}
-
-	// Return deterministic evaluation for testing
-	if m.evaluatedElement == nil {
-		// Default test evaluation (32 bytes)
-		m.evaluatedElement = []byte("test_evaluated_element_32bytes__")
-	}
-
-	return &keypb.EvaluateResponse{
-		EvaluatedElement: m.evaluatedElement,
-	}, nil
-}
-
-type mockError struct {
-	msg string
-}
-
-func (e *mockError) Error() string {
-	return e.msg
-}
 
 // Global test keys to ensure consistency across test parties
 var (
@@ -201,7 +167,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// Verify caller's proof matches what was sent
-	if !bytes.Equal(callerState.CallerProof, akeMsg1.GetProof()) {
+	if !bytes.Equal(callerState.Ake.CallerProof, akeMsg1.GetProof()) {
 		t.Fatal("caller proof do not match")
 	}
 
@@ -243,7 +209,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// Verify Bob's DhPk matches his state
-	if !bytes.Equal(recipientState.DhPk, akeMsg2.GetDhPk()) {
+	if !bytes.Equal(recipientState.Ake.DhPk, akeMsg2.GetDhPk()) {
 		t.Fatal("recipient DhPk do not match")
 	}
 
@@ -363,19 +329,17 @@ func TestAkeRequest(t *testing.T) {
 	}
 
 	// Verify caller state was updated with challenge and proof
-	if len(callerState.Chal0) == 0 {
+	if len(callerState.Ake.Chal0) == 0 {
 		t.Fatal("caller Chal0 should be set after AkeRequest")
 	}
 
-	if len(callerState.CallerProof) == 0 {
+	if len(callerState.Ake.CallerProof) == 0 {
 		t.Fatal("caller CallerProof should be set after AkeRequest")
 	}
 }
 
 // TestAkeErrorCases tests error handling
 func TestAkeErrorCases(t *testing.T) {
-	ctx := context.Background()
-
 	t.Run("NilCallState", func(t *testing.T) {
 		_, err := AkeRequest(nil)
 		if err == nil {
@@ -391,23 +355,6 @@ func TestAkeErrorCases(t *testing.T) {
 		_, err := AkeRequest(state)
 		if err == nil {
 			t.Fatal("expected error for uninitialized AKE")
-		}
-	})
-
-	t.Run("KeyDerivationError", func(t *testing.T) {
-		mockClient := &mockKeyDerivationClient{
-			shouldError: true,
-			errorMsg:    "mock key derivation error",
-		}
-
-		state := createTestCallState("bob", true)
-		_, err := AkeDeriveKey(ctx, mockClient, state)
-		if err == nil {
-			t.Fatal("expected key derivation error")
-		}
-
-		if err.Error() != "mock key derivation error" {
-			t.Fatalf("unexpected error message: %v", err)
 		}
 	})
 

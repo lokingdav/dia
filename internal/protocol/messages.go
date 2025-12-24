@@ -12,7 +12,7 @@ const (
 	TypeAkeResponse = "AkeResponse"
 	TypeAkeComplete = "AkeComplete"
 
-	TypeRuaInit     = "RuaInit"
+	TypeRuaRequest  = "RuaInit"
 	TypeRuaResponse = "RuaResponse"
 	TypeHeartBeat   = "HeartBeat"
 	TypeBye         = "Bye"
@@ -94,7 +94,7 @@ func (m *ProtocolMessage) IsRuaInit() bool {
 	if m == nil {
 		return false
 	}
-	return m.Type == TypeRuaInit
+	return m.Type == TypeRuaRequest
 }
 
 func (m *ProtocolMessage) IsRuaResponse() bool {
@@ -191,14 +191,9 @@ func CreateAkeMessage(senderId, topic, akeType string, payload *AkeMessage) ([]b
 }
 
 type RuaMessage struct {
-	Reason      string `json:"reason"`
-	DhPk        string `json:"dhPk"`
-	TnName      string `json:"name"`
-	TnPublicKey string `json:"tnpk"`
-	TnExp       string `json:"texp"`
-	TnSig       string `json:"esig"`
-	PublicKey   string `json:"pk"`
-	DelgExp     string `json:"dexp"`
+	DhPk   string `json:"dhPk"`
+	Reason string `json:"reason"`
+	Rtu    Rtu    `json:"rtu"`
 }
 
 // CreateRuaMessage creates an RuaInit message (caller -> recipient)

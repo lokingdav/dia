@@ -11,7 +11,6 @@ import (
 	dia "github.com/lokingdav/libdia/bindings/go"
 )
 
-
 func InitAke(callState *CallState) error {
 	if callState == nil {
 		return errors.New("nil CallState")
@@ -32,11 +31,11 @@ func AkeRequest(caller *CallState) ([]byte, error) {
 	if caller == nil {
 		return nil, errors.New("caller CallState cannot be nil")
 	}
-	if len(caller.DhPk) == 0 {
+	if len(caller.Ake.DhPk) == 0 {
 		return nil, errors.New("AKE not initialized: DhPk is empty")
 	}
 
-	challenge := helpers.HashAll(caller.AkeTopic)
+	challenge := helpers.HashAll(caller.Ake.Topic)
 	proof, err := CreateZKProof(caller, challenge)
 	if err != nil {
 		return nil, err
@@ -76,27 +75,27 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, fmt.Errorf("failed to decode AKE payload: %v", err)
 	}
 
-	challenge0 := helpers.HashAll(recipient.AkeTopic)
+	challenge0 := helpers.HashAll(recipient.Ake.Topic)
 	if !VerifyZKProof(&caller, recipient.Src, challenge0, recipient.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
-	challenge1 := helpers.HashAll(caller.GetProof(), recipient.DhPk, challenge0)
+	challenge1 := helpers.HashAll(caller.GetProof(), recipient.Ake.DhPk, challenge0)
 	proof, err := CreateZKProof(recipient, challenge1)
 	if err != nil {
 		return nil, err
 	}
 
 	akeMsg := AkeMessage{
-		DhPk:       helpers.EncodeToHex(recipient.DhPk),
+		DhPk:       helpers.EncodeToHex(recipient.Ake.DhPk),
 		PublicKey:  helpers.EncodeToHex(recipient.Config.RuaPublicKey),
 		Expiration: helpers.EncodeToHex(recipient.Config.EnExpiration),
 		Proof:      helpers.EncodeToHex(proof),
 	}
 
 	// Store proofs for later use in AkeFinalize
-	recipient.CallerProof = caller.GetProof()
-	recipient.RecipientProof = proof
+	recipient.Ake.CallerProof = caller.GetProof()
+	recipient.Ake.RecipientProof = proof
 
 	// Respond on AKE topic
 	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, &akeMsg)
@@ -141,27 +140,27 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 		return nil, errors.New("something unexpected happened")
 	}
 
-	challenge := helpers.HashAll(caller.CallerProof, recipientDhPk, caller.Chal0)
+	challenge := helpers.HashAll(caller.Ake.CallerProof, recipientDhPk, caller.Ake.Chal0)
 	if !VerifyZKProof(&recipient, caller.Dst, challenge, caller.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
-	secret, err := dia.DHComputeSecret(caller.DhSk, recipientDhPk)
+	secret, err := dia.DHComputeSecret(caller.Ake.DhSk, recipientDhPk)
 	if err != nil {
 		return nil, err
 	}
 
 	caller.SetSharedKey(ComputeSharedKey(
-		caller.AkeTopic,
-		caller.CallerProof,
+		caller.Ake.Topic,
+		caller.Ake.CallerProof,
 		recipientProof,
-		caller.DhPk,
+		caller.Ake.DhPk,
 		recipientDhPk,
 		secret,
 	))
 
 	akeMsg := AkeMessage{
-		DhPk: helpers.EncodeToHex(helpers.ConcatBytes(caller.DhPk, recipientDhPk)),
+		DhPk: helpers.EncodeToHex(helpers.ConcatBytes(caller.Ake.DhPk, recipientDhPk)),
 	}
 
 	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeComplete, &akeMsg)
@@ -201,21 +200,21 @@ func AkeFinalize(recipient *CallState, callerMsg *ProtocolMessage) error {
 		return err
 	}
 
-	if !bytes.Equal(dhPk[32:], recipient.DhPk) {
+	if !bytes.Equal(dhPk[32:], recipient.Ake.DhPk) {
 		return errors.New("Recipient DH PK do not match")
 	}
 
-	secret, err := dia.DHComputeSecret(recipient.DhSk, dhPk[:32])
+	secret, err := dia.DHComputeSecret(recipient.Ake.DhSk, dhPk[:32])
 	if err != nil {
 		return err
 	}
 
 	recipient.SetSharedKey(ComputeSharedKey(
-		recipient.AkeTopic,
-		recipient.CallerProof,
-		recipient.RecipientProof,
+		recipient.Ake.Topic,
+		recipient.Ake.CallerProof,
+		recipient.Ake.RecipientProof,
 		dhPk[:32],
-		recipient.DhPk,
+		recipient.Ake.DhPk,
 		secret,
 	))
 

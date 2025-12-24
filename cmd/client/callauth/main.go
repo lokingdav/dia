@@ -128,7 +128,7 @@ func main() {
 
 			if message.IsAkeComplete() {
 				log.Println("Received AkeComplete message - AKE protocol finished")
-				err := protocol.AkeFinalize(callState, &message);
+				err := protocol.AkeFinalize(callState, &message)
 
 				if err != nil {
 					log.Printf("failed to finalize ake: %v", err)
@@ -140,7 +140,7 @@ func main() {
 				ruaTopic := protocol.DeriveRuaTopic(callState)
 				// FIX: move our state FIRST so replay from ruaTopic isn't filtered
 				callState.TransitionToRua(ruaTopic)
-				
+
 				// Ask server to swap (replay then live)
 				if err := oobController.SwapToTopic(helpers.EncodeToHex(ruaTopic), nil, nil); err != nil {
 					log.Printf("failed to swap to RUA topic: %v", err)
@@ -170,23 +170,26 @@ func main() {
 				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 
 				// Capture old (AKE) topic BEFORE switching
-				oldTopic := callState.AkeTopic
+				oldTopic := callState.Ake.Topic
+
+				ruaReq, err := protocol.RuaRequest(callState)
 
 				// Create RUA init (transitions state to RUA inside)
-				ruaTopic, ruaInitMsg, err := protocol.CreateRuaInitForCaller(callState)
+				callState.TransitionToRua(callState.Rua.Topic)
+				
 				if err != nil {
 					log.Printf("failed to create RUA init: %v", err)
 					return
 				}
 
-				ruaTpcStr := helpers.EncodeToHex(ruaTopic)
+				ruaTpcStr := helpers.EncodeToHex(callState.Rua.Topic)
 
 				// Subscribe to RUA and piggy-back RUA init
-				if err := oobController.SubscribeToNewTopicWithPayload(ruaTpcStr, ruaInitMsg, callState.Ticket); err != nil {
+				if err := oobController.SubscribeToNewTopicWithPayload(ruaTpcStr, ruaReq, callState.Ticket); err != nil {
 					log.Printf("failed to subscribe+init on RUA topic: %v", err)
 					return
 				}
-				log.Printf("Subscribed to RUA topic (with init): %s", ruaTopic)
+				log.Printf("Subscribed to RUA topic (with init): %s", ruaTpcStr)
 
 				// Send response to Bob
 				if err := oobController.SendToTopic(helpers.EncodeToHex(oldTopic), complete, nil); err != nil {

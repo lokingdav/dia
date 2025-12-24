@@ -5,49 +5,64 @@ import (
 
 	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
+	dia "github.com/lokingdav/libdia/bindings/go"
 )
 
 // DeriveRuaTopic creates a new topic for RUA phase based on shared secret.
 func DeriveRuaTopic(callState *CallState) []byte {
 	message := helpers.HashAll(
-		callState.SharedKey, 
-		[]byte(callState.Src), 
+		callState.SharedKey,
+		[]byte(callState.Src),
 		[]byte(callState.Dst),
 		[]byte(callState.Ts),
 	)
 	return message
 }
 
-// CreateRuaInitForCaller creates RuaInit message and transitions to RUA topic after AKE finalization.
-func CreateRuaInitForCaller(caller *CallState) ([]byte, []byte, error) {
-	if caller == nil {
-		return nil, nil, errors.New("caller CallState cannot be nil")
+func InitRTU(callState *CallState, rtu *Rtu) error {
+	ruaTopic := DeriveRuaTopic(callState)
+
+	dhSk, dhPk, err := dia.DHKeygen()
+	if err != nil {
+		return err
 	}
 
-	// Derive and set RUA topic
-	ruaTopic := DeriveRuaTopic(caller)
-	caller.TransitionToRua(ruaTopic)
+	callState.Rua = RuaState{
+		Topic: ruaTopic,
+		DhSk:  dhSk,
+		DhPk:  dhPk,
+		Rtu:   rtu,
+	}
+
+	return nil
+}
+
+// RuaRequest creates RuaRequest message
+func RuaRequest(caller *CallState) ([]byte, error) {
+	if caller == nil {
+		return nil, errors.New("caller CallState cannot be nil")
+	}
+
+	InitRTU(caller, nil)
 
 	ruaMsg := RuaMessage{
 		Reason: caller.CallReason,
-		DhPk: helpers.EncodeToHex(caller.DhPk),
-		TnName: caller.Config.MyName,
-		TnPublicKey:  helpers.EncodeToHex(caller.Config.RuaPublicKey),
-		TnExp: helpers.EncodeToHex(caller.Config.EnExpiration),
-		TnSig: helpers.EncodeToHex(caller.Config.RaSignature),
+		DhPk:   helpers.EncodeToHex(caller.Rua.DhPk),
+		Rtu:    *caller.Rua.Rtu,
 	}
 
 	// Sign message here
 
-	msg, err := CreateRuaMessage(caller.SenderId, helpers.EncodeToHex(ruaTopic), TypeRuaInit, &ruaMsg)
+	msg, err := CreateRuaMessage(caller.SenderId, helpers.EncodeToHex(caller.Rua.Topic), TypeRuaRequest, &ruaMsg)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	ciphertext, err := encryption.SymEncrypt(caller.SharedKey, msg)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return ruaTopic, ciphertext, nil
+	return ciphertext, nil
 }
+
