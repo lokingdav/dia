@@ -41,14 +41,14 @@ func AkeRequest(caller *CallState) ([]byte, error) {
 		return nil, err
 	}
 
-	akeMsg := AkeMessage{
-		PublicKey:  helpers.EncodeToHex(caller.Config.RuaPublicKey),
-		Expiration: helpers.EncodeToHex(caller.Config.EnExpiration),
-		Proof:      helpers.EncodeToHex(proof),
+	akeMsg := &AkeMessage{
+		PublicKey:  caller.Config.RuaPublicKey,
+		Expiration: caller.Config.EnExpiration,
+		Proof:      proof,
 	}
 
 	// Send on AKE topic
-	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeRequest, &akeMsg)
+	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeRequest, akeMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -65,18 +65,18 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	if callerMsg == nil {
 		return nil, errors.New("caller ProtocolMessage cannot be nil")
 	}
-	if !callerMsg.IsAkeRequest() {
+	if !IsAkeRequest(callerMsg) {
 		return nil, errors.New("AkeResponse can only be called on AkeRequest message")
 	}
 
 	// Decode the AKE message from the protocol message
-	var caller AkeMessage
-	if err := callerMsg.DecodePayload(&caller); err != nil {
-		return nil, fmt.Errorf("failed to decode AKE payload: %v", err)
+	caller, err := DecodeAkePayload(callerMsg)
+	if err != nil {
+		return nil, err
 	}
 
 	challenge0 := helpers.HashAll(recipient.Ake.Topic)
-	if !VerifyZKProof(&caller, recipient.Src, challenge0, recipient.Config.RaPublicKey) {
+	if !VerifyZKProof(caller, recipient.Src, challenge0, recipient.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
@@ -86,11 +86,11 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
-	akeMsg := AkeMessage{
-		DhPk:       helpers.EncodeToHex(recipient.Ake.DhPk),
-		PublicKey:  helpers.EncodeToHex(recipient.Config.RuaPublicKey),
-		Expiration: helpers.EncodeToHex(recipient.Config.EnExpiration),
-		Proof:      helpers.EncodeToHex(proof),
+	akeMsg := &AkeMessage{
+		DhPk:       recipient.Ake.DhPk,
+		PublicKey:  recipient.Config.RuaPublicKey,
+		Expiration: recipient.Config.EnExpiration,
+		Proof:      proof,
 	}
 
 	// Store proofs for later use in AkeFinalize
@@ -98,18 +98,12 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	recipient.Ake.RecipientProof = proof
 
 	// Respond on AKE topic
-	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, &akeMsg)
+	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, akeMsg)
 	if err != nil {
 		return nil, err
 	}
 
-	pk, err := helpers.DecodeHex(caller.PublicKey)
-
-	if err != nil {
-		return nil, err
-	}
-
-	ciphertext, err := encryption.PkeEncrypt(pk, msg)
+	ciphertext, err := encryption.PkeEncrypt(caller.GetPublicKey(), msg)
 	if err != nil {
 		return nil, err
 	}
@@ -124,24 +118,24 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 	if recipientMsg == nil {
 		return nil, errors.New("recipient ProtocolMessage cannot be nil")
 	}
-	if !recipientMsg.IsAkeResponse() {
+	if !IsAkeResponse(recipientMsg) {
 		return nil, errors.New("AkeComplete can only be called on AkeResponse message")
 	}
 
 	// Decode the AKE message from the protocol message
-	var recipient AkeMessage
-	if err := recipientMsg.DecodePayload(&recipient); err != nil {
-		return nil, fmt.Errorf("failed to decode AKE payload: %v", err)
+	recipient, err := DecodeAkePayload(recipientMsg)
+	if err != nil {
+		return nil, err
 	}
 
-	recipientDhPk, err1 := helpers.DecodeHex(recipient.DhPk)
-	recipientProof, err2 := helpers.DecodeHex(recipient.Proof)
-	if err1 != nil || err2 != nil {
-		return nil, errors.New("something unexpected happened")
+	recipientDhPk := recipient.GetDhPk()
+	recipientProof := recipient.GetProof()
+	if len(recipientDhPk) == 0 || len(recipientProof) == 0 {
+		return nil, errors.New("missing DhPk or Proof in AkeResponse")
 	}
 
 	challenge := helpers.HashAll(caller.Ake.CallerProof, recipientDhPk, caller.Ake.Chal0)
-	if !VerifyZKProof(&recipient, caller.Dst, challenge, caller.Config.RaPublicKey) {
+	if !VerifyZKProof(recipient, caller.Dst, challenge, caller.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
 
@@ -159,18 +153,16 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 		secret,
 	))
 
-	akeMsg := AkeMessage{
-		DhPk: helpers.EncodeToHex(helpers.ConcatBytes(caller.Ake.DhPk, recipientDhPk)),
+	akeMsg := &AkeMessage{
+		DhPk: helpers.ConcatBytes(caller.Ake.DhPk, recipientDhPk),
 	}
 
-	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeComplete, &akeMsg)
+	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeComplete, akeMsg)
 	if err != nil {
 		return nil, err
 	}
 
-	pk, err := helpers.DecodeHex(recipient.PublicKey)
-
-	ciphertext, err := encryption.PkeEncrypt(pk, msg)
+	ciphertext, err := encryption.PkeEncrypt(recipient.GetPublicKey(), msg)
 	if err != nil {
 		return nil, err
 	}
@@ -185,19 +177,19 @@ func AkeFinalize(recipient *CallState, callerMsg *ProtocolMessage) error {
 	if callerMsg == nil {
 		return errors.New("caller ProtocolMessage cannot be nil")
 	}
-	if !callerMsg.IsAkeComplete() {
+	if !IsAkeComplete(callerMsg) {
 		return errors.New("AkeFinalize can only be called on AkeComplete message")
 	}
 
 	// Decode the AKE message from the protocol message
-	var caller AkeMessage
-	if err := callerMsg.DecodePayload(&caller); err != nil {
-		return fmt.Errorf("failed to decode AKE payload: %v", err)
-	}
-
-	dhPk, err := helpers.DecodeHex(caller.DhPk)
+	caller, err := DecodeAkePayload(callerMsg)
 	if err != nil {
 		return err
+	}
+
+	dhPk := caller.GetDhPk()
+	if len(dhPk) < 64 {
+		return fmt.Errorf("invalid DhPk length: %d", len(dhPk))
 	}
 
 	if !bytes.Equal(dhPk[32:], recipient.Ake.DhPk) {

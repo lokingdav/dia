@@ -1,234 +1,169 @@
 package protocol
 
 import (
-	"encoding/json"
 	"fmt"
 
-	"github.com/dense-identity/denseid/internal/helpers"
+	pb "github.com/dense-identity/denseid/api/go/protocol/v1"
+	"google.golang.org/protobuf/proto"
 )
 
+// Type aliases for convenience
+type MessageType = pb.MessageType
+type ProtocolMessage = pb.ProtocolMessage
+type AkeMessage = pb.AkeMessage
+type RuaMessage = pb.RuaMessage
+type Rtu = pb.Rtu
+
+// Message type constants for convenience
 const (
-	TypeAkeRequest  = "AkeRequest"
-	TypeAkeResponse = "AkeResponse"
-	TypeAkeComplete = "AkeComplete"
-
-	TypeRuaRequest  = "RuaInit"
-	TypeRuaResponse = "RuaResponse"
-	TypeHeartBeat   = "HeartBeat"
-	TypeBye         = "Bye"
+	TypeAkeRequest  = pb.MessageType_AKE_REQUEST
+	TypeAkeResponse = pb.MessageType_AKE_RESPONSE
+	TypeAkeComplete = pb.MessageType_AKE_COMPLETE
+	TypeRuaRequest  = pb.MessageType_RUA_REQUEST
+	TypeRuaResponse = pb.MessageType_RUA_RESPONSE
+	TypeHeartBeat   = pb.MessageType_HEARTBEAT
+	TypeBye         = pb.MessageType_BYE
 )
 
-type ProtocolMessage struct {
-	Type     string          `json:"type"`
-	SenderId string          `json:"sender_id"`
-	Topic    string          `json:"topic"`
-	Payload  json.RawMessage `json:"payload"`
-}
-
-func (m *ProtocolMessage) SetPayload(v any) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	m.Payload = b
-	return nil
-}
-
-func (m *ProtocolMessage) DecodePayload(out any) error {
-	// out should be a pointer to the concrete payload type
-	if out == nil {
-		return fmt.Errorf("DecodePayload: nil out")
-	}
-	return json.Unmarshal(m.Payload, out)
-}
-
-func (m *ProtocolMessage) Marshal() ([]byte, error) {
+// MarshalMessage serializes a ProtocolMessage to bytes
+func MarshalMessage(m *ProtocolMessage) ([]byte, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil ProtocolMessage")
 	}
-	if m.Type == "" {
+	if m.Type == pb.MessageType_MESSAGE_TYPE_UNSPECIFIED {
 		return nil, fmt.Errorf("missing type")
 	}
-	return json.Marshal(m)
+	return proto.Marshal(m)
 }
 
-// Unmarshal fills the envelope (type/sender/payload raw bytes).
-func (m *ProtocolMessage) Unmarshal(data []byte) error {
+// UnmarshalMessage deserializes bytes into a ProtocolMessage
+func UnmarshalMessage(data []byte) (*ProtocolMessage, error) {
+	m := &ProtocolMessage{}
+	if err := proto.Unmarshal(data, m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// DecodeAkePayload extracts AkeMessage from ProtocolMessage payload
+func DecodeAkePayload(m *ProtocolMessage) (*AkeMessage, error) {
 	if m == nil {
-		return fmt.Errorf("nil ProtocolMessage")
+		return nil, fmt.Errorf("nil ProtocolMessage")
 	}
-	return json.Unmarshal(data, m)
+	ake := &AkeMessage{}
+	if err := proto.Unmarshal(m.Payload, ake); err != nil {
+		return nil, fmt.Errorf("failed to decode AKE payload: %v", err)
+	}
+	return ake, nil
 }
 
-// Convenience: Unmarshal envelope then decode payload into `out`.
-func (m *ProtocolMessage) UnmarshalInto(data []byte, out any) error {
-	if err := m.Unmarshal(data); err != nil {
-		return err
-	}
-	// if m.Type != TypeAke { return fmt.Errorf("unexpected type %q", m.Type) }
-	return m.DecodePayload(out)
-}
-
-func (m *ProtocolMessage) IsAkeRequest() bool {
+// DecodeRuaPayload extracts RuaMessage from ProtocolMessage payload
+func DecodeRuaPayload(m *ProtocolMessage) (*RuaMessage, error) {
 	if m == nil {
-		return false
+		return nil, fmt.Errorf("nil ProtocolMessage")
 	}
-	return m.Type == TypeAkeRequest
+	rua := &RuaMessage{}
+	if err := proto.Unmarshal(m.Payload, rua); err != nil {
+		return nil, fmt.Errorf("failed to decode RUA payload: %v", err)
+	}
+	return rua, nil
 }
 
-func (m *ProtocolMessage) IsAkeResponse() bool {
-	if m == nil {
-		return false
-	}
-	return m.Type == TypeAkeResponse
+// IsAkeRequest checks if the message is an AKE request
+func IsAkeRequest(m *ProtocolMessage) bool {
+	return m != nil && m.Type == TypeAkeRequest
 }
 
-func (m *ProtocolMessage) IsAkeComplete() bool {
-	if m == nil {
-		return false
-	}
-	return m.Type == TypeAkeComplete
+// IsAkeResponse checks if the message is an AKE response
+func IsAkeResponse(m *ProtocolMessage) bool {
+	return m != nil && m.Type == TypeAkeResponse
 }
 
-func (m *ProtocolMessage) IsRuaInit() bool {
-	if m == nil {
-		return false
-	}
-	return m.Type == TypeRuaRequest
+// IsAkeComplete checks if the message is an AKE complete
+func IsAkeComplete(m *ProtocolMessage) bool {
+	return m != nil && m.Type == TypeAkeComplete
 }
 
-func (m *ProtocolMessage) IsRuaResponse() bool {
-	if m == nil {
-		return false
-	}
-	return m.Type == TypeRuaResponse
+// IsRuaRequest checks if the message is an RUA request
+func IsRuaRequest(m *ProtocolMessage) bool {
+	return m != nil && m.Type == TypeRuaRequest
 }
 
-func (m *ProtocolMessage) IsHeartBeat() bool {
-	if m == nil {
-		return false
-	}
-	return m.Type == TypeHeartBeat
+// IsRuaResponse checks if the message is an RUA response
+func IsRuaResponse(m *ProtocolMessage) bool {
+	return m != nil && m.Type == TypeRuaResponse
 }
 
-func (m *ProtocolMessage) IsBye() bool {
-	if m == nil {
-		return false
-	}
-	return m.Type == TypeBye
+// IsHeartBeat checks if the message is a heartbeat
+func IsHeartBeat(m *ProtocolMessage) bool {
+	return m != nil && m.Type == TypeHeartBeat
 }
 
-type AkeMessage struct {
-	DhPk       string `json:"dhPk"`
-	PublicKey  string `json:"pk"`
-	Expiration string `json:"exp"`
-	Proof      string `json:"proof"`
+// IsBye checks if the message is a bye
+func IsBye(m *ProtocolMessage) bool {
+	return m != nil && m.Type == TypeBye
 }
 
-func (m *AkeMessage) GetDhPk() []byte {
-	if m == nil {
-		return nil
-	}
-
-	data, err := helpers.DecodeHex(m.DhPk)
-	if err != nil {
-		return nil
-	}
-	return data
-}
-
-func (m *AkeMessage) GetPublicKey() []byte {
-	if m == nil {
-		return nil
-	}
-
-	data, err := helpers.DecodeHex(m.PublicKey)
-	if err != nil {
-		return nil
-	}
-	return data
-}
-
-func (m *AkeMessage) GetExpiration() []byte {
-	if m == nil {
-		return nil
-	}
-
-	data, err := helpers.DecodeHex(m.Expiration)
-	if err != nil {
-		return nil
-	}
-	return data
-}
-
-func (m *AkeMessage) GetProof() []byte {
-	if m == nil {
-		return nil
-	}
-
-	data, err := helpers.DecodeHex(m.Proof)
-	if err != nil {
-		return nil
-	}
-	return data
-}
-
-// CreateAkeMessage creates an AkeInit message (caller -> recipient)
-func CreateAkeMessage(senderId, topic, akeType string, payload *AkeMessage) ([]byte, error) {
-	msg := ProtocolMessage{
-		Type:     akeType,
-		SenderId: senderId,
-		Topic:    topic,
-	}
+// CreateAkeMessage creates an AKE protocol message
+func CreateAkeMessage(senderId, topic string, msgType MessageType, payload *AkeMessage) ([]byte, error) {
+	var payloadBytes []byte
+	var err error
 
 	if payload != nil {
-		if err := msg.SetPayload(payload); err != nil {
-			return nil, err
+		payloadBytes, err = proto.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal AKE payload: %v", err)
 		}
 	}
 
-	return msg.Marshal()
-}
-
-type RuaMessage struct {
-	DhPk   string `json:"dhPk"`
-	Reason string `json:"reason"`
-	Rtu    Rtu    `json:"rtu"`
-}
-
-// CreateRuaMessage creates an RuaInit message (caller -> recipient)
-func CreateRuaMessage(senderId, topic, ruaType string, payload *RuaMessage) ([]byte, error) {
-	msg := ProtocolMessage{
-		Type:     ruaType,
+	msg := &ProtocolMessage{
+		Type:     msgType,
 		SenderId: senderId,
 		Topic:    topic,
+		Payload:  payloadBytes,
 	}
 
-	if err := msg.SetPayload(payload); err != nil {
-		return nil, err
+	return MarshalMessage(msg)
+}
+
+// CreateRuaMessage creates an RUA protocol message
+func CreateRuaMessage(senderId, topic string, msgType MessageType, payload *RuaMessage) ([]byte, error) {
+	var payloadBytes []byte
+	var err error
+
+	if payload != nil {
+		payloadBytes, err = proto.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal RUA payload: %v", err)
+		}
 	}
 
-	return msg.Marshal()
+	msg := &ProtocolMessage{
+		Type:     msgType,
+		SenderId: senderId,
+		Topic:    topic,
+		Payload:  payloadBytes,
+	}
+
+	return MarshalMessage(msg)
 }
 
 // CreateByeMessage creates a bye message to signal session termination
 func CreateByeMessage(senderId, topic string) ([]byte, error) {
-	msg := ProtocolMessage{
+	msg := &ProtocolMessage{
 		Type:     TypeBye,
 		SenderId: senderId,
 		Topic:    topic,
 	}
-
-	return msg.Marshal()
+	return MarshalMessage(msg)
 }
 
 // CreateHeartBeatMessage creates a heartbeat message to signal session liveness
 func CreateHeartBeatMessage(senderId, topic string) ([]byte, error) {
-	msg := ProtocolMessage{
+	msg := &ProtocolMessage{
 		Type:     TypeHeartBeat,
 		SenderId: senderId,
 		Topic:    topic,
 	}
-
-	return msg.Marshal()
+	return MarshalMessage(msg)
 }

@@ -133,14 +133,13 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// AkeRequest returns plaintext (not encrypted in current implementation)
-	var protocolMsg1 ProtocolMessage
-	err = protocolMsg1.Unmarshal(round1Msg)
+	protocolMsg1, err := UnmarshalMessage(round1Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
 	// Verify it's an AkeRequest message
-	if !protocolMsg1.IsAkeRequest() {
+	if !IsAkeRequest(protocolMsg1) {
 		t.Fatal("expected AkeRequest message")
 	}
 
@@ -150,8 +149,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// Decode AKE payload
-	var akeMsg1 AkeMessage
-	err = protocolMsg1.DecodePayload(&akeMsg1)
+	akeMsg1, err := DecodeAkePayload(protocolMsg1)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
@@ -174,7 +172,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	// === Round 2: Recipient (Bob) -> Caller (Alice) ===
 	// Bob verifies Alice's ZK proof, sends his DhPk + ZK proof (encrypted with Alice's PK)
 
-	round2Ciphertext, err := AkeResponse(recipientState, &protocolMsg1)
+	round2Ciphertext, err := AkeResponse(recipientState, protocolMsg1)
 	if err != nil {
 		t.Fatalf("failed creating AkeResponse: %v", err)
 	}
@@ -186,19 +184,17 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// Parse Round 2 protocol message
-	var protocolMsg2 ProtocolMessage
-	err = protocolMsg2.Unmarshal(round2Plaintext)
+	protocolMsg2, err := UnmarshalMessage(round2Plaintext)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeResponse protocol message: %v", err)
 	}
 
 	// Verify it's an AkeResponse message
-	if !protocolMsg2.IsAkeResponse() {
+	if !IsAkeResponse(protocolMsg2) {
 		t.Fatal("expected AkeResponse message")
 	}
 
-	var akeMsg2 AkeMessage
-	err = protocolMsg2.DecodePayload(&akeMsg2)
+	akeMsg2, err := DecodeAkePayload(protocolMsg2)
 	if err != nil {
 		t.Fatalf("failed to decode AkeResponse payload: %v", err)
 	}
@@ -216,7 +212,7 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	// === Round 3: Caller (Alice) -> Recipient (Bob) ===
 	// Alice computes shared secret, sends both DhPks (encrypted with Bob's PK)
 
-	round3Ciphertext, err := AkeComplete(callerState, &protocolMsg2)
+	round3Ciphertext, err := AkeComplete(callerState, protocolMsg2)
 	if err != nil {
 		t.Fatalf("failed to complete AKE: %v", err)
 	}
@@ -233,21 +229,20 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// Parse Round 3 protocol message
-	var protocolMsg3 ProtocolMessage
-	err = protocolMsg3.Unmarshal(round3Plaintext)
+	protocolMsg3, err := UnmarshalMessage(round3Plaintext)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeComplete protocol message: %v", err)
 	}
 
 	// Verify it's an AkeComplete message
-	if !protocolMsg3.IsAkeComplete() {
+	if !IsAkeComplete(protocolMsg3) {
 		t.Fatal("expected AkeComplete message")
 	}
 
 	// === Finalization: Recipient (Bob) processes AkeComplete ===
 	// Bob extracts Alice's DhPk and computes the same shared secret
 
-	err = AkeFinalize(recipientState, &protocolMsg3)
+	err = AkeFinalize(recipientState, protocolMsg3)
 	if err != nil {
 		t.Fatalf("failed to finalize AKE for recipient: %v", err)
 	}
@@ -291,19 +286,17 @@ func TestAkeRequest(t *testing.T) {
 	}
 
 	// AkeRequest returns plaintext message (not encrypted)
-	var protocolMsg ProtocolMessage
-	err = protocolMsg.Unmarshal(msg)
+	protocolMsg, err := UnmarshalMessage(msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
 	// Verify it's an AkeRequest message
-	if !protocolMsg.IsAkeRequest() {
+	if !IsAkeRequest(protocolMsg) {
 		t.Fatal("expected AkeRequest message")
 	}
 
-	var akeMsg AkeMessage
-	err = protocolMsg.DecodePayload(&akeMsg)
+	akeMsg, err := DecodeAkePayload(protocolMsg)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
@@ -460,18 +453,16 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	// Parse Alice's message like Bob would
-	var protocolMsg1 ProtocolMessage
-	err = protocolMsg1.Unmarshal(round1Msg)
+	protocolMsg1, err := UnmarshalMessage(round1Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	if !protocolMsg1.IsAkeRequest() {
+	if !IsAkeRequest(protocolMsg1) {
 		t.Fatal("expected AkeRequest message")
 	}
 
-	var akeMsg1 AkeMessage
-	err = protocolMsg1.DecodePayload(&akeMsg1)
+	akeMsg1, err := DecodeAkePayload(protocolMsg1)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
@@ -482,7 +473,7 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	// === Round 2: Bob sends AkeResponse ===
-	round2Ciphertext, err := AkeResponse(bobState, &protocolMsg1)
+	round2Ciphertext, err := AkeResponse(bobState, protocolMsg1)
 	if err != nil {
 		t.Fatalf("Bob failed to process Alice's AkeRequest: %v", err)
 	}
@@ -493,18 +484,17 @@ func TestRealEnrollmentData(t *testing.T) {
 		t.Fatalf("failed to decrypt AkeResponse: %v", err)
 	}
 
-	var protocolMsg2 ProtocolMessage
-	err = protocolMsg2.Unmarshal(round2Plaintext)
+	protocolMsg2, err := UnmarshalMessage(round2Plaintext)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeResponse: %v", err)
 	}
 
-	if !protocolMsg2.IsAkeResponse() {
+	if !IsAkeResponse(protocolMsg2) {
 		t.Fatal("expected AkeResponse message")
 	}
 
 	// === Round 3: Alice sends AkeComplete ===
-	round3Ciphertext, err := AkeComplete(aliceState, &protocolMsg2)
+	round3Ciphertext, err := AkeComplete(aliceState, protocolMsg2)
 	if err != nil {
 		t.Fatalf("Alice failed to complete AKE: %v", err)
 	}
@@ -520,18 +510,17 @@ func TestRealEnrollmentData(t *testing.T) {
 		t.Fatalf("failed to decrypt AkeComplete: %v", err)
 	}
 
-	var protocolMsg3 ProtocolMessage
-	err = protocolMsg3.Unmarshal(round3Plaintext)
+	protocolMsg3, err := UnmarshalMessage(round3Plaintext)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeComplete: %v", err)
 	}
 
-	if !protocolMsg3.IsAkeComplete() {
+	if !IsAkeComplete(protocolMsg3) {
 		t.Fatal("expected AkeComplete message")
 	}
 
 	// === Finalization: Bob processes AkeComplete ===
-	err = AkeFinalize(bobState, &protocolMsg3)
+	err = AkeFinalize(bobState, protocolMsg3)
 	if err != nil {
 		t.Fatalf("Bob failed to finalize AKE: %v", err)
 	}

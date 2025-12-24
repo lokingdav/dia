@@ -104,7 +104,7 @@ func main() {
 			return
 		}
 
-		if message.IsBye() {
+		if protocol.IsBye(message) {
 			log.Println("Received bye message - shutting down")
 			stop()
 			return
@@ -112,10 +112,10 @@ func main() {
 
 		// === Recipient (Bob) ===
 		if callState.IamRecipient() {
-			if message.IsAkeRequest() {
+			if protocol.IsAkeRequest(message) {
 				log.Println("Handling AkeRequest Message: Recipient --> Caller")
 
-				response, err := protocol.AkeResponse(callState, &message)
+				response, err := protocol.AkeResponse(callState, message)
 				if err != nil {
 					log.Printf("failed responding to ake init: %v", err)
 					return
@@ -126,9 +126,9 @@ func main() {
 				}
 			}
 
-			if message.IsAkeComplete() {
+			if protocol.IsAkeComplete(message) {
 				log.Println("Received AkeComplete message - AKE protocol finished")
-				err := protocol.AkeFinalize(callState, &message)
+				err := protocol.AkeFinalize(callState, message)
 
 				if err != nil {
 					log.Printf("failed to finalize ake: %v", err)
@@ -151,7 +151,7 @@ func main() {
 				log.Printf("Swapped to RUA topic: %s", ruaTopic)
 			}
 
-			if message.IsRuaInit() {
+			if protocol.IsRuaRequest(message) {
 				log.Println("Received RuaInit message - RUA protocol started")
 				// Handle RUA init...
 			}
@@ -159,9 +159,9 @@ func main() {
 
 		// === Caller (Alice) ===
 		if callState.IamCaller() {
-			if message.IsAkeResponse() {
+			if protocol.IsAkeResponse(message) {
 				log.Println("Handling AkeResponse Message: Caller Finalize")
-				complete, err := protocol.AkeComplete(callState, &message)
+				complete, err := protocol.AkeComplete(callState, message)
 				if err != nil {
 					log.Printf("failed to process AkeResponse: %v", err)
 					return
@@ -176,7 +176,7 @@ func main() {
 
 				// Create RUA init (transitions state to RUA inside)
 				callState.TransitionToRua(callState.Rua.Topic)
-				
+
 				if err != nil {
 					log.Printf("failed to create RUA init: %v", err)
 					return
@@ -219,13 +219,11 @@ func main() {
 	_ = oobController.Close()
 }
 
-func getMessage(callState *protocol.CallState, data []byte) (protocol.ProtocolMessage, error) {
+func getMessage(callState *protocol.CallState, data []byte) (*protocol.ProtocolMessage, error) {
 	plaintext, err := encryption.SymDecrypt(callState.SharedKey, data)
 	if err != nil {
-		return protocol.ProtocolMessage{}, err
+		return nil, err
 		// TODO: fallback to public key encryption if symmetric fails
 	}
-	var message protocol.ProtocolMessage
-	_ = message.Unmarshal(plaintext)
-	return message, nil
+	return protocol.UnmarshalMessage(plaintext)
 }

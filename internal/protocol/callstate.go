@@ -9,11 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-type Rtu struct {
-	Pk, Exp, ETkn []byte
-	Name          string
-}
-
 type AkeState struct {
 	Topic                       []byte
 	DhSk, DhPk                  []byte

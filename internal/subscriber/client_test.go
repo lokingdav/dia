@@ -1,10 +1,12 @@
 package subscriber
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
 	"github.com/dense-identity/denseid/internal/protocol"
+	"google.golang.org/protobuf/proto"
 )
 
 // TestSessionCreation tests basic session creation
@@ -53,24 +55,26 @@ func TestSessionLifecycle(t *testing.T) {
 // TestMessageProcessingWithProtocol tests protocol message processing
 func TestMessageProcessingWithProtocol(t *testing.T) {
 	// Create an AKE message
-	akeMsg := protocol.AkeMessage{
-		DhPk:  "test_dhpk",
-		Proof: "test_proof",
+	akeMsg := &protocol.AkeMessage{
+		DhPk:  []byte("test_dhpk"),
+		Proof: []byte("test_proof"),
+	}
+
+	// Marshal AKE payload
+	payloadBytes, err := proto.Marshal(akeMsg)
+	if err != nil {
+		t.Fatalf("failed to marshal AKE payload: %v", err)
 	}
 
 	// Create protocol message wrapper
-	wrapperMsg := protocol.ProtocolMessage{
+	wrapperMsg := &protocol.ProtocolMessage{
 		Type:     protocol.TypeAkeRequest,
 		SenderId: "caller",
-	}
-
-	err := wrapperMsg.SetPayload(akeMsg)
-	if err != nil {
-		t.Fatalf("failed to set payload: %v", err)
+		Payload:  payloadBytes,
 	}
 
 	// Marshal it (this creates the protocol envelope)
-	messageData, err := wrapperMsg.Marshal()
+	messageData, err := protocol.MarshalMessage(wrapperMsg)
 	if err != nil {
 		t.Fatalf("failed to marshal AKE message: %v", err)
 	}
@@ -85,31 +89,29 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 	processMessage(messageData)
 
 	// Parse the received message
-	var protocolMsg protocol.ProtocolMessage
-	err = protocolMsg.Unmarshal(receivedMessage)
+	protocolMsg, err := protocol.UnmarshalMessage(receivedMessage)
 	if err != nil {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
 	// Verify it's an AkeInit message
-	if !protocolMsg.IsAkeRequest() {
+	if !protocol.IsAkeRequest(protocolMsg) {
 		t.Fatal("expected AkeInit message")
 	}
 
 	// Decode the AKE payload
-	var decodedAke protocol.AkeMessage
-	err = protocolMsg.DecodePayload(&decodedAke)
+	decodedAke, err := protocol.DecodeAkePayload(protocolMsg)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
 
 	// Verify the data
-	if decodedAke.DhPk != "test_dhpk" {
-		t.Errorf("dhPk mismatch: got %s, want test_dhpk", decodedAke.DhPk)
+	if !bytes.Equal(decodedAke.DhPk, []byte("test_dhpk")) {
+		t.Errorf("dhPk mismatch: got %s, want test_dhpk", string(decodedAke.DhPk))
 	}
 
-	if decodedAke.Proof != "test_proof" {
-		t.Errorf("proof mismatch: got %s, want test_proof", decodedAke.Proof)
+	if !bytes.Equal(decodedAke.Proof, []byte("test_proof")) {
+		t.Errorf("proof mismatch: got %s, want test_proof", string(decodedAke.Proof))
 	}
 }
 
@@ -141,82 +143,82 @@ func TestNoClientSideFiltering(t *testing.T) {
 // TestAkeRoundProcessing tests processing of AKE round messages
 func TestAkeRoundProcessing(t *testing.T) {
 	// Test Round 1 processing
-	round1Msg := protocol.AkeMessage{
-		DhPk:  "caller_dhpk",
-		Proof: "caller_proof",
+	round1Msg := &protocol.AkeMessage{
+		DhPk:  []byte("caller_dhpk"),
+		Proof: []byte("caller_proof"),
+	}
+
+	// Marshal AKE payload
+	payload1, err := proto.Marshal(round1Msg)
+	if err != nil {
+		t.Fatalf("failed to marshal round 1 payload: %v", err)
 	}
 
 	// Create protocol message wrapper for AkeInit
-	protocolWrapper1 := protocol.ProtocolMessage{
+	protocolWrapper1 := &protocol.ProtocolMessage{
 		Type:     protocol.TypeAkeRequest,
 		SenderId: "caller",
+		Payload:  payload1,
 	}
 
-	err := protocolWrapper1.SetPayload(round1Msg)
-	if err != nil {
-		t.Fatalf("failed to set round 1 payload: %v", err)
-	}
-
-	round1Data, err := protocolWrapper1.Marshal()
+	round1Data, err := protocol.MarshalMessage(protocolWrapper1)
 	if err != nil {
 		t.Fatalf("failed to marshal round 1: %v", err)
 	}
 
 	// Simulate recipient processing Round 1
-	var protocolMsg protocol.ProtocolMessage
-	err = protocolMsg.Unmarshal(round1Data)
+	protocolMsg, err := protocol.UnmarshalMessage(round1Data)
 	if err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
 
-	var akeMsg protocol.AkeMessage
-	err = protocolMsg.DecodePayload(&akeMsg)
+	akeMsg, err := protocol.DecodeAkePayload(protocolMsg)
 	if err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
 
-	if protocolMsg.IsAkeRequest() {
+	if protocol.IsAkeRequest(protocolMsg) {
 		// This is what recipient would do
-		if akeMsg.DhPk != "caller_dhpk" {
-			t.Errorf("dhPk mismatch: got %s", akeMsg.DhPk)
+		if !bytes.Equal(akeMsg.DhPk, []byte("caller_dhpk")) {
+			t.Errorf("dhPk mismatch: got %s", string(akeMsg.DhPk))
 		}
 
 		// Create Round 2 response
-		round2Msg := protocol.AkeMessage{
-			DhPk:  "recipient_dhpk",
-			Proof: "recipient_proof",
+		round2Msg := &protocol.AkeMessage{
+			DhPk:  []byte("recipient_dhpk"),
+			Proof: []byte("recipient_proof"),
+		}
+
+		// Marshal AKE payload
+		payload2, err := proto.Marshal(round2Msg)
+		if err != nil {
+			t.Fatalf("failed to marshal round 2 payload: %v", err)
 		}
 
 		// Create protocol message wrapper for AkeResponse
-		protocolWrapper2 := protocol.ProtocolMessage{
+		protocolWrapper2 := &protocol.ProtocolMessage{
 			Type:     protocol.TypeAkeResponse,
 			SenderId: "recipient",
+			Payload:  payload2,
 		}
 
-		err = protocolWrapper2.SetPayload(round2Msg)
-		if err != nil {
-			t.Fatalf("failed to set round 2 payload: %v", err)
-		}
-
-		round2Data, err := protocolWrapper2.Marshal()
+		round2Data, err := protocol.MarshalMessage(protocolWrapper2)
 		if err != nil {
 			t.Fatalf("failed to marshal round 2: %v", err)
 		}
 
 		// Verify Round 2 can be parsed
-		var round2Protocol protocol.ProtocolMessage
-		err = round2Protocol.Unmarshal(round2Data)
+		round2Protocol, err := protocol.UnmarshalMessage(round2Data)
 		if err != nil {
 			t.Fatalf("failed to unmarshal round 2: %v", err)
 		}
 
-		var round2Ake protocol.AkeMessage
-		err = round2Protocol.DecodePayload(&round2Ake)
+		_, err = protocol.DecodeAkePayload(round2Protocol)
 		if err != nil {
 			t.Fatalf("failed to decode round 2: %v", err)
 		}
 
-		if !round2Protocol.IsAkeResponse() {
+		if !protocol.IsAkeResponse(round2Protocol) {
 			t.Error("expected Round 2 message")
 		}
 

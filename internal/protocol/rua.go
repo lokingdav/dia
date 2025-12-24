@@ -45,15 +45,15 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 
 	InitRTU(caller, nil)
 
-	ruaMsg := RuaMessage{
+	ruaMsg := &RuaMessage{
 		Reason: caller.CallReason,
-		DhPk:   helpers.EncodeToHex(caller.Rua.DhPk),
-		Rtu:    *caller.Rua.Rtu,
+		DhPk:   caller.Rua.DhPk,
+		Rtu:    caller.Rua.Rtu,
 	}
 
 	// Sign message here
 
-	msg, err := CreateRuaMessage(caller.SenderId, helpers.EncodeToHex(caller.Rua.Topic), TypeRuaRequest, &ruaMsg)
+	msg, err := CreateRuaMessage(caller.SenderId, helpers.EncodeToHex(caller.Rua.Topic), TypeRuaRequest, ruaMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -65,4 +65,3 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 
 	return ciphertext, nil
 }
-
