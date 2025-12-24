@@ -15,6 +15,11 @@ func HashAll(items ...[]byte) []byte {
 	return Hash256(concats)
 }
 
+func HashAllHex(items ...[]byte) string {
+	concats := ConcatBytes(items...)
+	return hex.EncodeToString(Hash256(concats))
+}
+
 func Hash256Hex(data []byte) string {
 	return hex.EncodeToString(Hash256(data))
 }

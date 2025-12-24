@@ -34,17 +34,6 @@ services:
     env_file: .env
     profiles: [es]
 
-  key-derivation:
-    <<: *denseid-server-base
-    container_name: key-derivation
-    command:
-      - "--build.cmd=go build -o /app/bin/kd /app/cmd/keyderivation"
-      - "--build.bin=/app/bin/kd"
-    ports:
-      - "50052:50051"
-    env_file: .env
-    profiles: [ks]
-
   relay-server:
     <<: *denseid-server-base
     container_name: relay-server

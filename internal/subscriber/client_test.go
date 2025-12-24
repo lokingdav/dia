@@ -60,7 +60,7 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 
 	// Create protocol message wrapper
 	wrapperMsg := protocol.ProtocolMessage{
-		Type:     protocol.TypeAkeInit,
+		Type:     protocol.TypeAkeRequest,
 		SenderId: "caller",
 	}
 
@@ -92,7 +92,7 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 	}
 
 	// Verify it's an AkeInit message
-	if !protocolMsg.IsAkeInit() {
+	if !protocolMsg.IsAkeRequest() {
 		t.Fatal("expected AkeInit message")
 	}
 
@@ -148,7 +148,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 
 	// Create protocol message wrapper for AkeInit
 	protocolWrapper1 := protocol.ProtocolMessage{
-		Type:     protocol.TypeAkeInit,
+		Type:     protocol.TypeAkeRequest,
 		SenderId: "caller",
 	}
 
@@ -175,7 +175,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 		t.Fatalf("failed to decode: %v", err)
 	}
 
-	if protocolMsg.IsAkeInit() {
+	if protocolMsg.IsAkeRequest() {
 		// This is what recipient would do
 		if akeMsg.DhPk != "caller_dhpk" {
 			t.Errorf("dhPk mismatch: got %s", akeMsg.DhPk)

@@ -8,12 +8,13 @@ import (
 )
 
 const (
-	TypeAkeInit     = "AkeInit"
+	TypeAkeRequest  = "AkeRequest"
 	TypeAkeResponse = "AkeResponse"
 	TypeAkeComplete = "AkeComplete"
+
 	TypeRuaInit     = "RuaInit"
 	TypeRuaResponse = "RuaResponse"
-	TypeHeartBeat = "HeartBeat"
+	TypeHeartBeat   = "HeartBeat"
 	TypeBye         = "Bye"
 )
 
@@ -68,11 +69,11 @@ func (m *ProtocolMessage) UnmarshalInto(data []byte, out any) error {
 	return m.DecodePayload(out)
 }
 
-func (m *ProtocolMessage) IsAkeInit() bool {
+func (m *ProtocolMessage) IsAkeRequest() bool {
 	if m == nil {
 		return false
 	}
-	return m.Type == TypeAkeInit
+	return m.Type == TypeAkeRequest
 }
 
 func (m *ProtocolMessage) IsAkeResponse() bool {
@@ -190,14 +191,14 @@ func CreateAkeMessage(senderId, topic, akeType string, payload *AkeMessage) ([]b
 }
 
 type RuaMessage struct {
-	Reason string `json:"reason"`
-	DhPk       string `json:"dhPk"`
-	TnName string `json:"name"`
-	TnPublicKey  string `json:"tnpk"`
-	TnExp string `json:"texp"`
-	TnSig      string `json:"esig"`
-	PublicKey string `json:"pk"`
-	DelgExp string `json:"dexp"`
+	Reason      string `json:"reason"`
+	DhPk        string `json:"dhPk"`
+	TnName      string `json:"name"`
+	TnPublicKey string `json:"tnpk"`
+	TnExp       string `json:"texp"`
+	TnSig       string `json:"esig"`
+	PublicKey   string `json:"pk"`
+	DelgExp     string `json:"dexp"`
 }
 
 // CreateRuaMessage creates an RuaInit message (caller -> recipient)

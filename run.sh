@@ -5,7 +5,7 @@ cmd=${1:-}
 profile=${2:-}
 
 # list of valid profiles
-PROFILES=(es ks rv rs)
+PROFILES=(es rs)
 
 usage() {
   echo "Usage: $0 {up|down|restart} [all|${PROFILES[*]}]"

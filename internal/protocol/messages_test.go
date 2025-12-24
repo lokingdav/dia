@@ -9,7 +9,7 @@ import (
 func TestProtocolMessageMarshalUnmarshal(t *testing.T) {
 	// Create a test protocol message
 	original := ProtocolMessage{
-		Type:     TypeAkeInit,
+		Type:     TypeAkeRequest,
 		SenderId: "test_sender_123",
 	}
 
@@ -68,7 +68,7 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
-		Type:     TypeAkeInit,
+		Type:     TypeAkeRequest,
 		SenderId: "alice",
 	}
 
@@ -90,8 +90,8 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
 
-	if !restoredProtocol.IsAkeInit() {
-		t.Fatal("expected AkeInit message")
+	if !restoredProtocol.IsAkeRequest() {
+		t.Fatal("expected AkeRequest message")
 	}
 
 	// Decode the AKE payload
@@ -160,9 +160,9 @@ func TestAkeMessageValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Create protocol message wrapper (using AkeInit as example)
+			// Create protocol message wrapper (using AkeRequest as example)
 			protocolMsg := ProtocolMessage{
-				Type:     TypeAkeInit,
+				Type:     TypeAkeRequest,
 				SenderId: tc.senderId,
 			}
 
@@ -211,7 +211,7 @@ func TestProtocolMessageValidation(t *testing.T) {
 
 	t.Run("nil_payload_decode", func(t *testing.T) {
 		msg := ProtocolMessage{
-			Type: TypeAkeInit,
+			Type: TypeAkeRequest,
 		}
 		err := msg.DecodePayload(nil)
 		if err == nil {
@@ -222,26 +222,26 @@ func TestProtocolMessageValidation(t *testing.T) {
 
 // TestAkeMessageTypeHelpers tests the new message type helper methods
 func TestAkeMessageTypeHelpers(t *testing.T) {
-	// Test AkeInit message
-	akeInitMsg := ProtocolMessage{Type: TypeAkeInit}
+	// Test AkeRequest message
+	akeRequestMsg := ProtocolMessage{Type: TypeAkeRequest}
 	akeResponseMsg := ProtocolMessage{Type: TypeAkeResponse}
 	akeCompleteMsg := ProtocolMessage{Type: TypeAkeComplete}
 	byeMsg := ProtocolMessage{Type: TypeBye}
 
-	// Test AkeInit
-	if !akeInitMsg.IsAkeInit() {
-		t.Error("should be AkeInit")
+	// Test AkeRequest
+	if !akeRequestMsg.IsAkeRequest() {
+		t.Error("should be AkeRequest")
 	}
-	if akeInitMsg.IsAkeResponse() {
+	if akeRequestMsg.IsAkeResponse() {
 		t.Error("should not be AkeResponse")
 	}
-	if akeInitMsg.IsAkeComplete() {
+	if akeRequestMsg.IsAkeComplete() {
 		t.Error("should not be AkeComplete")
 	}
 
 	// Test AkeResponse
-	if akeResponseMsg.IsAkeInit() {
-		t.Error("should not be AkeInit")
+	if akeResponseMsg.IsAkeRequest() {
+		t.Error("should not be AkeRequest")
 	}
 	if !akeResponseMsg.IsAkeResponse() {
 		t.Error("should be AkeResponse")
@@ -251,8 +251,8 @@ func TestAkeMessageTypeHelpers(t *testing.T) {
 	}
 
 	// Test AkeComplete
-	if akeCompleteMsg.IsAkeInit() {
-		t.Error("should not be AkeInit")
+	if akeCompleteMsg.IsAkeRequest() {
+		t.Error("should not be AkeRequest")
 	}
 	if akeCompleteMsg.IsAkeResponse() {
 		t.Error("should not be AkeResponse")
@@ -262,8 +262,8 @@ func TestAkeMessageTypeHelpers(t *testing.T) {
 	}
 
 	// Test Bye
-	if byeMsg.IsAkeInit() {
-		t.Error("should not be AkeInit")
+	if byeMsg.IsAkeRequest() {
+		t.Error("should not be AkeRequest")
 	}
 	if byeMsg.IsAkeResponse() {
 		t.Error("should not be AkeResponse")
@@ -279,7 +279,7 @@ func TestAkeMessageTypeHelpers(t *testing.T) {
 // TestProtocolMessageIsAke tests AKE type detection
 // TestProtocolMessageTypeDetection tests the new specific message type detection methods
 func TestProtocolMessageTypeDetection(t *testing.T) {
-	akeInitMsg := ProtocolMessage{Type: TypeAkeInit}
+	akeInitMsg := ProtocolMessage{Type: TypeAkeRequest}
 	akeResponseMsg := ProtocolMessage{Type: TypeAkeResponse}
 	akeCompleteMsg := ProtocolMessage{Type: TypeAkeComplete}
 	byeMsg := ProtocolMessage{Type: TypeBye}
@@ -287,7 +287,7 @@ func TestProtocolMessageTypeDetection(t *testing.T) {
 	var nilMsg *ProtocolMessage
 
 	// Test AkeInit detection
-	if !akeInitMsg.IsAkeInit() {
+	if !akeInitMsg.IsAkeRequest() {
 		t.Error("AkeInit message should be detected as AkeInit")
 	}
 	if akeInitMsg.IsAkeResponse() || akeInitMsg.IsAkeComplete() || akeInitMsg.IsBye() {
@@ -298,7 +298,7 @@ func TestProtocolMessageTypeDetection(t *testing.T) {
 	if !akeResponseMsg.IsAkeResponse() {
 		t.Error("AkeResponse message should be detected as AkeResponse")
 	}
-	if akeResponseMsg.IsAkeInit() || akeResponseMsg.IsAkeComplete() || akeResponseMsg.IsBye() {
+	if akeResponseMsg.IsAkeRequest() || akeResponseMsg.IsAkeComplete() || akeResponseMsg.IsBye() {
 		t.Error("AkeResponse message should not be detected as other types")
 	}
 
@@ -306,7 +306,7 @@ func TestProtocolMessageTypeDetection(t *testing.T) {
 	if !akeCompleteMsg.IsAkeComplete() {
 		t.Error("AkeComplete message should be detected as AkeComplete")
 	}
-	if akeCompleteMsg.IsAkeInit() || akeCompleteMsg.IsAkeResponse() || akeCompleteMsg.IsBye() {
+	if akeCompleteMsg.IsAkeRequest() || akeCompleteMsg.IsAkeResponse() || akeCompleteMsg.IsBye() {
 		t.Error("AkeComplete message should not be detected as other types")
 	}
 
@@ -314,17 +314,17 @@ func TestProtocolMessageTypeDetection(t *testing.T) {
 	if !byeMsg.IsBye() {
 		t.Error("Bye message should be detected as Bye")
 	}
-	if byeMsg.IsAkeInit() || byeMsg.IsAkeResponse() || byeMsg.IsAkeComplete() {
+	if byeMsg.IsAkeRequest() || byeMsg.IsAkeResponse() || byeMsg.IsAkeComplete() {
 		t.Error("Bye message should not be detected as AKE types")
 	}
 
 	// Test other type detection
-	if otherMsg.IsAkeInit() || otherMsg.IsAkeResponse() || otherMsg.IsAkeComplete() || otherMsg.IsBye() {
+	if otherMsg.IsAkeRequest() || otherMsg.IsAkeResponse() || otherMsg.IsAkeComplete() || otherMsg.IsBye() {
 		t.Error("Other message should not be detected as any known type")
 	}
 
 	// Test nil message detection
-	if nilMsg.IsAkeInit() || nilMsg.IsAkeResponse() || nilMsg.IsAkeComplete() || nilMsg.IsBye() {
+	if nilMsg.IsAkeRequest() || nilMsg.IsAkeResponse() || nilMsg.IsAkeComplete() || nilMsg.IsBye() {
 		t.Error("nil message should not be detected as any type")
 	}
 }
@@ -389,7 +389,7 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
-		Type:     TypeAkeInit,
+		Type:     TypeAkeRequest,
 		SenderId: "caller_id",
 	}
 
@@ -413,7 +413,7 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 	}
 
 	// Step 2: Check if it's an AkeInit message (like in main.go)
-	if !receivedProtocolMsg.IsAkeInit() {
+	if !receivedProtocolMsg.IsAkeRequest() {
 		t.Fatal("expected AkeInit message")
 	}
 
@@ -425,7 +425,7 @@ func TestMessageProcessingLikeRealUsage(t *testing.T) {
 	}
 
 	// Step 4: Handle AkeInit message (like in main.go)
-	if receivedProtocolMsg.IsAkeInit() {
+	if receivedProtocolMsg.IsAkeRequest() {
 		// This is what would happen in the recipient's callback
 		if akeMsg.DhPk != "test_dhpk_from_caller" {
 			t.Errorf("dhPk mismatch in AkeInit: got %s", akeMsg.DhPk)
@@ -454,7 +454,7 @@ func TestJsonCompatibility(t *testing.T) {
 
 	// Create protocol message wrapper
 	protocolMsg := ProtocolMessage{
-		Type:     TypeAkeInit,
+		Type:     TypeAkeRequest,
 		SenderId: "test_sender",
 	}
 
@@ -477,8 +477,8 @@ func TestJsonCompatibility(t *testing.T) {
 	}
 
 	// Should have the expected envelope structure
-	if jsonCheck["type"] != TypeAkeInit {
-		t.Errorf("JSON type mismatch: got %v, want %s", jsonCheck["type"], TypeAkeInit)
+	if jsonCheck["type"] != TypeAkeRequest {
+		t.Errorf("JSON type mismatch: got %v, want %s", jsonCheck["type"], TypeAkeRequest)
 	}
 
 	if jsonCheck["sender_id"] != "test_sender" {
@@ -528,7 +528,7 @@ func TestByeMessage(t *testing.T) {
 	}
 
 	// Verify bye message is not detected as any AKE type
-	if byeMsg.IsAkeInit() || byeMsg.IsAkeResponse() || byeMsg.IsAkeComplete() {
+	if byeMsg.IsAkeRequest() || byeMsg.IsAkeResponse() || byeMsg.IsAkeComplete() {
 		t.Error("bye message should not be detected as any AKE message type")
 	}
 

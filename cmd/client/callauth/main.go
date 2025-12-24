@@ -10,6 +10,7 @@ import (
 
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/encryption"
+	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/dense-identity/denseid/internal/protocol"
 	"github.com/dense-identity/denseid/internal/subscriber"
 )
@@ -61,28 +62,13 @@ func createCallState() *protocol.CallState {
 	return &state
 }
 
-func RunKeyDerivation(ctx context.Context, callState *protocol.CallState) {
-	kdClient, err := subscriber.NewKeyDeriveClient(callState.Config.KeyServerAddr)
-	if err != nil {
-		log.Fatalf("error creating key derivation client: %v", err)
-	}
-	sharedKey, err := protocol.AkeDeriveKey(ctx, kdClient.Stub, callState)
-	if err != nil {
-		log.Fatalf("error deriving key: %v", err)
-	}
-	if err := kdClient.Close(); err != nil {
-		log.Fatalf("unable to close keyderivation client: %v", err)
-	}
-	callState.SetSharedKey(sharedKey)
-}
-
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
 	// 1) Call state & key derivation
 	callState := createCallState()
-	RunKeyDerivation(ctx, callState)
+	// RunKeyDerivation(ctx, callState)
 
 	// 2) IMPORTANT: Initialize AKE BEFORE creating the Relay controller
 	if err := protocol.InitAke(callState); err != nil {
@@ -126,10 +112,10 @@ func main() {
 
 		// === Recipient (Bob) ===
 		if callState.IamRecipient() {
-			if message.IsAkeInit() {
-				log.Println("Handling AkeInit Message: Recipient --> Caller")
+			if message.IsAkeRequest() {
+				log.Println("Handling AkeRequest Message: Recipient --> Caller")
 
-				response, err := protocol.AkeResponseRecipientToCaller(callState, &message)
+				response, err := protocol.AkeResponse(callState, &message)
 				if err != nil {
 					log.Printf("failed responding to ake init: %v", err)
 					return
@@ -146,12 +132,11 @@ func main() {
 
 				// Derive RUA topic
 				ruaTopic := protocol.DeriveRuaTopic(callState)
-
 				// FIX: move our state FIRST so replay from ruaTopic isn't filtered
 				callState.TransitionToRua(ruaTopic)
-
+				
 				// Ask server to swap (replay then live)
-				if err := oobController.SwapToTopic(ruaTopic, nil, nil); err != nil {
+				if err := oobController.SwapToTopic(helpers.EncodeToHex(ruaTopic), nil, nil); err != nil {
 					log.Printf("failed to swap to RUA topic: %v", err)
 					// (Optional) revert: callState.TransitionToRua(callState.AkeTopic)
 					return
@@ -170,11 +155,11 @@ func main() {
 		if callState.IamCaller() {
 			if message.IsAkeResponse() {
 				log.Println("Handling AkeResponse Message: Caller Finalize")
-				if err := protocol.AkeFinalizeCaller(callState, &message); err != nil {
-					log.Printf("failed to finalize ake response: %v", err)
+				response, err := protocol.AkeComplete(callState, &message)
+				if err != nil {
+					log.Printf("failed to process AkeResponse: %v", err)
 					return
 				}
-				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
 
 				// Capture old (AKE) topic BEFORE switching
 				oldTopic := callState.AkeTopic
@@ -186,20 +171,17 @@ func main() {
 					return
 				}
 
+				ruaTpcStr := helpers.EncodeToHex(ruaTopic)
+
 				// Subscribe to RUA and piggy-back RUA init
-				if err := oobController.SubscribeToNewTopicWithPayload(ruaTopic, ruaInitMsg, callState.Ticket); err != nil {
+				if err := oobController.SubscribeToNewTopicWithPayload(ruaTpcStr, ruaInitMsg, callState.Ticket); err != nil {
 					log.Printf("failed to subscribe+init on RUA topic: %v", err)
 					return
 				}
 				log.Printf("Subscribed to RUA topic (with init): %s", ruaTopic)
 
-				// Notify Bob on the OLD AKE topic to move
-				completeMsg, err := protocol.AkeCompleteSendToRecipient(callState)
-				if err != nil {
-					log.Printf("failed to create ake complete message: %v", err)
-					return
-				}
-				if err := oobController.SendToTopic(oldTopic, completeMsg, nil); err != nil {
+				// Send response to Bob
+				if err := oobController.SendToTopic(helpers.EncodeToHex(oldTopic), response, nil); err != nil {
 					log.Printf("failed to send AkeComplete on old topic: %v", err)
 					return
 				}
@@ -208,16 +190,16 @@ func main() {
 		}
 	})
 
-	// 5) For outgoing calls, after Tunnel is started, send AkeInit
+	// 5) For outgoing calls, after Tunnel is started, send AkeRequest
 	if callState.IsOutgoing {
-		ciphertext, err := protocol.AkeInitCallerToRecipient(callState)
+		ciphertext, err := protocol.AkeRequest(callState)
 		if err != nil {
-			log.Fatalf("failed creating AkeInit Caller --> Recipient: %v", err)
+			log.Fatalf("failed creating AkeRequest Caller --> Recipient: %v", err)
 		}
 		if err := oobController.Send(ciphertext); err != nil {
 			log.Fatalf("publish failed: %v", err)
 		}
-		log.Println("Sent AkeInit Message: Caller --> Recipient")
+		log.Println("Sent AkeRequest Message: Caller --> Recipient")
 	}
 
 	log.Printf("Active Topic: %s", callState.GetCurrentTopic())

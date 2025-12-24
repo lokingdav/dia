@@ -13,10 +13,10 @@ type CallState struct {
 	mu                                   sync.Mutex
 	IsOutgoing                           bool
 	Src, Dst, Ts, SenderId, CallReason    string
-	AkeTopic, RuaTopic, CurrentTopic     string // Explicit topics; CurrentTopic for filtering
+	AkeTopic, RuaTopic, CurrentTopic     []byte
 	RuaActive                            bool   // Protocol phase flag
 	DhSk, DhPk, Ticket, SharedKey, Chal0 []byte
-	Proof                                []byte
+	CallerProof, RecipientProof          []byte
 	Config                               *config.SubscriberConfig
 }
 
@@ -24,22 +24,19 @@ func (s *CallState) GetAkeLabel() []byte {
 	return []byte(s.Src + s.Ts)
 }
 
-// MarshalAkeTopic returns the AKE topic in bytes (used by key derivation).
-func (s *CallState) MarshalAkeTopic() []byte {
-	b, _ := helpers.DecodeHex(s.AkeTopic)
-	return b
+func (s *CallState) GetAkeTopic() string { 
+	return helpers.EncodeToHex(s.AkeTopic)
 }
 
-// Optional helper if you ever need it.
-func (s *CallState) MarshalRuaTopic() []byte {
-	b, _ := helpers.DecodeHex(s.RuaTopic)
-	return b
+func (s *CallState) IamCaller() bool    { 
+	return s.IsOutgoing 
 }
 
-func (s *CallState) IamCaller() bool    { return s.IsOutgoing }
-func (s *CallState) IamRecipient() bool { return !s.IsOutgoing }
+func (s *CallState) IamRecipient() bool { 
+	return !s.IsOutgoing 
+}
 
-func (s *CallState) InitAke(dhSk, dhPk []byte, akeTopic string) {
+func (s *CallState) InitAke(dhSk, dhPk []byte, akeTopic []byte) {
 	s.mu.Lock()
 	s.DhSk = dhSk
 	s.DhPk = dhPk
@@ -51,7 +48,7 @@ func (s *CallState) InitAke(dhSk, dhPk []byte, akeTopic string) {
 
 // TransitionToRua sets the RUA topic and flips the active topic to RUA.
 // NOTE: AkeTopic is intentionally preserved so AkeComplete can still be sent on it.
-func (s *CallState) TransitionToRua(ruaTopic string) {
+func (s *CallState) TransitionToRua(ruaTopic []byte) {
 	s.mu.Lock()
 	s.RuaTopic = ruaTopic
 	s.CurrentTopic = ruaTopic
@@ -62,7 +59,7 @@ func (s *CallState) TransitionToRua(ruaTopic string) {
 func (s *CallState) GetCurrentTopic() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.CurrentTopic
+	return helpers.EncodeToHex(s.CurrentTopic)
 }
 
 func (s *CallState) IsRuaActive() bool {
@@ -77,10 +74,10 @@ func (s *CallState) SetSharedKey(k []byte) {
 	s.mu.Unlock()
 }
 
-func (s *CallState) UpdateR1(chal, proof []byte) {
+func (s *CallState) UpdateCaller(chal, proof []byte) {
 	s.mu.Lock()
 	s.Chal0 = chal
-	s.Proof = proof
+	s.CallerProof = proof
 	s.mu.Unlock()
 }
 
