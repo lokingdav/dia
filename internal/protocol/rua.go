@@ -95,7 +95,10 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 		return nil, errors.New("caller CallState cannot be nil")
 	}
 
-	InitRTU(caller, nil)
+	// Use existing RTU from state, or initialize with nil if not set
+	if caller.Rua.Topic == nil {
+		InitRTU(caller, caller.Rua.Rtu)
+	}
 
 	topic := helpers.EncodeToHex(caller.Rua.Topic)
 
@@ -121,6 +124,7 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 	}
 
 	ruaMsg.Sigma = Sigma
+	caller.Rua.Req = ruaMsg
 
 	msg, err := CreateRuaMessage(caller.SenderId, topic, TypeRuaRequest, ruaMsg)
 	if err != nil {
@@ -163,8 +167,8 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	}
 
 	reply := &RuaMessage{
-		DhPk:   recipient.Rua.DhPk,
-		Rtu:    recipient.Rua.Rtu,
+		DhPk: recipient.Rua.DhPk,
+		Rtu:  recipient.Rua.Rtu,
 		Misc: ddA,
 	}
 
@@ -200,7 +204,7 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
-	// ctxA, err := 
+	// ctxA, err :=
 	rtuB, err := proto.MarshalOptions{Deterministic: true}.Marshal(caller.Rtu)
 	sharedKey := helpers.HashAll(
 		ddA,
@@ -231,21 +235,65 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 		return err
 	}
 
-	err = VerifyRTU(caller, caller.Dst, recipient)
+	// Verify RTU validity (expiration and BBS signature) but not AMF signature
+	// because RuaResponse has a different signing structure
+	if recipient.Rtu == nil {
+		return errors.New("RTU cannot be nil")
+	}
+	if err := datetime.CheckExpiry(recipient.Rtu.Expiration); err != nil {
+		return err
+	}
+
+	// Validate RA's BBS signature on RTU
+	message1 := helpers.HashAll(recipient.Rtu.PublicKey, recipient.Rtu.Expiration, []byte(caller.Dst))
+	message2 := []byte(recipient.Rtu.Name)
+	messages := [][]byte{message1, message2}
+	rtuValid, err := bbs.Verify(messages, caller.Config.RaPublicKey, recipient.Rtu.Signature)
 	if err != nil {
 		return err
+	}
+	if !rtuValid {
+		return errors.New("invalid RTU signature from RA")
+	}
+
+	// Verify AMF signature on RuaResponse
+	// RuaResponse was signed with {DhPk, Rtu, Misc=ddA}
+	ddA, err := MarshalDDA(caller.Rua.Req)
+	if err != nil {
+		return err
+	}
+
+	// Reconstruct what was signed
+	signedMsg := &RuaMessage{
+		DhPk: recipient.DhPk,
+		Rtu:  recipient.Rtu,
+		Misc: ddA,
+	}
+	signedData, err := proto.MarshalOptions{Deterministic: true}.Marshal(signedMsg)
+	if err != nil {
+		return err
+	}
+
+	sigmaValid, err := amf.Verify(
+		recipient.Rtu.PublicKey,
+		caller.Config.RuaPrivateKey,
+		caller.Config.ModeratorPublicKey,
+		signedData,
+		recipient.Sigma)
+	if err != nil {
+		return err
+	}
+	if !sigmaValid {
+		return errors.New("invalid AMF signature")
 	}
 
 	secret, err := dia.DHComputeSecret(caller.Rua.DhSk, recipient.DhPk)
 	if err != nil {
 		return err
 	}
-	ddA, err := MarshalDDA(caller.Rua.Req)
-	if err != nil {
-		return err
-	}
-	
-	rtuB, err := proto.MarshalOptions{Deterministic: true}.Marshal(recipient.Rtu)
+
+	// Use caller's RTU (from the original request) to match RuaResponse's shared key derivation
+	rtuB, err := proto.MarshalOptions{Deterministic: true}.Marshal(caller.Rua.Req.Rtu)
 	sharedKey := helpers.HashAll(
 		ddA,
 		recipient.DhPk,
@@ -254,6 +302,6 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 		recipient.Sigma,
 		secret)
 	caller.SetSharedKey(sharedKey)
-	
+
 	return nil
 }
