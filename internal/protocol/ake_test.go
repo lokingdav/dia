@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/caarlos0/env/v11"
-	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/encryption"
@@ -17,21 +16,6 @@ import (
 	"github.com/joho/godotenv"
 	dia "github.com/lokingdav/libdia/bindings/go"
 )
-
-// Global test keys to ensure consistency across test parties
-var (
-	testRaPrivateKey []byte
-	testRaPublicKey  []byte
-	testRuaPublicKey []byte
-	testExpiration   []byte
-)
-
-func init() {
-	// Initialize shared test keys once
-	testRaPrivateKey, testRaPublicKey, _ = bbs.Keygen()
-	_, testRuaPublicKey, _ = bbs.Keygen()
-	testExpiration = []byte("20991231235959Z")
-}
 
 // loadConfigFromEnv loads a SubscriberConfig from the specified .env file
 func loadConfigFromEnv(envFile string) (*config.SubscriberConfig, error) {
