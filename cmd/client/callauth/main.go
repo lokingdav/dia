@@ -149,11 +149,30 @@ func main() {
 				}
 
 				log.Printf("Swapped to RUA topic: %s", ruaTopic)
+
+				// Initialize RTU for recipient
+				if err := protocol.InitRTU(callState); err != nil {
+					log.Printf("failed to init RTU: %v", err)
+					return
+				}
+				log.Println("RTU initialized, waiting for RuaRequest...")
 			}
 
 			if protocol.IsRuaRequest(message) {
-				log.Println("Received RuaInit message - RUA protocol started")
-				// Handle RUA init...
+				log.Println("Received RuaRequest message - sending RuaResponse")
+
+				response, err := protocol.RuaResponse(callState, message)
+				if err != nil {
+					log.Printf("failed to create RuaResponse: %v", err)
+					return
+				}
+
+				if err := oobController.Send(response); err != nil {
+					log.Printf("failed to send RuaResponse: %v", err)
+					return
+				}
+
+				log.Printf("RUA completed! New shared secret: %x", callState.SharedKey)
 			}
 		}
 
@@ -197,6 +216,18 @@ func main() {
 					return
 				}
 				log.Println("Sent AkeComplete on old topic")
+			}
+
+			if protocol.IsRuaResponse(message) {
+				log.Println("Received RuaResponse message - finalizing RUA")
+
+				err := protocol.RuaFinalize(callState, message)
+				if err != nil {
+					log.Printf("failed to finalize RUA: %v", err)
+					return
+				}
+
+				log.Printf("RUA completed! New shared secret: %x", callState.SharedKey)
 			}
 		}
 	})

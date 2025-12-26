@@ -5,12 +5,23 @@ import (
 
 	"github.com/dense-identity/denseid/internal/amf"
 	"github.com/dense-identity/denseid/internal/bbs"
+	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	dia "github.com/lokingdav/libdia/bindings/go"
 	"google.golang.org/protobuf/proto"
 )
+
+// createRtuFromConfig builds an RTU from enrollment data in SubscriberConfig
+func createRtuFromConfig(cfg *config.SubscriberConfig) *Rtu {
+	return &Rtu{
+		PublicKey:  cfg.RuaPublicKey,
+		Expiration: cfg.EnExpiration,
+		Signature:  cfg.RaSignature,
+		Name:       cfg.MyName,
+	}
+}
 
 // DeriveRuaTopic creates a new topic for RUA phase based on shared secret.
 func DeriveRuaTopic(callState *CallState) []byte {
@@ -23,8 +34,9 @@ func DeriveRuaTopic(callState *CallState) []byte {
 	return message
 }
 
-func InitRTU(party *CallState, rtu *Rtu) error {
+func InitRTU(party *CallState) error {
 	ruaTopic := DeriveRuaTopic(party)
+	rtu := createRtuFromConfig(party.Config)
 
 	dhSk, dhPk, err := dia.DHKeygen()
 	if err != nil {
@@ -95,9 +107,9 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 		return nil, errors.New("caller CallState cannot be nil")
 	}
 
-	// Use existing RTU from state, or initialize with nil if not set
+	// Use existing RTU from state, or initialize if not set
 	if caller.Rua.Topic == nil {
-		InitRTU(caller, caller.Rua.Rtu)
+		InitRTU(caller)
 	}
 
 	topic := helpers.EncodeToHex(caller.Rua.Topic)

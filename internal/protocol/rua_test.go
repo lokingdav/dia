@@ -6,23 +6,12 @@ import (
 
 	"github.com/dense-identity/denseid/internal/amf"
 	"github.com/dense-identity/denseid/internal/bbs"
-	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 )
-
-// createRtuFromConfig builds an RTU from enrollment data in SubscriberConfig
-func createRtuFromConfig(cfg *config.SubscriberConfig) *Rtu {
-	return &Rtu{
-		PublicKey:  cfg.RuaPublicKey,
-		Expiration: cfg.EnExpiration,
-		Signature:  cfg.RaSignature,
-		Name:       cfg.MyName,
-	}
-}
 
 // setupAkeCompletedStates creates two call states that have completed the AKE phase
 // Returns (callerState, recipientState) with matching shared keys
@@ -103,22 +92,18 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 	akeSharedKey := make([]byte, len(callerState.SharedKey))
 	copy(akeSharedKey, callerState.SharedKey)
 
-	// Setup RTUs for both parties from enrollment data in configs
-	callerRtu := createRtuFromConfig(callerState.Config)
-	recipientRtu := createRtuFromConfig(recipientState.Config)
-
 	// Set call reason for caller
 	callerState.CallReason = "Business inquiry"
 
 	// === RUA Phase ===
 
 	// Initialize RUA for both parties with their RTUs
-	err := InitRTU(callerState, callerRtu)
+	err := InitRTU(callerState)
 	if err != nil {
 		t.Fatalf("failed to init RTU for caller: %v", err)
 	}
 
-	err = InitRTU(recipientState, recipientRtu)
+	err = InitRTU(recipientState)
 	if err != nil {
 		t.Fatalf("failed to init RTU for recipient: %v", err)
 	}
@@ -286,10 +271,9 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 func TestRuaRequest(t *testing.T) {
 	callerState, _ := setupAkeCompletedStates(t, "alice", "bob")
 
-	callerRtu := createRtuFromConfig(callerState.Config)
 	callerState.CallReason = "Test call"
 
-	err := InitRTU(callerState, callerRtu)
+	err := InitRTU(callerState)
 	if err != nil {
 		t.Fatalf("failed to init RTU: %v", err)
 	}
@@ -448,8 +432,7 @@ func TestRuaErrorCases(t *testing.T) {
 		callerState, recipientState := setupAkeCompletedStates(t, "alice", "bob")
 		_ = callerState
 
-		recipientRtu := createRtuFromConfig(recipientState.Config)
-		err := InitRTU(recipientState, recipientRtu)
+		err := InitRTU(recipientState)
 		if err != nil {
 			t.Fatalf("failed to init RTU: %v", err)
 		}
@@ -463,8 +446,7 @@ func TestRuaErrorCases(t *testing.T) {
 	t.Run("WrongMessageType_RuaResponse", func(t *testing.T) {
 		_, recipientState := setupAkeCompletedStates(t, "alice", "bob")
 
-		recipientRtu := createRtuFromConfig(recipientState.Config)
-		err := InitRTU(recipientState, recipientRtu)
+		err := InitRTU(recipientState)
 		if err != nil {
 			t.Fatalf("failed to init RTU: %v", err)
 		}
@@ -559,9 +541,7 @@ func TestDeriveRuaTopic(t *testing.T) {
 func TestInitRTU(t *testing.T) {
 	callerState, _ := setupAkeCompletedStates(t, "alice", "bob")
 
-	rtu := createRtuFromConfig(callerState.Config)
-
-	err := InitRTU(callerState, rtu)
+	err := InitRTU(callerState)
 	if err != nil {
 		t.Fatalf("InitRTU failed: %v", err)
 	}
@@ -585,7 +565,7 @@ func TestInitRTU(t *testing.T) {
 		t.Fatal("Rtu should be set after InitRTU")
 	}
 
-	if !bytes.Equal(callerState.Rua.Rtu.PublicKey, rtu.PublicKey) {
+	if !bytes.Equal(callerState.Rua.Rtu.PublicKey, callerState.Config.RuaPublicKey) {
 		t.Fatal("RTU public key mismatch")
 	}
 }
@@ -756,15 +736,12 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 	t.Logf("AKE completed. Shared key: %x", akeSharedKey)
 
 	// === RUA Phase ===
-	// Use real RTUs from enrollment data (no key overrides needed)
-	aliceRtu := createRtuFromConfig(aliceConfig)
-	bobRtu := createRtuFromConfig(bobConfig)
 
 	// Initialize RUA
-	if err := InitRTU(aliceState, aliceRtu); err != nil {
+	if err := InitRTU(aliceState); err != nil {
 		t.Fatalf("failed to init RTU for alice: %v", err)
 	}
-	if err := InitRTU(bobState, bobRtu); err != nil {
+	if err := InitRTU(bobState); err != nil {
 		t.Fatalf("failed to init RTU for bob: %v", err)
 	}
 
