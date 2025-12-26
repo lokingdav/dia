@@ -168,9 +168,9 @@ func CreateHeartBeatMessage(senderId, topic string) ([]byte, error) {
 	return MarshalMessage(msg)
 }
 
-// GetDDA returns the deterministic data for AMF signature verification (Data to be signed/verified).
+// MarshalDDA returns the deterministic data for AMF signature verification (Data to be signed/verified).
 // It marshals the RuaMessage without the sigma field.
-func GetDDA(m *RuaMessage) ([]byte, error) {
+func MarshalDDA(m *RuaMessage) ([]byte, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil RuaMessage")
 	}

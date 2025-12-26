@@ -20,6 +20,7 @@ type RuaState struct {
 	Topic      []byte
 	DhSk, DhPk []byte
 	Rtu        *Rtu
+	Req	*RuaMessage
 }
 
 type CallState struct {

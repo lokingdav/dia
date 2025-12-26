@@ -67,7 +67,7 @@ func VerifyRTU(party *CallState, tn string, msg *RuaMessage) error {
 	}
 
 	// Validate AMF signature (sigma) in rua message
-	data, err := GetDDA(msg)
+	data, err := MarshalDDA(msg)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 		Rtu:    caller.Rua.Rtu,
 	}
 
-	data, err := GetDDA(ruaMsg)
+	data, err := MarshalDDA(ruaMsg)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
-	ddA, err := GetDDA(caller)
+	ddA, err := MarshalDDA(caller)
 	if err != nil {
 		return nil, err
 	}
@@ -183,6 +183,7 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	}
 
 	reply.Sigma = Sigma
+	reply.Misc = nil
 	tpc := helpers.EncodeToHex(recipient.Rua.Topic)
 	msg, err := CreateRuaMessage(recipient.SenderId, tpc, TypeRuaResponse, reply)
 	if err != nil {
@@ -194,5 +195,65 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
+	secret, err := dia.DHComputeSecret(recipient.Rua.DhSk, caller.DhPk)
+	if err != nil {
+		return nil, err
+	}
+
+	// ctxA, err := 
+	rtuB, err := proto.MarshalOptions{Deterministic: true}.Marshal(caller.Rtu)
+	sharedKey := helpers.HashAll(
+		ddA,
+		reply.DhPk,
+		rtuB,
+		caller.Sigma,
+		Sigma,
+		secret,
+	)
+	recipient.SetSharedKey(sharedKey)
+
 	return ciphertext, nil
+}
+
+func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
+	if caller == nil {
+		return errors.New("caller CallState cannot be nil")
+	}
+	if recipientMsg == nil {
+		return errors.New("recipient ProtocolMessage cannot be nil")
+	}
+	if !IsRuaResponse(recipientMsg) {
+		return errors.New("RuaFinalize can only be called on RuaResponse")
+	}
+
+	recipient, err := DecodeRuaPayload(recipientMsg)
+	if err != nil {
+		return err
+	}
+
+	err = VerifyRTU(caller, caller.Dst, recipient)
+	if err != nil {
+		return err
+	}
+
+	secret, err := dia.DHComputeSecret(caller.Rua.DhSk, recipient.DhPk)
+	if err != nil {
+		return err
+	}
+	ddA, err := MarshalDDA(caller.Rua.Req)
+	if err != nil {
+		return err
+	}
+	
+	rtuB, err := proto.MarshalOptions{Deterministic: true}.Marshal(recipient.Rtu)
+	sharedKey := helpers.HashAll(
+		ddA,
+		recipient.DhPk,
+		rtuB,
+		caller.Rua.Req.Sigma,
+		recipient.Sigma,
+		secret)
+	caller.SetSharedKey(sharedKey)
+	
+	return nil
 }
