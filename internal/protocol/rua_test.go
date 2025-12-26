@@ -6,6 +6,7 @@ import (
 
 	"github.com/dense-identity/denseid/internal/amf"
 	"github.com/dense-identity/denseid/internal/bbs"
+	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
@@ -13,44 +14,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// testModeratorPk is a shared test moderator public key for RUA tests
-// The .env files have a 64-byte moderator key which is incompatible with AMF (expects 32 bytes)
-var testModeratorPk []byte
-
-// testRuaExpiration is a valid future expiration for RUA testing (as proto bytes)
-var testRuaExpiration []byte
-
-func init() {
-	// Generate a valid AMF moderator key for testing
-	_, pk, _ := amf.Keygen()
-	testModeratorPk = pk
-
-	// Create a valid future expiration (30 days from now) as proto bytes
-	exp := datetime.MakeExpiration(30)
-	testRuaExpiration, _ = proto.Marshal(exp)
-}
-
-// createTestRtu creates a fresh RTU with valid signature for testing
-func createTestRtu(state *CallState) *Rtu {
-	// Create signature matching enrollment format:
-	// message1: Hash(public_key, expiration, tn)
-	// message2: name
-	var tn string
-	if state.IamCaller() {
-		tn = state.Src
-	} else {
-		tn = state.Dst
-	}
-
-	message1 := helpers.HashAll(state.Config.RuaPublicKey, testRuaExpiration, []byte(tn))
-	message2 := []byte(state.Config.MyName)
-	signature, _ := bbs.Sign(testRaPrivateKey, [][]byte{message1, message2})
-
+// createRtuFromConfig builds an RTU from enrollment data in SubscriberConfig
+func createRtuFromConfig(cfg *config.SubscriberConfig) *Rtu {
 	return &Rtu{
-		PublicKey:  state.Config.RuaPublicKey,
-		Expiration: testRuaExpiration,
-		Signature:  signature,
-		Name:       state.Config.MyName,
+		PublicKey:  cfg.RuaPublicKey,
+		Expiration: cfg.EnExpiration,
+		Signature:  cfg.RaSignature,
+		Name:       cfg.MyName,
 	}
 }
 
@@ -121,14 +91,6 @@ func setupAkeCompletedStates(t *testing.T, callerPhone, recipientPhone string) (
 		t.Fatalf("AKE shared keys don't match")
 	}
 
-	// After AKE is complete, override keys for RUA testing:
-	// - Override moderator key with a valid AMF key (original is 64 bytes, AMF needs 32)
-	// - Override RA public key with test key so fresh RTU signatures can be verified
-	callerState.Config.ModeratorPublicKey = testModeratorPk
-	recipientState.Config.ModeratorPublicKey = testModeratorPk
-	callerState.Config.RaPublicKey = testRaPublicKey
-	recipientState.Config.RaPublicKey = testRaPublicKey
-
 	return callerState, recipientState
 }
 
@@ -141,9 +103,9 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 	akeSharedKey := make([]byte, len(callerState.SharedKey))
 	copy(akeSharedKey, callerState.SharedKey)
 
-	// Setup RTUs for both parties (simulating enrollment data)
-	callerRtu := createTestRtu(callerState)
-	recipientRtu := createTestRtu(recipientState)
+	// Setup RTUs for both parties from enrollment data in configs
+	callerRtu := createRtuFromConfig(callerState.Config)
+	recipientRtu := createRtuFromConfig(recipientState.Config)
 
 	// Set call reason for caller
 	callerState.CallReason = "Business inquiry"
@@ -324,7 +286,7 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 func TestRuaRequest(t *testing.T) {
 	callerState, _ := setupAkeCompletedStates(t, "alice", "bob")
 
-	callerRtu := createTestRtu(callerState)
+	callerRtu := createRtuFromConfig(callerState.Config)
 	callerState.CallReason = "Test call"
 
 	err := InitRTU(callerState, callerRtu)
@@ -398,7 +360,7 @@ func TestVerifyRTU(t *testing.T) {
 	callerState, recipientState := setupAkeCompletedStates(t, "alice", "bob")
 
 	// Create valid RTU from caller's config
-	callerRtu := createTestRtu(callerState)
+	callerRtu := createRtuFromConfig(callerState.Config)
 
 	// Create a valid RuaMessage
 	ruaMsg := &RuaMessage{
@@ -435,7 +397,7 @@ func TestVerifyRTU(t *testing.T) {
 func TestVerifyRTUWithWrongTN(t *testing.T) {
 	callerState, recipientState := setupAkeCompletedStates(t, "alice", "bob")
 
-	callerRtu := createTestRtu(callerState)
+	callerRtu := createRtuFromConfig(callerState.Config)
 
 	ruaMsg := &RuaMessage{
 		DhPk:   []byte("test_dh_pk"),
@@ -486,7 +448,7 @@ func TestRuaErrorCases(t *testing.T) {
 		callerState, recipientState := setupAkeCompletedStates(t, "alice", "bob")
 		_ = callerState
 
-		recipientRtu := createTestRtu(recipientState)
+		recipientRtu := createRtuFromConfig(recipientState.Config)
 		err := InitRTU(recipientState, recipientRtu)
 		if err != nil {
 			t.Fatalf("failed to init RTU: %v", err)
@@ -501,7 +463,7 @@ func TestRuaErrorCases(t *testing.T) {
 	t.Run("WrongMessageType_RuaResponse", func(t *testing.T) {
 		_, recipientState := setupAkeCompletedStates(t, "alice", "bob")
 
-		recipientRtu := createTestRtu(recipientState)
+		recipientRtu := createRtuFromConfig(recipientState.Config)
 		err := InitRTU(recipientState, recipientRtu)
 		if err != nil {
 			t.Fatalf("failed to init RTU: %v", err)
@@ -597,7 +559,7 @@ func TestDeriveRuaTopic(t *testing.T) {
 func TestInitRTU(t *testing.T) {
 	callerState, _ := setupAkeCompletedStates(t, "alice", "bob")
 
-	rtu := createTestRtu(callerState)
+	rtu := createRtuFromConfig(callerState.Config)
 
 	err := InitRTU(callerState, rtu)
 	if err != nil {
@@ -701,6 +663,27 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 		t.Fatalf("Alice and Bob should have the same RA public key")
 	}
 
+	// Verify enrollment signatures are valid
+	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
+		// Test Alice's signature
+		aliceMessage1 := helpers.HashAll(aliceConfig.RuaPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		aliceMessage2 := []byte(aliceConfig.MyName)
+		aliceValid, err := bbs.Verify([][]byte{aliceMessage1, aliceMessage2}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
+		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
+		if !aliceValid {
+			t.Errorf("Alice's enrollment signature should be valid")
+		}
+
+		// Test Bob's signature
+		bobMessage1 := helpers.HashAll(bobConfig.RuaPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		bobMessage2 := []byte(bobConfig.MyName)
+		bobValid, err := bbs.Verify([][]byte{bobMessage1, bobMessage2}, bobConfig.RaPublicKey, bobConfig.RaSignature)
+		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)
+		if !bobValid {
+			t.Errorf("Bob's enrollment signature should be valid")
+		}
+	})
+
 	// Create call states (using original keys for AKE)
 	aliceState := &CallState{
 		Src:        aliceConfig.MyPhone,
@@ -773,15 +756,9 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 	t.Logf("AKE completed. Shared key: %x", akeSharedKey)
 
 	// === RUA Phase ===
-	// Override keys for RUA testing after AKE is complete
-	aliceConfig.ModeratorPublicKey = testModeratorPk
-	bobConfig.ModeratorPublicKey = testModeratorPk
-	aliceConfig.RaPublicKey = testRaPublicKey
-	bobConfig.RaPublicKey = testRaPublicKey
-
-	// Create RTUs from enrollment data
-	aliceRtu := createTestRtu(aliceState)
-	bobRtu := createTestRtu(bobState)
+	// Use real RTUs from enrollment data (no key overrides needed)
+	aliceRtu := createRtuFromConfig(aliceConfig)
+	bobRtu := createRtuFromConfig(bobConfig)
 
 	// Initialize RUA
 	if err := InitRTU(aliceState, aliceRtu); err != nil {
