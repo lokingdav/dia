@@ -1,8 +1,10 @@
 package datetime
 
 import (
+	"fmt"
 	"time"
 
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -31,4 +33,20 @@ func MakeExpiration(days int) *timestamppb.Timestamp {
 func GetNormalizedTs() string {
 	// for now only return YYYY-MM-DD
 	return time.Now().UTC().Format(time.DateOnly)
+}
+
+// CheckExpiry validates that an expiration timestamp encoded as bytes is valid and not expired.
+// Returns an error if the timestamp cannot be unmarshaled, is invalid, or has expired.
+func CheckExpiry(expirationBytes []byte) error {
+	exp := &timestamppb.Timestamp{}
+	if err := proto.Unmarshal(expirationBytes, exp); err != nil {
+		return fmt.Errorf("failed to unmarshal expiration: %w", err)
+	}
+	if !exp.IsValid() {
+		return fmt.Errorf("invalid expiration timestamp")
+	}
+	if time.Now().After(exp.AsTime()) {
+		return fmt.Errorf("expired")
+	}
+	return nil
 }

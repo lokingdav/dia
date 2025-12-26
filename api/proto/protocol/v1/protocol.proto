@@ -31,7 +31,7 @@ message AkeMessage {
   bytes proof      = 4;  // ZK proof of enrollment
 }
 
-// Rtu contains Rich Telephone Unit information
+// Rtu contains RTU information
 message Rtu {
   bytes  public_key = 1;  // RTU public key
   bytes  expiration = 2;  // RTU expiration
@@ -43,5 +43,8 @@ message Rtu {
 message RuaMessage {
   bytes  dh_pk  = 1;  // DH public key for RUA phase
   string reason = 2;  // Call reason
-  Rtu    rtu    = 3;  // Rich Telephone Unit info
+  Rtu    rtu    = 3;  // RTU info
+  string tpc = 4;
+  bytes misc = 5; // misc data
+  bytes sigma = 6;
 }

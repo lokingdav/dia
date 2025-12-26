@@ -93,9 +93,10 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		Proof:      proof,
 	}
 
-	// Store proofs for later use in AkeFinalize
+	// Store values for later use in AkeFinalize
 	recipient.Ake.CallerProof = caller.GetProof()
 	recipient.Ake.RecipientProof = proof
+	recipient.CounterpartPk = caller.GetPublicKey()
 
 	// Respond on AKE topic
 	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, akeMsg)
@@ -138,6 +139,9 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 	if !VerifyZKProof(recipient, caller.Dst, challenge, caller.Config.RaPublicKey) {
 		return nil, errors.New("unauthenticated")
 	}
+
+	// save values for later use
+	caller.CounterpartPk = recipient.GetPublicKey()
 
 	secret, err := dia.DHComputeSecret(caller.Ake.DhSk, recipientDhPk)
 	if err != nil {

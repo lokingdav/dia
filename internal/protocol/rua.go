@@ -3,9 +3,13 @@ package protocol
 import (
 	"errors"
 
+	"github.com/dense-identity/denseid/internal/amf"
+	"github.com/dense-identity/denseid/internal/bbs"
+	"github.com/dense-identity/denseid/internal/datetime"
 	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	dia "github.com/lokingdav/libdia/bindings/go"
+	"google.golang.org/protobuf/proto"
 )
 
 // DeriveRuaTopic creates a new topic for RUA phase based on shared secret.
@@ -19,19 +23,67 @@ func DeriveRuaTopic(callState *CallState) []byte {
 	return message
 }
 
-func InitRTU(callState *CallState, rtu *Rtu) error {
-	ruaTopic := DeriveRuaTopic(callState)
+func InitRTU(party *CallState, rtu *Rtu) error {
+	ruaTopic := DeriveRuaTopic(party)
 
 	dhSk, dhPk, err := dia.DHKeygen()
 	if err != nil {
 		return err
 	}
 
-	callState.Rua = RuaState{
+	party.Rua = RuaState{
 		Topic: ruaTopic,
 		DhSk:  dhSk,
 		DhPk:  dhPk,
 		Rtu:   rtu,
+	}
+
+	return nil
+}
+
+func VerifyRTU(party *CallState, tn string, msg *RuaMessage) error {
+	if msg == nil {
+		return errors.New("RuaMessage cannot be nil")
+	}
+	if msg.Rtu == nil {
+		return errors.New("RTU cannot be nil")
+	}
+
+	// Validate if exp in rua message has expired
+	if err := datetime.CheckExpiry(msg.Rtu.Expiration); err != nil {
+		return err
+	}
+
+	// Validate RA's BBS signature on RTU
+	message1 := helpers.HashAll(msg.Rtu.PublicKey, msg.Rtu.Expiration, []byte(tn))
+	message2 := []byte(msg.Rtu.Name)
+	messages := [][]byte{message1, message2}
+	rtuValid, err := bbs.Verify(messages, party.Config.RaPublicKey, msg.Rtu.Signature)
+	if err != nil {
+		return err
+	}
+	if !rtuValid {
+		return errors.New("invalid RTU signature from RA")
+	}
+
+	// Validate AMF signature (sigma) in rua message
+	data, err := GetDDA(msg)
+	if err != nil {
+		return err
+	}
+
+	sigmaValid, err := amf.Verify(
+		msg.Rtu.PublicKey,
+		party.Config.RuaPrivateKey,
+		party.Config.ModeratorPublicKey,
+		data,
+		msg.Sigma)
+
+	if err != nil {
+		return err
+	}
+	if !sigmaValid {
+		return errors.New("invalid AMF signature")
 	}
 
 	return nil
@@ -45,20 +97,99 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 
 	InitRTU(caller, nil)
 
+	topic := helpers.EncodeToHex(caller.Rua.Topic)
+
 	ruaMsg := &RuaMessage{
-		Reason: caller.CallReason,
 		DhPk:   caller.Rua.DhPk,
+		Tpc:    topic,
+		Reason: caller.CallReason,
 		Rtu:    caller.Rua.Rtu,
 	}
 
-	// Sign message here
+	data, err := GetDDA(ruaMsg)
+	if err != nil {
+		return nil, err
+	}
 
-	msg, err := CreateRuaMessage(caller.SenderId, helpers.EncodeToHex(caller.Rua.Topic), TypeRuaRequest, ruaMsg)
+	Sigma, err := amf.Sign(
+		caller.Config.RuaPrivateKey,
+		caller.CounterpartPk,
+		caller.Config.ModeratorPublicKey,
+		data)
+	if err != nil {
+		return nil, err
+	}
+
+	ruaMsg.Sigma = Sigma
+
+	msg, err := CreateRuaMessage(caller.SenderId, topic, TypeRuaRequest, ruaMsg)
 	if err != nil {
 		return nil, err
 	}
 
 	ciphertext, err := encryption.SymEncrypt(caller.SharedKey, msg)
+	if err != nil {
+		return nil, err
+	}
+
+	return ciphertext, nil
+}
+
+func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, error) {
+	if recipient == nil {
+		return nil, errors.New("recipient CallState cannot be nil")
+	}
+	if callerMsg == nil {
+		return nil, errors.New("caller ProtocolMessage cannot be nil")
+	}
+	if !IsRuaRequest(callerMsg) {
+		return nil, errors.New("AkeResponse can only be called on AkeRequest message")
+	}
+
+	// Decode the message from the protocol message
+	caller, err := DecodeRuaPayload(callerMsg)
+	if err != nil {
+		return nil, err
+	}
+
+	err = VerifyRTU(recipient, recipient.Src, caller)
+	if err != nil {
+		return nil, err
+	}
+
+	ddA, err := GetDDA(caller)
+	if err != nil {
+		return nil, err
+	}
+
+	reply := &RuaMessage{
+		DhPk:   recipient.Rua.DhPk,
+		Rtu:    recipient.Rua.Rtu,
+		Misc: ddA,
+	}
+
+	ddB, err := proto.MarshalOptions{Deterministic: true}.Marshal(reply)
+	if err != nil {
+		return nil, err
+	}
+
+	Sigma, err := amf.Sign(
+		recipient.Config.RuaPrivateKey,
+		recipient.CounterpartPk,
+		recipient.Config.ModeratorPublicKey,
+		ddB)
+	if err != nil {
+		return nil, err
+	}
+
+	reply.Sigma = Sigma
+	tpc := helpers.EncodeToHex(recipient.Rua.Topic)
+	msg, err := CreateRuaMessage(recipient.SenderId, tpc, TypeRuaResponse, reply)
+	if err != nil {
+		return nil, err
+	}
+
+	ciphertext, err := encryption.SymEncrypt(recipient.SharedKey, msg)
 	if err != nil {
 		return nil, err
 	}

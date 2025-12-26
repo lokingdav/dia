@@ -224,7 +224,7 @@ func (x *AkeMessage) GetProof() []byte {
 	return nil
 }
 
-// Rtu contains Rich Telephone Unit information
+// Rtu contains RTU information
 type Rtu struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // RTU public key
@@ -298,7 +298,10 @@ type RuaMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	DhPk          []byte                 `protobuf:"bytes,1,opt,name=dh_pk,json=dhPk,proto3" json:"dh_pk,omitempty"` // DH public key for RUA phase
 	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`         // Call reason
-	Rtu           *Rtu                   `protobuf:"bytes,3,opt,name=rtu,proto3" json:"rtu,omitempty"`               // Rich Telephone Unit info
+	Rtu           *Rtu                   `protobuf:"bytes,3,opt,name=rtu,proto3" json:"rtu,omitempty"`               // RTU info
+	Tpc           string                 `protobuf:"bytes,4,opt,name=tpc,proto3" json:"tpc,omitempty"`
+	Misc          []byte                 `protobuf:"bytes,5,opt,name=misc,proto3" json:"misc,omitempty"` // misc data
+	Sigma         []byte                 `protobuf:"bytes,6,opt,name=sigma,proto3" json:"sigma,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -354,6 +357,27 @@ func (x *RuaMessage) GetRtu() *Rtu {
 	return nil
 }
 
+func (x *RuaMessage) GetTpc() string {
+	if x != nil {
+		return x.Tpc
+	}
+	return ""
+}
+
+func (x *RuaMessage) GetMisc() []byte {
+	if x != nil {
+		return x.Misc
+	}
+	return nil
+}
+
+func (x *RuaMessage) GetSigma() []byte {
+	if x != nil {
+		return x.Sigma
+	}
+	return nil
+}
+
 var File_protocol_v1_protocol_proto protoreflect.FileDescriptor
 
 const file_protocol_v1_protocol_proto_rawDesc = "" +
@@ -380,12 +404,15 @@ const file_protocol_v1_protocol_proto_rawDesc = "" +
 	"expiration\x18\x02 \x01(\fR\n" +
 	"expiration\x12\x1c\n" +
 	"\tsignature\x18\x03 \x01(\fR\tsignature\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\"e\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\"\xa1\x01\n" +
 	"\n" +
 	"RuaMessage\x12\x13\n" +
 	"\x05dh_pk\x18\x01 \x01(\fR\x04dhPk\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\x12*\n" +
-	"\x03rtu\x18\x03 \x01(\v2\x18.denseid.protocol.v1.RtuR\x03rtu*\x9b\x01\n" +
+	"\x03rtu\x18\x03 \x01(\v2\x18.denseid.protocol.v1.RtuR\x03rtu\x12\x10\n" +
+	"\x03tpc\x18\x04 \x01(\tR\x03tpc\x12\x12\n" +
+	"\x04misc\x18\x05 \x01(\fR\x04misc\x12\x14\n" +
+	"\x05sigma\x18\x06 \x01(\fR\x05sigma*\x9b\x01\n" +
 	"\vMessageType\x12\x1c\n" +
 	"\x18MESSAGE_TYPE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vAKE_REQUEST\x10\x01\x12\x10\n" +

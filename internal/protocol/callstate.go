@@ -28,7 +28,7 @@ type CallState struct {
 	Src, Dst, Ts, SenderId, CallReason string
 	CurrentTopic                       []byte
 	RuaActive                          bool // Protocol phase flag
-	Ticket, SharedKey                  []byte
+	Ticket, SharedKey, CounterpartPk      []byte
 	Config                             *config.SubscriberConfig
 	Ake                                AkeState
 	Rua                                RuaState
