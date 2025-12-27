@@ -38,6 +38,7 @@ message Rtu {
   bytes  expiration = 2;  // RTU expiration
   bytes  signature  = 3;  // Enrollment signature from RA
   string name       = 4;  // Display name
+  bytes  pke_pk     = 5;  // PKE public key for encryption
 }
 
 // RuaMessage is used for Rich User Authentication

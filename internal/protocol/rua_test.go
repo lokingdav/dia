@@ -574,6 +574,7 @@ func TestInitRTU(t *testing.T) {
 func TestMarshalDDA(t *testing.T) {
 	rtu := &Rtu{
 		AmfPk:      []byte("test_pk"),
+		PkePk:      []byte("test_pke_pk"),
 		Expiration: []byte("test_exp"),
 		Signature:  []byte("test_sig"),
 		Name:       "Test Name",

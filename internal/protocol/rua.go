@@ -17,6 +17,7 @@ import (
 func createRtuFromConfig(cfg *config.SubscriberConfig) *Rtu {
 	return &Rtu{
 		AmfPk:      cfg.AmfPublicKey,
+		PkePk:      cfg.PkePublicKey,
 		Expiration: cfg.EnExpiration,
 		Signature:  cfg.RaSignature,
 		Name:       cfg.MyName,
@@ -67,7 +68,7 @@ func VerifyRTU(party *CallState, tn string, msg *RuaMessage) error {
 	}
 
 	// Validate RA's BBS signature on RTU
-	message1 := helpers.HashAll(msg.Rtu.AmfPk, msg.Rtu.Expiration, []byte(tn))
+	message1 := helpers.HashAll(msg.Rtu.AmfPk, msg.Rtu.PkePk, msg.Rtu.Expiration, []byte(tn))
 	message2 := []byte(msg.Rtu.Name)
 	messages := [][]byte{message1, message2}
 	rtuValid, err := bbs.Verify(messages, party.Config.RaPublicKey, msg.Rtu.Signature)
@@ -257,7 +258,7 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 	}
 
 	// Validate RA's BBS signature on RTU
-	message1 := helpers.HashAll(recipient.Rtu.AmfPk, recipient.Rtu.Expiration, []byte(caller.Dst))
+	message1 := helpers.HashAll(recipient.Rtu.AmfPk, recipient.Rtu.PkePk, recipient.Rtu.Expiration, []byte(caller.Dst))
 	message2 := []byte(recipient.Rtu.Name)
 	messages := [][]byte{message1, message2}
 	rtuValid, err := bbs.Verify(messages, caller.Config.RaPublicKey, recipient.Rtu.Signature)

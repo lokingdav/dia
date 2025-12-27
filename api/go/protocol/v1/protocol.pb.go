@@ -239,6 +239,7 @@ type Rtu struct {
 	Expiration    []byte                 `protobuf:"bytes,2,opt,name=expiration,proto3" json:"expiration,omitempty"`    // RTU expiration
 	Signature     []byte                 `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`      // Enrollment signature from RA
 	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`                // Display name
+	PkePk         []byte                 `protobuf:"bytes,5,opt,name=pke_pk,json=pkePk,proto3" json:"pke_pk,omitempty"` // PKE public key for encryption
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -299,6 +300,13 @@ func (x *Rtu) GetName() string {
 		return x.Name
 	}
 	return ""
+}
+
+func (x *Rtu) GetPkePk() []byte {
+	if x != nil {
+		return x.PkePk
+	}
+	return nil
 }
 
 // RuaMessage is used for Rich User Authentication
@@ -404,14 +412,15 @@ const file_protocol_v1_protocol_proto_rawDesc = "" +
 	"expiration\x18\x03 \x01(\fR\n" +
 	"expiration\x12\x14\n" +
 	"\x05proof\x18\x04 \x01(\fR\x05proof\x12\x15\n" +
-	"\x06pke_pk\x18\x05 \x01(\fR\x05pkePk\"n\n" +
+	"\x06pke_pk\x18\x05 \x01(\fR\x05pkePk\"\x85\x01\n" +
 	"\x03Rtu\x12\x15\n" +
 	"\x06amf_pk\x18\x01 \x01(\fR\x05amfPk\x12\x1e\n" +
 	"\n" +
 	"expiration\x18\x02 \x01(\fR\n" +
 	"expiration\x12\x1c\n" +
 	"\tsignature\x18\x03 \x01(\fR\tsignature\x12\x12\n" +
-	"\x04name\x18\x04 \x01(\tR\x04name\"\xa1\x01\n" +
+	"\x04name\x18\x04 \x01(\tR\x04name\x12\x15\n" +
+	"\x06pke_pk\x18\x05 \x01(\fR\x05pkePk\"\xa1\x01\n" +
 	"\n" +
 	"RuaMessage\x12\x13\n" +
 	"\x05dh_pk\x18\x01 \x01(\fR\x04dhPk\x12\x16\n" +

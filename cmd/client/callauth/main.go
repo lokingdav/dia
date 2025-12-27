@@ -251,10 +251,33 @@ func main() {
 }
 
 func getMessage(callState *protocol.CallState, data []byte) (*protocol.ProtocolMessage, error) {
-	plaintext, err := encryption.SymDecrypt(callState.SharedKey, data)
-	if err != nil {
-		return nil, err
-		// TODO: fallback to public key encryption if symmetric fails
+	// Try plaintext first (for AkeRequest which is not encrypted)
+	msg, err := protocol.UnmarshalMessage(data)
+	if err == nil {
+		return msg, nil
 	}
-	return protocol.UnmarshalMessage(plaintext)
+
+	// Try PKE decryption (for AkeResponse and AkeComplete)
+	if len(callState.Config.PkePrivateKey) > 0 {
+		plaintext, pkeErr := encryption.PkeDecrypt(callState.Config.PkePrivateKey, data)
+		if pkeErr == nil {
+			msg, err = protocol.UnmarshalMessage(plaintext)
+			if err == nil {
+				return msg, nil
+			}
+		}
+	}
+
+	// Try symmetric decryption (for RUA messages after shared key is established)
+	if len(callState.SharedKey) > 0 {
+		plaintext, symErr := encryption.SymDecrypt(callState.SharedKey, data)
+		if symErr == nil {
+			msg, err = protocol.UnmarshalMessage(plaintext)
+			if err == nil {
+				return msg, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to decrypt message: %v", err)
 }
