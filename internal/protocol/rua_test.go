@@ -44,7 +44,7 @@ func setupAkeCompletedStates(t *testing.T, callerPhone, recipientPhone string) (
 		t.Fatalf("failed creating AkeResponse: %v", err)
 	}
 
-	round2Plaintext, err := encryption.PkeDecrypt(callerState.Config.RuaPrivateKey, round2Ciphertext)
+	round2Plaintext, err := encryption.PkeDecrypt(callerState.Config.PkePrivateKey, round2Ciphertext)
 	if err != nil {
 		t.Fatalf("failed to decrypt AkeResponse: %v", err)
 	}
@@ -60,7 +60,7 @@ func setupAkeCompletedStates(t *testing.T, callerPhone, recipientPhone string) (
 		t.Fatalf("failed creating AkeComplete: %v", err)
 	}
 
-	round3Plaintext, err := encryption.PkeDecrypt(recipientState.Config.RuaPrivateKey, round3Ciphertext)
+	round3Plaintext, err := encryption.PkeDecrypt(recipientState.Config.PkePrivateKey, round3Ciphertext)
 	if err != nil {
 		t.Fatalf("failed to decrypt AkeComplete: %v", err)
 	}
@@ -361,8 +361,8 @@ func TestVerifyRTU(t *testing.T) {
 	}
 
 	sigma, err := amf.Sign(
-		callerState.Config.RuaPrivateKey,
-		recipientState.Config.RuaPublicKey,
+		callerState.Config.AmfPrivateKey,
+		recipientState.Config.AmfPublicKey,
 		callerState.Config.ModeratorPublicKey,
 		ddA)
 	if err != nil {
@@ -396,8 +396,8 @@ func TestVerifyRTUWithWrongTN(t *testing.T) {
 	}
 
 	sigma, err := amf.Sign(
-		callerState.Config.RuaPrivateKey,
-		recipientState.Config.RuaPublicKey,
+		callerState.Config.AmfPrivateKey,
+		recipientState.Config.AmfPublicKey,
 		callerState.Config.ModeratorPublicKey,
 		ddA)
 	if err != nil {
@@ -565,15 +565,15 @@ func TestInitRTU(t *testing.T) {
 		t.Fatal("Rtu should be set after InitRTU")
 	}
 
-	if !bytes.Equal(callerState.Rua.Rtu.PublicKey, callerState.Config.RuaPublicKey) {
-		t.Fatal("RTU public key mismatch")
+	if !bytes.Equal(callerState.Rua.Rtu.AmfPk, callerState.Config.AmfPublicKey) {
+		t.Fatal("RTU AMF public key mismatch")
 	}
 }
 
 // TestMarshalDDA tests the MarshalDDA function
 func TestMarshalDDA(t *testing.T) {
 	rtu := &Rtu{
-		PublicKey:  []byte("test_pk"),
+		AmfPk:      []byte("test_pk"),
 		Expiration: []byte("test_exp"),
 		Signature:  []byte("test_sig"),
 		Name:       "Test Name",
@@ -646,7 +646,7 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 	// Verify enrollment signatures are valid
 	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
 		// Test Alice's signature
-		aliceMessage1 := helpers.HashAll(aliceConfig.RuaPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		aliceMessage1 := helpers.HashAll(aliceConfig.AmfPublicKey, aliceConfig.PkePublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
 		aliceMessage2 := []byte(aliceConfig.MyName)
 		aliceValid, err := bbs.Verify([][]byte{aliceMessage1, aliceMessage2}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
 		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
@@ -655,7 +655,7 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 		}
 
 		// Test Bob's signature
-		bobMessage1 := helpers.HashAll(bobConfig.RuaPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		bobMessage1 := helpers.HashAll(bobConfig.AmfPublicKey, bobConfig.PkePublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
 		bobMessage2 := []byte(bobConfig.MyName)
 		bobValid, err := bbs.Verify([][]byte{bobMessage1, bobMessage2}, bobConfig.RaPublicKey, bobConfig.RaSignature)
 		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)
@@ -708,7 +708,7 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 		t.Fatalf("AkeResponse failed: %v", err)
 	}
 
-	round2Plaintext, _ := encryption.PkeDecrypt(aliceState.Config.RuaPrivateKey, round2Ciphertext)
+	round2Plaintext, _ := encryption.PkeDecrypt(aliceState.Config.PkePrivateKey, round2Ciphertext)
 	protocolMsg2, _ := UnmarshalMessage(round2Plaintext)
 
 	// AKE Round 3
@@ -717,7 +717,7 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 		t.Fatalf("AkeComplete failed: %v", err)
 	}
 
-	round3Plaintext, _ := encryption.PkeDecrypt(bobState.Config.RuaPrivateKey, round3Ciphertext)
+	round3Plaintext, _ := encryption.PkeDecrypt(bobState.Config.PkePrivateKey, round3Ciphertext)
 	protocolMsg3, _ := UnmarshalMessage(round3Plaintext)
 
 	// AKE Finalize

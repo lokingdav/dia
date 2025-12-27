@@ -61,7 +61,7 @@ func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest
 		return nil, status.Errorf(codes.Internal, "failed to generate expiry: %v", err)
 	}
 
-	message1 := helpers.HashAll(req.GetPk(), expiryBytes, []byte(req.GetTn()))
+	message1 := helpers.HashAll(req.GetAmfPk(), req.GetPkePk(), expiryBytes, []byte(req.GetTn()))
 	message2 := []byte(req.GetIden().GetName())
 	sigma, err := bbs.Sign(s.cfg.CiPrivateKey, [][]byte{message1, message2})
 	if err != nil {

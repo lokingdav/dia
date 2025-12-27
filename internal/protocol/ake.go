@@ -42,7 +42,8 @@ func AkeRequest(caller *CallState) ([]byte, error) {
 	}
 
 	akeMsg := &AkeMessage{
-		PublicKey:  caller.Config.RuaPublicKey,
+		AmfPk:      caller.Config.AmfPublicKey,
+		PkePk:      caller.Config.PkePublicKey,
 		Expiration: caller.Config.EnExpiration,
 		Proof:      proof,
 	}
@@ -88,7 +89,8 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 
 	akeMsg := &AkeMessage{
 		DhPk:       recipient.Ake.DhPk,
-		PublicKey:  recipient.Config.RuaPublicKey,
+		AmfPk:      recipient.Config.AmfPublicKey,
+		PkePk:      recipient.Config.PkePublicKey,
 		Expiration: recipient.Config.EnExpiration,
 		Proof:      proof,
 	}
@@ -96,7 +98,8 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	// Store values for later use in AkeFinalize
 	recipient.Ake.CallerProof = caller.GetProof()
 	recipient.Ake.RecipientProof = proof
-	recipient.CounterpartPk = caller.GetPublicKey()
+	recipient.CounterpartAmfPk = caller.GetAmfPk()
+	recipient.CounterpartPkePk = caller.GetPkePk()
 
 	// Respond on AKE topic
 	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, akeMsg)
@@ -104,7 +107,7 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
-	ciphertext, err := encryption.PkeEncrypt(caller.GetPublicKey(), msg)
+	ciphertext, err := encryption.PkeEncrypt(caller.GetPkePk(), msg)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +144,8 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 	}
 
 	// save values for later use
-	caller.CounterpartPk = recipient.GetPublicKey()
+	caller.CounterpartAmfPk = recipient.GetAmfPk()
+	caller.CounterpartPkePk = recipient.GetPkePk()
 
 	secret, err := dia.DHComputeSecret(caller.Ake.DhSk, recipientDhPk)
 	if err != nil {
@@ -166,7 +170,7 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
-	ciphertext, err := encryption.PkeEncrypt(recipient.GetPublicKey(), msg)
+	ciphertext, err := encryption.PkeEncrypt(recipient.GetPkePk(), msg)
 	if err != nil {
 		return nil, err
 	}
@@ -230,13 +234,14 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 	}
 
 	proof, err := bbs.ZkCreateProof(bbs.AkeZkProof{
-		Tn:          telephoneNumber,
-		Name:        prover.Config.MyName,
-		PublicKey:   prover.Config.RuaPublicKey,
-		Expiration:  prover.Config.EnExpiration,
-		Nonce:       chal,
-		RaPublicKey: prover.Config.RaPublicKey,
-		Signature:   prover.Config.RaSignature,
+		Tn:           telephoneNumber,
+		Name:         prover.Config.MyName,
+		AmfPublicKey: prover.Config.AmfPublicKey,
+		PkePublicKey: prover.Config.PkePublicKey,
+		Expiration:   prover.Config.EnExpiration,
+		Nonce:        chal,
+		RaPublicKey:  prover.Config.RaPublicKey,
+		Signature:    prover.Config.RaSignature,
 	})
 	if err != nil {
 		return nil, err
@@ -245,17 +250,19 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 }
 
 func VerifyZKProof(prover *AkeMessage, tn string, chal, raPublicKey []byte) bool {
-	publicKey := prover.GetPublicKey()
+	amfPublicKey := prover.GetAmfPk()
+	pkePublicKey := prover.GetPkePk()
 	expiration := prover.GetExpiration()
 	proof := prover.GetProof()
 
 	ok, err := bbs.ZkVerifyProof(bbs.AkeZkProof{
-		Tn:          tn,
-		PublicKey:   publicKey,
-		Expiration:  expiration,
-		Nonce:       chal,
-		RaPublicKey: raPublicKey,
-		Proof:       proof,
+		Tn:           tn,
+		AmfPublicKey: amfPublicKey,
+		PkePublicKey: pkePublicKey,
+		Expiration:   expiration,
+		Nonce:        chal,
+		RaPublicKey:  raPublicKey,
+		Proof:        proof,
 	})
 	if err != nil {
 		return false

@@ -161,8 +161,8 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatalf("failed creating AkeResponse: %v", err)
 	}
 
-	// Decrypt with Alice's private key (PkeDecrypt)
-	round2Plaintext, err := encryption.PkeDecrypt(callerState.Config.RuaPrivateKey, round2Ciphertext)
+	// Decrypt with Alice's PKE private key
+	round2Plaintext, err := encryption.PkeDecrypt(callerState.Config.PkePrivateKey, round2Ciphertext)
 	if err != nil {
 		t.Fatalf("failed to decrypt AkeResponse message: %v", err)
 	}
@@ -206,8 +206,8 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("caller shared key is empty after AkeComplete")
 	}
 
-	// Decrypt with Bob's private key (PkeDecrypt)
-	round3Plaintext, err := encryption.PkeDecrypt(recipientState.Config.RuaPrivateKey, round3Ciphertext)
+	// Decrypt with Bob's PKE private key
+	round3Plaintext, err := encryption.PkeDecrypt(recipientState.Config.PkePrivateKey, round3Ciphertext)
 	if err != nil {
 		t.Fatalf("failed to decrypt AkeComplete message: %v", err)
 	}
@@ -295,9 +295,9 @@ func TestAkeRequest(t *testing.T) {
 		t.Fatal("AkeRequest should contain ZK proof")
 	}
 
-	// Verify public key is included
-	if len(akeMsg.GetPublicKey()) == 0 {
-		t.Fatal("AkeRequest should contain public key")
+	// Verify AMF public key is included
+	if len(akeMsg.GetAmfPk()) == 0 {
+		t.Fatal("AkeRequest should contain AMF public key")
 	}
 
 	// Verify expiration is included
@@ -380,7 +380,7 @@ func TestRealEnrollmentData(t *testing.T) {
 	// Let's test whether we can verify the real enrollment signatures directly
 	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
 		// Test Alice's signature
-		aliceMessage1 := helpers.HashAll(aliceConfig.RuaPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		aliceMessage1 := helpers.HashAll(aliceConfig.AmfPublicKey, aliceConfig.PkePublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
 		aliceMessage2 := []byte(aliceConfig.MyName)
 		aliceValid, err := dia.BBSVerify([][]byte{aliceMessage1, aliceMessage2}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
 		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
@@ -389,7 +389,7 @@ func TestRealEnrollmentData(t *testing.T) {
 		}
 
 		// Test Bob's signature
-		bobMessage1 := helpers.HashAll(bobConfig.RuaPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		bobMessage1 := helpers.HashAll(bobConfig.AmfPublicKey, bobConfig.PkePublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
 		bobMessage2 := []byte(bobConfig.MyName)
 		bobValid, err := dia.BBSVerify([][]byte{bobMessage1, bobMessage2}, bobConfig.RaPublicKey, bobConfig.RaSignature)
 		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)
@@ -462,8 +462,8 @@ func TestRealEnrollmentData(t *testing.T) {
 		t.Fatalf("Bob failed to process Alice's AkeRequest: %v", err)
 	}
 
-	// Decrypt with Alice's private key
-	round2Plaintext, err := encryption.PkeDecrypt(aliceState.Config.RuaPrivateKey, round2Ciphertext)
+	// Decrypt with Alice's PKE private key
+	round2Plaintext, err := encryption.PkeDecrypt(aliceState.Config.PkePrivateKey, round2Ciphertext)
 	if err != nil {
 		t.Fatalf("failed to decrypt AkeResponse: %v", err)
 	}
@@ -488,8 +488,8 @@ func TestRealEnrollmentData(t *testing.T) {
 		t.Fatal("Alice should have shared key after AkeComplete")
 	}
 
-	// Decrypt with Bob's private key
-	round3Plaintext, err := encryption.PkeDecrypt(bobState.Config.RuaPrivateKey, round3Ciphertext)
+	// Decrypt with Bob's PKE private key
+	round3Plaintext, err := encryption.PkeDecrypt(bobState.Config.PkePrivateKey, round3Ciphertext)
 	if err != nil {
 		t.Fatalf("failed to decrypt AkeComplete: %v", err)
 	}

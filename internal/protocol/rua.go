@@ -16,7 +16,7 @@ import (
 // createRtuFromConfig builds an RTU from enrollment data in SubscriberConfig
 func createRtuFromConfig(cfg *config.SubscriberConfig) *Rtu {
 	return &Rtu{
-		PublicKey:  cfg.RuaPublicKey,
+		AmfPk:      cfg.AmfPublicKey,
 		Expiration: cfg.EnExpiration,
 		Signature:  cfg.RaSignature,
 		Name:       cfg.MyName,
@@ -67,7 +67,7 @@ func VerifyRTU(party *CallState, tn string, msg *RuaMessage) error {
 	}
 
 	// Validate RA's BBS signature on RTU
-	message1 := helpers.HashAll(msg.Rtu.PublicKey, msg.Rtu.Expiration, []byte(tn))
+	message1 := helpers.HashAll(msg.Rtu.AmfPk, msg.Rtu.Expiration, []byte(tn))
 	message2 := []byte(msg.Rtu.Name)
 	messages := [][]byte{message1, message2}
 	rtuValid, err := bbs.Verify(messages, party.Config.RaPublicKey, msg.Rtu.Signature)
@@ -85,8 +85,8 @@ func VerifyRTU(party *CallState, tn string, msg *RuaMessage) error {
 	}
 
 	sigmaValid, err := amf.Verify(
-		msg.Rtu.PublicKey,
-		party.Config.RuaPrivateKey,
+		msg.Rtu.AmfPk,
+		party.Config.AmfPrivateKey,
 		party.Config.ModeratorPublicKey,
 		data,
 		msg.Sigma)
@@ -127,8 +127,8 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 	}
 
 	Sigma, err := amf.Sign(
-		caller.Config.RuaPrivateKey,
-		caller.CounterpartPk,
+		caller.Config.AmfPrivateKey,
+		caller.CounterpartAmfPk,
 		caller.Config.ModeratorPublicKey,
 		data)
 	if err != nil {
@@ -190,8 +190,8 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	}
 
 	Sigma, err := amf.Sign(
-		recipient.Config.RuaPrivateKey,
-		recipient.CounterpartPk,
+		recipient.Config.AmfPrivateKey,
+		recipient.CounterpartAmfPk,
 		recipient.Config.ModeratorPublicKey,
 		ddB)
 	if err != nil {
@@ -257,7 +257,7 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 	}
 
 	// Validate RA's BBS signature on RTU
-	message1 := helpers.HashAll(recipient.Rtu.PublicKey, recipient.Rtu.Expiration, []byte(caller.Dst))
+	message1 := helpers.HashAll(recipient.Rtu.AmfPk, recipient.Rtu.Expiration, []byte(caller.Dst))
 	message2 := []byte(recipient.Rtu.Name)
 	messages := [][]byte{message1, message2}
 	rtuValid, err := bbs.Verify(messages, caller.Config.RaPublicKey, recipient.Rtu.Signature)
@@ -287,8 +287,8 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 	}
 
 	sigmaValid, err := amf.Verify(
-		recipient.Rtu.PublicKey,
-		caller.Config.RuaPrivateKey,
+		recipient.Rtu.AmfPk,
+		caller.Config.AmfPrivateKey,
 		caller.Config.ModeratorPublicKey,
 		signedData,
 		recipient.Sigma)

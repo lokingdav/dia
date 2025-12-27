@@ -20,7 +20,7 @@ type RuaState struct {
 	Topic      []byte
 	DhSk, DhPk []byte
 	Rtu        *Rtu
-	Req	*RuaMessage
+	Req        *RuaMessage
 }
 
 type CallState struct {
@@ -29,7 +29,8 @@ type CallState struct {
 	Src, Dst, Ts, SenderId, CallReason string
 	CurrentTopic                       []byte
 	RuaActive                          bool // Protocol phase flag
-	Ticket, SharedKey, CounterpartPk      []byte
+	Ticket, SharedKey                  []byte
+	CounterpartAmfPk, CounterpartPkePk []byte
 	Config                             *config.SubscriberConfig
 	Ake                                AkeState
 	Rua                                RuaState

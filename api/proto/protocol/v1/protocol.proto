@@ -26,14 +26,15 @@ message ProtocolMessage {
 // AkeMessage is used for Authenticated Key Exchange
 message AkeMessage {
   bytes dh_pk      = 1;  // DH public key (only in AkeResponse and AkeComplete)
-  bytes public_key = 2;  // Encryption public key for this party
+  bytes amf_pk     = 2;  // AMF public key for this party
   bytes expiration = 3;  // Credential expiration timestamp
   bytes proof      = 4;  // ZK proof of enrollment
+  bytes pke_pk     = 5;  // PKE public key for encryption
 }
 
 // Rtu contains RTU information
 message Rtu {
-  bytes  public_key = 1;  // RTU public key
+  bytes  amf_pk     = 1;  // AMF public key
   bytes  expiration = 2;  // RTU expiration
   bytes  signature  = 3;  // Enrollment signature from RA
   string name       = 4;  // Display name

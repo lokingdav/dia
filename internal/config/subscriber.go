@@ -25,10 +25,15 @@ type SubscriberConfig struct {
 	RaSignatureStr                         string `env:"RA_SIGNATURE,required"`
 	EnExpiration, RaPublicKey, RaSignature []byte
 
-	// Right-To-Use
-	RuaPrivateKeyStr            string `env:"RUA_PRIVATE_KEY,required"`
-	RuaPublicKeyStr             string `env:"RUA_PUBLIC_KEY,required"`
-	RuaPrivateKey, RuaPublicKey []byte
+	// AMF keys for RUA
+	AmfPrivateKeyStr            string `env:"AMF_PRIVATE_KEY,required"`
+	AmfPublicKeyStr             string `env:"AMF_PUBLIC_KEY,required"`
+	AmfPrivateKey, AmfPublicKey []byte
+
+	// PKE keys for encryption
+	PkePrivateKeyStr            string `env:"PKE_PRIVATE_KEY,required"`
+	PkePublicKeyStr             string `env:"PKE_PUBLIC_KEY,required"`
+	PkePrivateKey, PkePublicKey []byte
 
 	// Access Ticket
 	AccessTicketVkStr            string `env:"ACCESS_TICKET_VK,required"`
@@ -61,12 +66,22 @@ func (conf *SubscriberConfig) ParseKeysAsBytes() error {
 		return err
 	}
 
-	// Right-To-Use
-	conf.RuaPrivateKey, err = signing.DecodeHex(conf.RuaPrivateKeyStr)
+	// AMF keys
+	conf.AmfPrivateKey, err = signing.DecodeHex(conf.AmfPrivateKeyStr)
 	if err != nil {
 		return err
 	}
-	conf.RuaPublicKey, err = signing.DecodeHex(conf.RuaPublicKeyStr)
+	conf.AmfPublicKey, err = signing.DecodeHex(conf.AmfPublicKeyStr)
+	if err != nil {
+		return err
+	}
+
+	// PKE keys
+	conf.PkePrivateKey, err = signing.DecodeHex(conf.PkePrivateKeyStr)
+	if err != nil {
+		return err
+	}
+	conf.PkePublicKey, err = signing.DecodeHex(conf.PkePublicKeyStr)
 	if err != nil {
 		return err
 	}

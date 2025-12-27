@@ -158,10 +158,11 @@ func (x *ProtocolMessage) GetPayload() []byte {
 // AkeMessage is used for Authenticated Key Exchange
 type AkeMessage struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DhPk          []byte                 `protobuf:"bytes,1,opt,name=dh_pk,json=dhPk,proto3" json:"dh_pk,omitempty"`                // DH public key (only in AkeResponse and AkeComplete)
-	PublicKey     []byte                 `protobuf:"bytes,2,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // Encryption public key for this party
-	Expiration    []byte                 `protobuf:"bytes,3,opt,name=expiration,proto3" json:"expiration,omitempty"`                // Credential expiration timestamp
-	Proof         []byte                 `protobuf:"bytes,4,opt,name=proof,proto3" json:"proof,omitempty"`                          // ZK proof of enrollment
+	DhPk          []byte                 `protobuf:"bytes,1,opt,name=dh_pk,json=dhPk,proto3" json:"dh_pk,omitempty"`    // DH public key (only in AkeResponse and AkeComplete)
+	AmfPk         []byte                 `protobuf:"bytes,2,opt,name=amf_pk,json=amfPk,proto3" json:"amf_pk,omitempty"` // AMF public key for this party
+	Expiration    []byte                 `protobuf:"bytes,3,opt,name=expiration,proto3" json:"expiration,omitempty"`    // Credential expiration timestamp
+	Proof         []byte                 `protobuf:"bytes,4,opt,name=proof,proto3" json:"proof,omitempty"`              // ZK proof of enrollment
+	PkePk         []byte                 `protobuf:"bytes,5,opt,name=pke_pk,json=pkePk,proto3" json:"pke_pk,omitempty"` // PKE public key for encryption
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -203,9 +204,9 @@ func (x *AkeMessage) GetDhPk() []byte {
 	return nil
 }
 
-func (x *AkeMessage) GetPublicKey() []byte {
+func (x *AkeMessage) GetAmfPk() []byte {
 	if x != nil {
-		return x.PublicKey
+		return x.AmfPk
 	}
 	return nil
 }
@@ -224,13 +225,20 @@ func (x *AkeMessage) GetProof() []byte {
 	return nil
 }
 
+func (x *AkeMessage) GetPkePk() []byte {
+	if x != nil {
+		return x.PkePk
+	}
+	return nil
+}
+
 // Rtu contains RTU information
 type Rtu struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	PublicKey     []byte                 `protobuf:"bytes,1,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"` // RTU public key
-	Expiration    []byte                 `protobuf:"bytes,2,opt,name=expiration,proto3" json:"expiration,omitempty"`                // RTU expiration
-	Signature     []byte                 `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`                  // Enrollment signature from RA
-	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`                            // Display name
+	AmfPk         []byte                 `protobuf:"bytes,1,opt,name=amf_pk,json=amfPk,proto3" json:"amf_pk,omitempty"` // AMF public key
+	Expiration    []byte                 `protobuf:"bytes,2,opt,name=expiration,proto3" json:"expiration,omitempty"`    // RTU expiration
+	Signature     []byte                 `protobuf:"bytes,3,opt,name=signature,proto3" json:"signature,omitempty"`      // Enrollment signature from RA
+	Name          string                 `protobuf:"bytes,4,opt,name=name,proto3" json:"name,omitempty"`                // Display name
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -265,9 +273,9 @@ func (*Rtu) Descriptor() ([]byte, []int) {
 	return file_protocol_v1_protocol_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *Rtu) GetPublicKey() []byte {
+func (x *Rtu) GetAmfPk() []byte {
 	if x != nil {
-		return x.PublicKey
+		return x.AmfPk
 	}
 	return nil
 }
@@ -387,19 +395,18 @@ const file_protocol_v1_protocol_proto_rawDesc = "" +
 	"\x04type\x18\x01 \x01(\x0e2 .denseid.protocol.v1.MessageTypeR\x04type\x12\x1b\n" +
 	"\tsender_id\x18\x02 \x01(\tR\bsenderId\x12\x14\n" +
 	"\x05topic\x18\x03 \x01(\tR\x05topic\x12\x18\n" +
-	"\apayload\x18\x04 \x01(\fR\apayload\"v\n" +
+	"\apayload\x18\x04 \x01(\fR\apayload\"\x85\x01\n" +
 	"\n" +
 	"AkeMessage\x12\x13\n" +
-	"\x05dh_pk\x18\x01 \x01(\fR\x04dhPk\x12\x1d\n" +
-	"\n" +
-	"public_key\x18\x02 \x01(\fR\tpublicKey\x12\x1e\n" +
+	"\x05dh_pk\x18\x01 \x01(\fR\x04dhPk\x12\x15\n" +
+	"\x06amf_pk\x18\x02 \x01(\fR\x05amfPk\x12\x1e\n" +
 	"\n" +
 	"expiration\x18\x03 \x01(\fR\n" +
 	"expiration\x12\x14\n" +
-	"\x05proof\x18\x04 \x01(\fR\x05proof\"v\n" +
-	"\x03Rtu\x12\x1d\n" +
-	"\n" +
-	"public_key\x18\x01 \x01(\fR\tpublicKey\x12\x1e\n" +
+	"\x05proof\x18\x04 \x01(\fR\x05proof\x12\x15\n" +
+	"\x06pke_pk\x18\x05 \x01(\fR\x05pkePk\"n\n" +
+	"\x03Rtu\x12\x15\n" +
+	"\x06amf_pk\x18\x01 \x01(\fR\x05amfPk\x12\x1e\n" +
 	"\n" +
 	"expiration\x18\x02 \x01(\fR\n" +
 	"expiration\x12\x1c\n" +

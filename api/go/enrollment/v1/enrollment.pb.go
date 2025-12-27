@@ -104,10 +104,11 @@ type EnrollmentRequest struct {
 	Iden           *DisplayInformation    `protobuf:"bytes,2,opt,name=iden,proto3" json:"iden,omitempty"`
 	NBio           uint32                 `protobuf:"varint,3,opt,name=n_bio,json=nBio,proto3" json:"n_bio,omitempty"`
 	Nonce          string                 `protobuf:"bytes,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	Pk             []byte                 `protobuf:"bytes,5,opt,name=pk,proto3" json:"pk,omitempty"`
+	AmfPk          []byte                 `protobuf:"bytes,5,opt,name=amf_pk,json=amfPk,proto3" json:"amf_pk,omitempty"`
 	Ipk            []byte                 `protobuf:"bytes,6,opt,name=ipk,proto3" json:"ipk,omitempty"`
 	BlindedTickets [][]byte               `protobuf:"bytes,7,rep,name=blinded_tickets,json=blindedTickets,proto3" json:"blinded_tickets,omitempty"`
 	Sigma          []byte                 `protobuf:"bytes,8,opt,name=sigma,proto3" json:"sigma,omitempty"`
+	PkePk          []byte                 `protobuf:"bytes,9,opt,name=pke_pk,json=pkePk,proto3" json:"pke_pk,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -170,9 +171,9 @@ func (x *EnrollmentRequest) GetNonce() string {
 	return ""
 }
 
-func (x *EnrollmentRequest) GetPk() []byte {
+func (x *EnrollmentRequest) GetAmfPk() []byte {
 	if x != nil {
-		return x.Pk
+		return x.AmfPk
 	}
 	return nil
 }
@@ -194,6 +195,13 @@ func (x *EnrollmentRequest) GetBlindedTickets() [][]byte {
 func (x *EnrollmentRequest) GetSigma() []byte {
 	if x != nil {
 		return x.Sigma
+	}
+	return nil
+}
+
+func (x *EnrollmentRequest) GetPkePk() []byte {
+	if x != nil {
+		return x.PkePk
 	}
 	return nil
 }
@@ -302,16 +310,17 @@ const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"websiteUrl\x12\x1f\n" +
 	"\vbrand_color\x18\x04 \x01(\tR\n" +
 	"brandColor\x12\x18\n" +
-	"\atagline\x18\x05 \x01(\tR\atagline\"\xee\x01\n" +
+	"\atagline\x18\x05 \x01(\tR\atagline\"\x8c\x02\n" +
 	"\x11EnrollmentRequest\x12\x0e\n" +
 	"\x02tn\x18\x01 \x01(\tR\x02tn\x12=\n" +
 	"\x04iden\x18\x02 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
 	"\x05n_bio\x18\x03 \x01(\rR\x04nBio\x12\x14\n" +
-	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12\x0e\n" +
-	"\x02pk\x18\x05 \x01(\fR\x02pk\x12\x10\n" +
+	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12\x15\n" +
+	"\x06amf_pk\x18\x05 \x01(\fR\x05amfPk\x12\x10\n" +
 	"\x03ipk\x18\x06 \x01(\fR\x03ipk\x12'\n" +
 	"\x0fblinded_tickets\x18\a \x03(\fR\x0eblindedTickets\x12\x14\n" +
-	"\x05sigma\x18\b \x01(\fR\x05sigma\"\xcd\x01\n" +
+	"\x05sigma\x18\b \x01(\fR\x05sigma\x12\x15\n" +
+	"\x06pke_pk\x18\t \x01(\fR\x05pkePk\"\xcd\x01\n" +
 	"\x12EnrollmentResponse\x12\x10\n" +
 	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
 	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +

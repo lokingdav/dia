@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dense-identity/denseid/internal/amf"
+	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
 )
@@ -25,6 +26,8 @@ type newEnrollment struct {
 	ipk            []byte
 	amfSk          []byte
 	amfPk          []byte
+	pkeSk          []byte
+	pkePk          []byte
 	blindedTickets []voprf.BlindedTicket
 }
 
@@ -42,6 +45,11 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 	amfSk, amfPk, err := amf.Keygen()
 	if err != nil {
 		return nil, err
+	}
+
+	pkeSk, pkePk, err := encryption.PkeKeygen()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate PKE keypair: %w", err)
 	}
 
 	blindedTickets := voprf.GenerateTickets(1)
@@ -64,7 +72,8 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 		},
 		Nonce:          signing.EncodeToHex(nonce),
 		Ipk:            derIpk,
-		Pk:             amfPk,
+		AmfPk:          amfPk,
+		PkePk:          pkePk,
 		BlindedTickets: blinded,
 	}
 
@@ -79,6 +88,8 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 		ipk:            ipk,
 		amfSk:          amfSk,
 		amfPk:          amfPk,
+		pkeSk:          pkeSk,
+		pkePk:          pkePk,
 		blindedTickets: blindedTickets,
 		request:        req,
 	}
@@ -146,8 +157,11 @@ func main() {
 		fmt.Sprintf("RA_PUBLIC_KEY=%x", res.GetEpk()),
 		fmt.Sprintf("RA_SIGNATURE=%x", res.GetSigma()),
 
-		fmt.Sprintf("\nRUA_PRIVATE_KEY=%x", data.amfSk),
-		fmt.Sprintf("RUA_PUBLIC_KEY=%x", data.amfPk),
+		fmt.Sprintf("\nAMF_PRIVATE_KEY=%x", data.amfSk),
+		fmt.Sprintf("AMF_PUBLIC_KEY=%x", data.amfPk),
+
+		fmt.Sprintf("\nPKE_PRIVATE_KEY=%x", data.pkeSk),
+		fmt.Sprintf("PKE_PUBLIC_KEY=%x", data.pkePk),
 
 		fmt.Sprintf("\nSUBSCRIBER_PRIVATE_KEY=%x", data.isk),
 		fmt.Sprintf("SUBSCRIBER_PUBLIC_KEY=%x", data.ipk),

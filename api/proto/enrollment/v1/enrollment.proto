@@ -23,10 +23,11 @@ message EnrollmentRequest {
   DisplayInformation iden = 2;
   uint32 n_bio = 3;
   string nonce = 4;
-  bytes pk = 5;
+  bytes amf_pk = 5;
   bytes ipk = 6;
   repeated bytes blinded_tickets = 7;
   bytes sigma = 8;
+  bytes pke_pk = 9;
 }
 
 message EnrollmentResponse {
