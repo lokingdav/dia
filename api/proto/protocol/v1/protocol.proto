@@ -51,7 +51,6 @@ message RuaMessage {
   string tpc    = 4;
   bytes  misc   = 5;  // misc data
   bytes  sigma  = 6;
-  bytes  dr_pk  = 7;  // Double Ratchet public key for secure messaging
 }
 
 // DrHeader contains the Double Ratchet message header (Signal-compatible)

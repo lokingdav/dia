@@ -334,7 +334,6 @@ type RuaMessage struct {
 	Tpc           string                 `protobuf:"bytes,4,opt,name=tpc,proto3" json:"tpc,omitempty"`
 	Misc          []byte                 `protobuf:"bytes,5,opt,name=misc,proto3" json:"misc,omitempty"` // misc data
 	Sigma         []byte                 `protobuf:"bytes,6,opt,name=sigma,proto3" json:"sigma,omitempty"`
-	DrPk          []byte                 `protobuf:"bytes,7,opt,name=dr_pk,json=drPk,proto3" json:"dr_pk,omitempty"` // Double Ratchet public key for secure messaging
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -407,13 +406,6 @@ func (x *RuaMessage) GetMisc() []byte {
 func (x *RuaMessage) GetSigma() []byte {
 	if x != nil {
 		return x.Sigma
-	}
-	return nil
-}
-
-func (x *RuaMessage) GetDrPk() []byte {
-	if x != nil {
-		return x.DrPk
 	}
 	return nil
 }
@@ -560,7 +552,7 @@ const file_protocol_v1_protocol_proto_rawDesc = "" +
 	"\tsignature\x18\x03 \x01(\fR\tsignature\x12\x12\n" +
 	"\x04name\x18\x04 \x01(\tR\x04name\x12\x15\n" +
 	"\x06pke_pk\x18\x05 \x01(\fR\x05pkePk\x12\x13\n" +
-	"\x05dr_pk\x18\x06 \x01(\fR\x04drPk\"\xb6\x01\n" +
+	"\x05dr_pk\x18\x06 \x01(\fR\x04drPk\"\xa1\x01\n" +
 	"\n" +
 	"RuaMessage\x12\x13\n" +
 	"\x05dh_pk\x18\x01 \x01(\fR\x04dhPk\x12\x16\n" +
@@ -568,8 +560,7 @@ const file_protocol_v1_protocol_proto_rawDesc = "" +
 	"\x03rtu\x18\x03 \x01(\v2\x18.denseid.protocol.v1.RtuR\x03rtu\x12\x10\n" +
 	"\x03tpc\x18\x04 \x01(\tR\x03tpc\x12\x12\n" +
 	"\x04misc\x18\x05 \x01(\fR\x04misc\x12\x14\n" +
-	"\x05sigma\x18\x06 \x01(\fR\x05sigma\x12\x13\n" +
-	"\x05dr_pk\x18\a \x01(\fR\x04drPk\"8\n" +
+	"\x05sigma\x18\x06 \x01(\fR\x05sigma\"8\n" +
 	"\bDrHeader\x12\x0e\n" +
 	"\x02dh\x18\x01 \x01(\fR\x02dh\x12\f\n" +
 	"\x01n\x18\x02 \x01(\rR\x01n\x12\x0e\n" +
