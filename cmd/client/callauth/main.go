@@ -147,7 +147,7 @@ func main() {
 					return
 				}
 
-				log.Printf("Swapped to RUA topic: %s", ruaTopic)
+				log.Printf("Swapped to RUA topic: %x", ruaTopic)
 
 				// Initialize RTU for recipient
 				if err := protocol.InitRTU(callState); err != nil {
