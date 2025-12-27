@@ -10,7 +10,6 @@ import (
 	"github.com/caarlos0/env/v11"
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
-	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
@@ -132,8 +131,8 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("received self-message, this shouldn't happen in test")
 	}
 
-	// Decode AKE payload
-	akeMsg1, err := DecodeAkePayload(protocolMsg1)
+	// Decode AKE payload (AkeRequest is not encrypted)
+	akeMsg1, err := DecodeAkePayload(protocolMsg1, nil)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
@@ -154,21 +153,15 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// === Round 2: Recipient (Bob) -> Caller (Alice) ===
-	// Bob verifies Alice's ZK proof, sends his DhPk + ZK proof (encrypted with Alice's PK)
+	// Bob verifies Alice's ZK proof, sends his DhPk + ZK proof (payload encrypted with Alice's PK)
 
-	round2Ciphertext, err := AkeResponse(recipientState, protocolMsg1)
+	round2Msg, err := AkeResponse(recipientState, protocolMsg1)
 	if err != nil {
 		t.Fatalf("failed creating AkeResponse: %v", err)
 	}
 
-	// Decrypt with Alice's PKE private key
-	round2Plaintext, err := encryption.PkeDecrypt(callerState.Config.PkePrivateKey, round2Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt AkeResponse message: %v", err)
-	}
-
-	// Parse Round 2 protocol message
-	protocolMsg2, err := UnmarshalMessage(round2Plaintext)
+	// Parse Round 2 protocol message (envelope is plaintext, payload is encrypted)
+	protocolMsg2, err := UnmarshalMessage(round2Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeResponse protocol message: %v", err)
 	}
@@ -178,7 +171,8 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("expected AkeResponse message")
 	}
 
-	akeMsg2, err := DecodeAkePayload(protocolMsg2)
+	// Decode AKE payload (decrypt with Alice's PKE private key)
+	akeMsg2, err := DecodeAkePayload(protocolMsg2, callerState.Config.PkePrivateKey)
 	if err != nil {
 		t.Fatalf("failed to decode AkeResponse payload: %v", err)
 	}
@@ -194,9 +188,9 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 	}
 
 	// === Round 3: Caller (Alice) -> Recipient (Bob) ===
-	// Alice computes shared secret, sends both DhPks (encrypted with Bob's PK)
+	// Alice computes shared secret, sends both DhPks (payload encrypted with Bob's PK)
 
-	round3Ciphertext, err := AkeComplete(callerState, protocolMsg2)
+	round3Msg, err := AkeComplete(callerState, protocolMsg2)
 	if err != nil {
 		t.Fatalf("failed to complete AKE: %v", err)
 	}
@@ -206,14 +200,8 @@ func TestCompleteAkeFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("caller shared key is empty after AkeComplete")
 	}
 
-	// Decrypt with Bob's PKE private key
-	round3Plaintext, err := encryption.PkeDecrypt(recipientState.Config.PkePrivateKey, round3Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt AkeComplete message: %v", err)
-	}
-
-	// Parse Round 3 protocol message
-	protocolMsg3, err := UnmarshalMessage(round3Plaintext)
+	// Parse Round 3 protocol message (envelope is plaintext, payload is encrypted)
+	protocolMsg3, err := UnmarshalMessage(round3Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeComplete protocol message: %v", err)
 	}
@@ -280,7 +268,7 @@ func TestAkeRequest(t *testing.T) {
 		t.Fatal("expected AkeRequest message")
 	}
 
-	akeMsg, err := DecodeAkePayload(protocolMsg)
+	akeMsg, err := DecodeAkePayload(protocolMsg, nil)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
@@ -446,7 +434,7 @@ func TestRealEnrollmentData(t *testing.T) {
 		t.Fatal("expected AkeRequest message")
 	}
 
-	akeMsg1, err := DecodeAkePayload(protocolMsg1)
+	akeMsg1, err := DecodeAkePayload(protocolMsg1, nil)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
@@ -457,18 +445,13 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	// === Round 2: Bob sends AkeResponse ===
-	round2Ciphertext, err := AkeResponse(bobState, protocolMsg1)
+	round2Msg, err := AkeResponse(bobState, protocolMsg1)
 	if err != nil {
 		t.Fatalf("Bob failed to process Alice's AkeRequest: %v", err)
 	}
 
-	// Decrypt with Alice's PKE private key
-	round2Plaintext, err := encryption.PkeDecrypt(aliceState.Config.PkePrivateKey, round2Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt AkeResponse: %v", err)
-	}
-
-	protocolMsg2, err := UnmarshalMessage(round2Plaintext)
+	// Parse Round 2 protocol message (envelope is plaintext)
+	protocolMsg2, err := UnmarshalMessage(round2Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeResponse: %v", err)
 	}
@@ -478,7 +461,7 @@ func TestRealEnrollmentData(t *testing.T) {
 	}
 
 	// === Round 3: Alice sends AkeComplete ===
-	round3Ciphertext, err := AkeComplete(aliceState, protocolMsg2)
+	round3Msg, err := AkeComplete(aliceState, protocolMsg2)
 	if err != nil {
 		t.Fatalf("Alice failed to complete AKE: %v", err)
 	}
@@ -488,13 +471,8 @@ func TestRealEnrollmentData(t *testing.T) {
 		t.Fatal("Alice should have shared key after AkeComplete")
 	}
 
-	// Decrypt with Bob's PKE private key
-	round3Plaintext, err := encryption.PkeDecrypt(bobState.Config.PkePrivateKey, round3Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt AkeComplete: %v", err)
-	}
-
-	protocolMsg3, err := UnmarshalMessage(round3Plaintext)
+	// Parse Round 3 protocol message (envelope is plaintext)
+	protocolMsg3, err := UnmarshalMessage(round3Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeComplete: %v", err)
 	}

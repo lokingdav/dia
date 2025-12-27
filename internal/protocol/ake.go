@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/dense-identity/denseid/internal/bbs"
-	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	dia "github.com/lokingdav/libdia/bindings/go"
 )
@@ -48,8 +47,8 @@ func AkeRequest(caller *CallState) ([]byte, error) {
 		Proof:      proof,
 	}
 
-	// Send on AKE topic
-	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeRequest, akeMsg)
+	// Send on AKE topic (not encrypted - recipient needs to see caller's public keys)
+	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeRequest, akeMsg, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -70,8 +69,8 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, errors.New("AkeResponse can only be called on AkeRequest message")
 	}
 
-	// Decode the AKE message from the protocol message
-	caller, err := DecodeAkePayload(callerMsg)
+	// Decode the AKE message from the protocol message (AkeRequest is not encrypted)
+	caller, err := DecodeAkePayload(callerMsg, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -101,18 +100,13 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	recipient.CounterpartAmfPk = caller.GetAmfPk()
 	recipient.CounterpartPkePk = caller.GetPkePk()
 
-	// Respond on AKE topic
-	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, akeMsg)
+	// Respond on AKE topic (payload encrypted with caller's PKE public key)
+	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, akeMsg, caller.GetPkePk())
 	if err != nil {
 		return nil, err
 	}
 
-	ciphertext, err := encryption.PkeEncrypt(caller.GetPkePk(), msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return ciphertext, nil
+	return msg, nil
 }
 
 func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, error) {
@@ -126,8 +120,8 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 		return nil, errors.New("AkeComplete can only be called on AkeResponse message")
 	}
 
-	// Decode the AKE message from the protocol message
-	recipient, err := DecodeAkePayload(recipientMsg)
+	// Decode the AKE message from the protocol message (decrypt with caller's PKE private key)
+	recipient, err := DecodeAkePayload(recipientMsg, caller.Config.PkePrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -165,17 +159,13 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 		DhPk: helpers.ConcatBytes(caller.Ake.DhPk, recipientDhPk),
 	}
 
-	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeComplete, akeMsg)
+	// Send on AKE topic (payload encrypted with recipient's PKE public key)
+	msg, err := CreateAkeMessage(caller.SenderId, caller.GetAkeTopic(), TypeAkeComplete, akeMsg, recipient.GetPkePk())
 	if err != nil {
 		return nil, err
 	}
 
-	ciphertext, err := encryption.PkeEncrypt(recipient.GetPkePk(), msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return ciphertext, nil
+	return msg, nil
 }
 
 func AkeFinalize(recipient *CallState, callerMsg *ProtocolMessage) error {
@@ -189,8 +179,8 @@ func AkeFinalize(recipient *CallState, callerMsg *ProtocolMessage) error {
 		return errors.New("AkeFinalize can only be called on AkeComplete message")
 	}
 
-	// Decode the AKE message from the protocol message
-	caller, err := DecodeAkePayload(callerMsg)
+	// Decode the AKE message from the protocol message (decrypt with recipient's PKE private key)
+	caller, err := DecodeAkePayload(callerMsg, recipient.Config.PkePrivateKey)
 	if err != nil {
 		return err
 	}

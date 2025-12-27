@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	pb "github.com/dense-identity/denseid/api/go/protocol/v1"
+	"github.com/dense-identity/denseid/internal/encryption"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -45,25 +46,51 @@ func UnmarshalMessage(data []byte) (*ProtocolMessage, error) {
 	return m, nil
 }
 
-// DecodeAkePayload extracts AkeMessage from ProtocolMessage payload
-func DecodeAkePayload(m *ProtocolMessage) (*AkeMessage, error) {
+// DecodeAkePayload extracts AkeMessage from ProtocolMessage payload.
+// If pkePrivateKey is provided, the payload is decrypted first using PKE.
+func DecodeAkePayload(m *ProtocolMessage, pkePrivateKey []byte) (*AkeMessage, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil ProtocolMessage")
 	}
+
+	payloadBytes := m.Payload
+
+	// If PKE key is provided, decrypt the payload first
+	if len(pkePrivateKey) > 0 {
+		decrypted, err := encryption.PkeDecrypt(pkePrivateKey, payloadBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt AKE payload: %v", err)
+		}
+		payloadBytes = decrypted
+	}
+
 	ake := &AkeMessage{}
-	if err := proto.Unmarshal(m.Payload, ake); err != nil {
+	if err := proto.Unmarshal(payloadBytes, ake); err != nil {
 		return nil, fmt.Errorf("failed to decode AKE payload: %v", err)
 	}
 	return ake, nil
 }
 
-// DecodeRuaPayload extracts RuaMessage from ProtocolMessage payload
-func DecodeRuaPayload(m *ProtocolMessage) (*RuaMessage, error) {
+// DecodeRuaPayload extracts RuaMessage from ProtocolMessage payload.
+// If sharedKey is provided, the payload is decrypted first using symmetric encryption.
+func DecodeRuaPayload(m *ProtocolMessage, sharedKey []byte) (*RuaMessage, error) {
 	if m == nil {
 		return nil, fmt.Errorf("nil ProtocolMessage")
 	}
+
+	payloadBytes := m.Payload
+
+	// If shared key is provided, decrypt the payload first
+	if len(sharedKey) > 0 {
+		decrypted, err := encryption.SymDecrypt(sharedKey, payloadBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt RUA payload: %v", err)
+		}
+		payloadBytes = decrypted
+	}
+
 	rua := &RuaMessage{}
-	if err := proto.Unmarshal(m.Payload, rua); err != nil {
+	if err := proto.Unmarshal(payloadBytes, rua); err != nil {
 		return nil, fmt.Errorf("failed to decode RUA payload: %v", err)
 	}
 	return rua, nil
@@ -104,8 +131,9 @@ func IsBye(m *ProtocolMessage) bool {
 	return m != nil && m.Type == TypeBye
 }
 
-// CreateAkeMessage creates an AKE protocol message
-func CreateAkeMessage(senderId, topic string, msgType MessageType, payload *AkeMessage) ([]byte, error) {
+// CreateAkeMessage creates an AKE protocol message.
+// If recipientPkePk is provided, the payload is encrypted using PKE.
+func CreateAkeMessage(senderId, topic string, msgType MessageType, payload *AkeMessage, recipientPkePk []byte) ([]byte, error) {
 	var payloadBytes []byte
 	var err error
 
@@ -113,6 +141,14 @@ func CreateAkeMessage(senderId, topic string, msgType MessageType, payload *AkeM
 		payloadBytes, err = proto.Marshal(payload)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal AKE payload: %v", err)
+		}
+
+		// Encrypt payload if recipient's PKE public key is provided
+		if len(recipientPkePk) > 0 {
+			payloadBytes, err = encryption.PkeEncrypt(recipientPkePk, payloadBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt AKE payload: %v", err)
+			}
 		}
 	}
 
@@ -126,8 +162,9 @@ func CreateAkeMessage(senderId, topic string, msgType MessageType, payload *AkeM
 	return MarshalMessage(msg)
 }
 
-// CreateRuaMessage creates an RUA protocol message
-func CreateRuaMessage(senderId, topic string, msgType MessageType, payload *RuaMessage) ([]byte, error) {
+// CreateRuaMessage creates an RUA protocol message.
+// If sharedKey is provided, the payload is encrypted using symmetric encryption.
+func CreateRuaMessage(senderId, topic string, msgType MessageType, payload *RuaMessage, sharedKey []byte) ([]byte, error) {
 	var payloadBytes []byte
 	var err error
 
@@ -135,6 +172,14 @@ func CreateRuaMessage(senderId, topic string, msgType MessageType, payload *RuaM
 		payloadBytes, err = proto.Marshal(payload)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal RUA payload: %v", err)
+		}
+
+		// Encrypt payload if shared key is provided
+		if len(sharedKey) > 0 {
+			payloadBytes, err = encryption.SymEncrypt(sharedKey, payloadBytes)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt RUA payload: %v", err)
+			}
 		}
 	}
 

@@ -99,8 +99,8 @@ func TestMessageProcessingWithProtocol(t *testing.T) {
 		t.Fatal("expected AkeInit message")
 	}
 
-	// Decode the AKE payload
-	decodedAke, err := protocol.DecodeAkePayload(protocolMsg)
+	// Decode the AKE payload (unencrypted)
+	decodedAke, err := protocol.DecodeAkePayload(protocolMsg, nil)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
 
-	akeMsg, err := protocol.DecodeAkePayload(protocolMsg)
+	akeMsg, err := protocol.DecodeAkePayload(protocolMsg, nil)
 	if err != nil {
 		t.Fatalf("failed to decode: %v", err)
 	}
@@ -213,7 +213,7 @@ func TestAkeRoundProcessing(t *testing.T) {
 			t.Fatalf("failed to unmarshal round 2: %v", err)
 		}
 
-		_, err = protocol.DecodeAkePayload(round2Protocol)
+		_, err = protocol.DecodeAkePayload(round2Protocol, nil)
 		if err != nil {
 			t.Fatalf("failed to decode round 2: %v", err)
 		}

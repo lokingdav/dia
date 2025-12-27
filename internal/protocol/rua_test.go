@@ -7,7 +7,6 @@ import (
 	"github.com/dense-identity/denseid/internal/amf"
 	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/datetime"
-	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
@@ -39,33 +38,23 @@ func setupAkeCompletedStates(t *testing.T, callerPhone, recipientPhone string) (
 	}
 
 	// Round 2: Recipient sends AkeResponse
-	round2Ciphertext, err := AkeResponse(recipientState, protocolMsg1)
+	round2Msg, err := AkeResponse(recipientState, protocolMsg1)
 	if err != nil {
 		t.Fatalf("failed creating AkeResponse: %v", err)
 	}
 
-	round2Plaintext, err := encryption.PkeDecrypt(callerState.Config.PkePrivateKey, round2Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt AkeResponse: %v", err)
-	}
-
-	protocolMsg2, err := UnmarshalMessage(round2Plaintext)
+	protocolMsg2, err := UnmarshalMessage(round2Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeResponse: %v", err)
 	}
 
 	// Round 3: Caller sends AkeComplete
-	round3Ciphertext, err := AkeComplete(callerState, protocolMsg2)
+	round3Msg, err := AkeComplete(callerState, protocolMsg2)
 	if err != nil {
 		t.Fatalf("failed creating AkeComplete: %v", err)
 	}
 
-	round3Plaintext, err := encryption.PkeDecrypt(recipientState.Config.PkePrivateKey, round3Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt AkeComplete: %v", err)
-	}
-
-	protocolMsg3, err := UnmarshalMessage(round3Plaintext)
+	protocolMsg3, err := UnmarshalMessage(round3Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal AkeComplete: %v", err)
 	}
@@ -117,18 +106,13 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 	// === Round 1: Caller (Alice) -> Recipient (Bob) ===
 	// Caller sends RuaRequest with RTU and AMF signature
 
-	round1Ciphertext, err := RuaRequest(callerState)
+	round1Msg, err := RuaRequest(callerState)
 	if err != nil {
 		t.Fatalf("failed creating RuaRequest: %v", err)
 	}
 
-	// Recipient decrypts with shared symmetric key
-	round1Plaintext, err := encryption.SymDecrypt(recipientState.SharedKey, round1Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt RuaRequest: %v", err)
-	}
-
-	protocolMsg1, err := UnmarshalMessage(round1Plaintext)
+	// Parse protocol message (envelope is plaintext, payload is encrypted)
+	protocolMsg1, err := UnmarshalMessage(round1Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal RuaRequest protocol message: %v", err)
 	}
@@ -143,8 +127,8 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("received self-message, this shouldn't happen in test")
 	}
 
-	// Decode RUA payload
-	ruaMsg1, err := DecodeRuaPayload(protocolMsg1)
+	// Decode RUA payload (decrypt with shared key)
+	ruaMsg1, err := DecodeRuaPayload(protocolMsg1, recipientState.SharedKey)
 	if err != nil {
 		t.Fatalf("failed to decode RUA payload: %v", err)
 	}
@@ -178,7 +162,7 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 	// === Round 2: Recipient (Bob) -> Caller (Alice) ===
 	// Bob verifies Alice's RTU and sends his RuaResponse
 
-	round2Ciphertext, err := RuaResponse(recipientState, protocolMsg1)
+	round2Msg, err := RuaResponse(recipientState, protocolMsg1)
 	if err != nil {
 		t.Fatalf("failed creating RuaResponse: %v", err)
 	}
@@ -193,13 +177,8 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("RUA shared key should be different from AKE shared key")
 	}
 
-	// Caller decrypts with shared symmetric key (still using AKE shared key)
-	round2Plaintext, err := encryption.SymDecrypt(akeSharedKey, round2Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt RuaResponse: %v", err)
-	}
-
-	protocolMsg2, err := UnmarshalMessage(round2Plaintext)
+	// Parse protocol message (envelope is plaintext, payload encrypted with AKE shared key)
+	protocolMsg2, err := UnmarshalMessage(round2Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal RuaResponse protocol message: %v", err)
 	}
@@ -209,7 +188,8 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("expected RuaResponse message")
 	}
 
-	ruaMsg2, err := DecodeRuaPayload(protocolMsg2)
+	// Decode RUA payload (decrypt with AKE shared key)
+	ruaMsg2, err := DecodeRuaPayload(protocolMsg2, akeSharedKey)
 	if err != nil {
 		t.Fatalf("failed to decode RuaResponse payload: %v", err)
 	}
@@ -287,13 +267,8 @@ func TestRuaRequest(t *testing.T) {
 		t.Fatal("RuaRequest ciphertext is empty")
 	}
 
-	// Decrypt and verify
-	plaintext, err := encryption.SymDecrypt(callerState.SharedKey, ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt RuaRequest: %v", err)
-	}
-
-	protocolMsg, err := UnmarshalMessage(plaintext)
+	// Parse protocol message (envelope is plaintext, payload is encrypted)
+	protocolMsg, err := UnmarshalMessage(ciphertext)
 	if err != nil {
 		t.Fatalf("failed to unmarshal protocol message: %v", err)
 	}
@@ -302,7 +277,8 @@ func TestRuaRequest(t *testing.T) {
 		t.Fatal("expected RuaRequest message")
 	}
 
-	ruaMsg, err := DecodeRuaPayload(protocolMsg)
+	// Decode RUA payload (decrypt with shared key)
+	ruaMsg, err := DecodeRuaPayload(protocolMsg, callerState.SharedKey)
 	if err != nil {
 		t.Fatalf("failed to decode RUA payload: %v", err)
 	}
@@ -704,22 +680,20 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 	protocolMsg1, _ := UnmarshalMessage(round1Msg)
 
 	// AKE Round 2
-	round2Ciphertext, err := AkeResponse(bobState, protocolMsg1)
+	round2Msg, err := AkeResponse(bobState, protocolMsg1)
 	if err != nil {
 		t.Fatalf("AkeResponse failed: %v", err)
 	}
 
-	round2Plaintext, _ := encryption.PkeDecrypt(aliceState.Config.PkePrivateKey, round2Ciphertext)
-	protocolMsg2, _ := UnmarshalMessage(round2Plaintext)
+	protocolMsg2, _ := UnmarshalMessage(round2Msg)
 
 	// AKE Round 3
-	round3Ciphertext, err := AkeComplete(aliceState, protocolMsg2)
+	round3Msg, err := AkeComplete(aliceState, protocolMsg2)
 	if err != nil {
 		t.Fatalf("AkeComplete failed: %v", err)
 	}
 
-	round3Plaintext, _ := encryption.PkeDecrypt(bobState.Config.PkePrivateKey, round3Ciphertext)
-	protocolMsg3, _ := UnmarshalMessage(round3Plaintext)
+	protocolMsg3, _ := UnmarshalMessage(round3Msg)
 
 	// AKE Finalize
 	if err := AkeFinalize(bobState, protocolMsg3); err != nil {
@@ -747,17 +721,12 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 	}
 
 	// RUA Round 1: Alice sends RuaRequest
-	ruaRound1Ciphertext, err := RuaRequest(aliceState)
+	ruaRound1Msg, err := RuaRequest(aliceState)
 	if err != nil {
 		t.Fatalf("RuaRequest failed: %v", err)
 	}
 
-	ruaRound1Plaintext, err := encryption.SymDecrypt(bobState.SharedKey, ruaRound1Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt RuaRequest: %v", err)
-	}
-
-	ruaProtocolMsg1, err := UnmarshalMessage(ruaRound1Plaintext)
+	ruaProtocolMsg1, err := UnmarshalMessage(ruaRound1Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal RuaRequest: %v", err)
 	}
@@ -767,7 +736,7 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 	}
 
 	// RUA Round 2: Bob sends RuaResponse
-	ruaRound2Ciphertext, err := RuaResponse(bobState, ruaProtocolMsg1)
+	ruaRound2Msg, err := RuaResponse(bobState, ruaProtocolMsg1)
 	if err != nil {
 		t.Fatalf("RuaResponse failed: %v", err)
 	}
@@ -777,12 +746,7 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 		t.Fatal("Bob's shared key should be different after RuaResponse")
 	}
 
-	ruaRound2Plaintext, err := encryption.SymDecrypt(akeSharedKey, ruaRound2Ciphertext)
-	if err != nil {
-		t.Fatalf("failed to decrypt RuaResponse: %v", err)
-	}
-
-	ruaProtocolMsg2, err := UnmarshalMessage(ruaRound2Plaintext)
+	ruaProtocolMsg2, err := UnmarshalMessage(ruaRound2Msg)
 	if err != nil {
 		t.Fatalf("failed to unmarshal RuaResponse: %v", err)
 	}

@@ -7,7 +7,6 @@ import (
 	"github.com/dense-identity/denseid/internal/bbs"
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/datetime"
-	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	dia "github.com/lokingdav/libdia/bindings/go"
 	"google.golang.org/protobuf/proto"
@@ -139,17 +138,13 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 	ruaMsg.Sigma = Sigma
 	caller.Rua.Req = ruaMsg
 
-	msg, err := CreateRuaMessage(caller.SenderId, topic, TypeRuaRequest, ruaMsg)
+	// Create RUA message with encrypted payload
+	msg, err := CreateRuaMessage(caller.SenderId, topic, TypeRuaRequest, ruaMsg, caller.SharedKey)
 	if err != nil {
 		return nil, err
 	}
 
-	ciphertext, err := encryption.SymEncrypt(caller.SharedKey, msg)
-	if err != nil {
-		return nil, err
-	}
-
-	return ciphertext, nil
+	return msg, nil
 }
 
 func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, error) {
@@ -163,8 +158,8 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, errors.New("AkeResponse can only be called on AkeRequest message")
 	}
 
-	// Decode the message from the protocol message
-	caller, err := DecodeRuaPayload(callerMsg)
+	// Decode the message from the protocol message (decrypt with shared key)
+	caller, err := DecodeRuaPayload(callerMsg, recipient.SharedKey)
 	if err != nil {
 		return nil, err
 	}
@@ -202,12 +197,8 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	reply.Sigma = Sigma
 	reply.Misc = nil
 	tpc := helpers.EncodeToHex(recipient.Rua.Topic)
-	msg, err := CreateRuaMessage(recipient.SenderId, tpc, TypeRuaResponse, reply)
-	if err != nil {
-		return nil, err
-	}
-
-	ciphertext, err := encryption.SymEncrypt(recipient.SharedKey, msg)
+	// Create RUA message with encrypted payload
+	msg, err := CreateRuaMessage(recipient.SenderId, tpc, TypeRuaResponse, reply, recipient.SharedKey)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +220,7 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	)
 	recipient.SetSharedKey(sharedKey)
 
-	return ciphertext, nil
+	return msg, nil
 }
 
 func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
@@ -243,7 +234,8 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 		return errors.New("RuaFinalize can only be called on RuaResponse")
 	}
 
-	recipient, err := DecodeRuaPayload(recipientMsg)
+	// Decode the RUA message (decrypt with shared key)
+	recipient, err := DecodeRuaPayload(recipientMsg, caller.SharedKey)
 	if err != nil {
 		return err
 	}

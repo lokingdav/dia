@@ -48,8 +48,8 @@ func TestProtocolMessageMarshalUnmarshal(t *testing.T) {
 		t.Errorf("senderId mismatch: got %s, want %s", restored.SenderId, original.SenderId)
 	}
 
-	// Verify payload can be decoded
-	decodedPayload, err := DecodeAkePayload(restored)
+	// Verify payload can be decoded (unencrypted)
+	decodedPayload, err := DecodeAkePayload(restored, nil)
 	if err != nil {
 		t.Fatalf("failed to decode payload: %v", err)
 	}
@@ -101,8 +101,8 @@ func TestAkeMessageMarshalUnmarshal(t *testing.T) {
 		t.Fatal("expected AkeRequest message")
 	}
 
-	// Decode the AKE payload
-	restored, err := DecodeAkePayload(restoredProtocol)
+	// Decode the AKE payload (unencrypted)
+	restored, err := DecodeAkePayload(restoredProtocol, nil)
 	if err != nil {
 		t.Fatalf("failed to decode AKE payload: %v", err)
 	}

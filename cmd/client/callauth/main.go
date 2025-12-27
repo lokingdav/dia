@@ -9,7 +9,6 @@ import (
 	"os/signal"
 
 	"github.com/dense-identity/denseid/internal/config"
-	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/dense-identity/denseid/internal/protocol"
 	"github.com/dense-identity/denseid/internal/subscriber"
@@ -251,33 +250,8 @@ func main() {
 }
 
 func getMessage(callState *protocol.CallState, data []byte) (*protocol.ProtocolMessage, error) {
-	// Try plaintext first (for AkeRequest which is not encrypted)
-	msg, err := protocol.UnmarshalMessage(data)
-	if err == nil {
-		return msg, nil
-	}
-
-	// Try PKE decryption (for AkeResponse and AkeComplete)
-	if len(callState.Config.PkePrivateKey) > 0 {
-		plaintext, pkeErr := encryption.PkeDecrypt(callState.Config.PkePrivateKey, data)
-		if pkeErr == nil {
-			msg, err = protocol.UnmarshalMessage(plaintext)
-			if err == nil {
-				return msg, nil
-			}
-		}
-	}
-
-	// Try symmetric decryption (for RUA messages after shared key is established)
-	if len(callState.SharedKey) > 0 {
-		plaintext, symErr := encryption.SymDecrypt(callState.SharedKey, data)
-		if symErr == nil {
-			msg, err = protocol.UnmarshalMessage(plaintext)
-			if err == nil {
-				return msg, nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("failed to decrypt message: %v", err)
+	// ProtocolMessage envelope is always in plaintext
+	// The payload inside is encrypted (PKE for AKE, symmetric for RUA)
+	// Decryption is handled by DecodeAkePayload/DecodeRuaPayload in the protocol functions
+	return protocol.UnmarshalMessage(data)
 }
