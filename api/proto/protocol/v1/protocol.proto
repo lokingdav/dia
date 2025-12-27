@@ -30,6 +30,7 @@ message AkeMessage {
   bytes expiration = 3;  // Credential expiration timestamp
   bytes proof      = 4;  // ZK proof of enrollment
   bytes pke_pk     = 5;  // PKE public key for encryption
+  bytes dr_pk      = 6;  // Double Ratchet public key for secure messaging
 }
 
 // Rtu contains RTU information
@@ -39,6 +40,7 @@ message Rtu {
   bytes  signature  = 3;  // Enrollment signature from RA
   string name       = 4;  // Display name
   bytes  pke_pk     = 5;  // PKE public key for encryption
+  bytes  dr_pk      = 6;  // Double Ratchet public key
 }
 
 // RuaMessage is used for Rich User Authentication
@@ -46,9 +48,10 @@ message RuaMessage {
   bytes  dh_pk  = 1;  // DH public key for RUA phase
   string reason = 2;  // Call reason
   Rtu    rtu    = 3;  // RTU info
-  string tpc = 4;
-  bytes misc = 5; // misc data
-  bytes sigma = 6;
+  string tpc    = 4;
+  bytes  misc   = 5;  // misc data
+  bytes  sigma  = 6;
+  bytes  dr_pk  = 7;  // Double Ratchet public key for secure messaging
 }
 
 // DrHeader contains the Double Ratchet message header (Signal-compatible)

@@ -17,6 +17,7 @@ func createRtuFromConfig(cfg *config.SubscriberConfig) *Rtu {
 	return &Rtu{
 		AmfPk:      cfg.AmfPublicKey,
 		PkePk:      cfg.PkePublicKey,
+		DrPk:       cfg.DrPublicKey,
 		Expiration: cfg.EnExpiration,
 		Signature:  cfg.RaSignature,
 		Name:       cfg.MyName,
@@ -66,8 +67,8 @@ func VerifyRTU(party *CallState, tn string, msg *RuaMessage) error {
 		return err
 	}
 
-	// Validate RA's BBS signature on RTU
-	message1 := helpers.HashAll(msg.Rtu.AmfPk, msg.Rtu.PkePk, msg.Rtu.Expiration, []byte(tn))
+	// Validate RA's BBS signature on RTU (includes dr_pk)
+	message1 := helpers.HashAll(msg.Rtu.AmfPk, msg.Rtu.PkePk, msg.Rtu.DrPk, msg.Rtu.Expiration, []byte(tn))
 	message2 := []byte(msg.Rtu.Name)
 	messages := [][]byte{message1, message2}
 	rtuValid, err := bbs.Verify(messages, party.Config.RaPublicKey, msg.Rtu.Signature)
@@ -138,8 +139,8 @@ func RuaRequest(caller *CallState) ([]byte, error) {
 	ruaMsg.Sigma = Sigma
 	caller.Rua.Req = ruaMsg
 
-	// Create RUA message with encrypted payload
-	msg, err := CreateRuaMessage(caller.SenderId, topic, TypeRuaRequest, ruaMsg, caller.SharedKey)
+	// Create RUA message with DR encryption
+	msg, err := CreateDrRuaMessage(caller.SenderId, topic, TypeRuaRequest, ruaMsg, caller.DrSession)
 	if err != nil {
 		return nil, err
 	}
@@ -155,11 +156,14 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, errors.New("caller ProtocolMessage cannot be nil")
 	}
 	if !IsRuaRequest(callerMsg) {
-		return nil, errors.New("AkeResponse can only be called on AkeRequest message")
+		return nil, errors.New("RuaResponse can only be called on RuaRequest message")
+	}
+	if recipient.DrSession == nil {
+		return nil, errors.New("DR session not initialized - AKE must complete first")
 	}
 
-	// Decode the message from the protocol message (decrypt with shared key)
-	caller, err := DecodeRuaPayload(callerMsg, recipient.SharedKey)
+	// Decode the message using DR decryption
+	caller, err := DecodeDrRuaPayload(callerMsg, recipient.DrSession)
 	if err != nil {
 		return nil, err
 	}
@@ -194,15 +198,7 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
-	reply.Sigma = Sigma
-	reply.Misc = nil
-	tpc := helpers.EncodeToHex(recipient.Rua.Topic)
-	// Create RUA message with encrypted payload
-	msg, err := CreateRuaMessage(recipient.SenderId, tpc, TypeRuaResponse, reply, recipient.SharedKey)
-	if err != nil {
-		return nil, err
-	}
-
+	// Compute new shared key for next session (not used for current DR session)
 	secret, err := dia.DHComputeSecret(recipient.Rua.DhSk, caller.DhPk)
 	if err != nil {
 		return nil, err
@@ -219,6 +215,16 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	)
 	recipient.SetSharedKey(sharedKey)
 
+	reply.Sigma = Sigma
+	reply.Misc = nil
+	tpc := helpers.EncodeToHex(recipient.Rua.Topic)
+
+	// Create RUA message with DR encryption
+	msg, err := CreateDrRuaMessage(recipient.SenderId, tpc, TypeRuaResponse, reply, recipient.DrSession)
+	if err != nil {
+		return nil, err
+	}
+
 	return msg, nil
 }
 
@@ -232,9 +238,12 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 	if !IsRuaResponse(recipientMsg) {
 		return errors.New("RuaFinalize can only be called on RuaResponse")
 	}
+	if caller.DrSession == nil {
+		return errors.New("DR session not initialized - AKE must complete first")
+	}
 
-	// Decode the RUA message (decrypt with shared key)
-	recipient, err := DecodeRuaPayload(recipientMsg, caller.SharedKey)
+	// Decode the RUA message using DR decryption
+	recipient, err := DecodeDrRuaPayload(recipientMsg, caller.DrSession)
 	if err != nil {
 		return err
 	}
@@ -248,8 +257,8 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 		return err
 	}
 
-	// Validate RA's BBS signature on RTU
-	message1 := helpers.HashAll(recipient.Rtu.AmfPk, recipient.Rtu.PkePk, recipient.Rtu.Expiration, []byte(caller.Dst))
+	// Validate RA's BBS signature on RTU (includes dr_pk)
+	message1 := helpers.HashAll(recipient.Rtu.AmfPk, recipient.Rtu.PkePk, recipient.Rtu.DrPk, recipient.Rtu.Expiration, []byte(caller.Dst))
 	message2 := []byte(recipient.Rtu.Name)
 	messages := [][]byte{message1, message2}
 	rtuValid, err := bbs.Verify(messages, caller.Config.RaPublicKey, recipient.Rtu.Signature)
@@ -297,6 +306,7 @@ func RuaFinalize(caller *CallState, recipientMsg *ProtocolMessage) error {
 	}
 
 	// Use caller's RTU (from the original request) to match RuaResponse's shared key derivation
+	// This shared key is for the next session, not the current DR session
 	rtuB, err := proto.MarshalOptions{Deterministic: true}.Marshal(caller.Rua.Req.Rtu)
 	sharedKey := helpers.HashAll(
 		ddA,

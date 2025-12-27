@@ -28,6 +28,7 @@ message EnrollmentRequest {
   repeated bytes blinded_tickets = 7;
   bytes sigma = 8;
   bytes pke_pk = 9;
+  bytes dr_pk = 10;  // Double Ratchet public key
 }
 
 message EnrollmentResponse {

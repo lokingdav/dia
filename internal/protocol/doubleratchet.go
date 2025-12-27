@@ -8,7 +8,7 @@ import (
 	dr "github.com/status-im/doubleratchet"
 )
 
-// DrSession wraps a Double Ratchet session for secure messaging after RUA completes.
+// DrSession wraps a Double Ratchet session for secure messaging after AKE completes.
 type DrSession struct {
 	mu      sync.Mutex
 	session dr.Session
@@ -23,77 +23,75 @@ type drKeyPair struct {
 func (k drKeyPair) PrivateKey() dr.Key { return k.privateKey }
 func (k drKeyPair) PublicKey() dr.Key  { return k.publicKey }
 
-// InitDrSessionAsRecipient initializes a Double Ratchet session for the party
-// that will generate the initial DH key pair (typically the recipient).
-// Returns the DR public key that must be sent to the other party.
-func InitDrSessionAsRecipient(callState *CallState) ([]byte, error) {
-	if callState == nil {
-		return nil, errors.New("callState cannot be nil")
-	}
-	if len(callState.SharedKey) != 32 {
+// InitDrSessionAsRecipient initializes a Double Ratchet session for the recipient.
+// The recipient generates the initial DH key pair using their DR keys from enrollment.
+// Called at the end of AkeFinalize.
+func InitDrSessionAsRecipient(sessionId, sharedKey, drPrivateKey, drPublicKey []byte) (*DrSession, error) {
+	if len(sharedKey) != 32 {
 		return nil, errors.New("shared key must be 32 bytes")
 	}
+	if len(drPrivateKey) != 32 || len(drPublicKey) != 32 {
+		return nil, errors.New("DR keys must be 32 bytes each")
+	}
 
-	sharedKey := make(dr.Key, 32)
-	copy(sharedKey, callState.SharedKey)
+	sk := make(dr.Key, 32)
+	copy(sk, sharedKey)
 
-	// Generate fresh DH key pair for Double Ratchet
-	crypto := dr.DefaultCrypto{}
-	keyPair, err := crypto.GenerateDH()
+	privKey := make(dr.Key, 32)
+	copy(privKey, drPrivateKey)
+
+	pubKey := make(dr.Key, 32)
+	copy(pubKey, drPublicKey)
+
+	keyPair := drKeyPair{
+		privateKey: privKey,
+		publicKey:  pubKey,
+	}
+
+	session, err := dr.New(sessionId, sk, keyPair, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	sessionId := callState.Rua.Topic
-	session, err := dr.New(sessionId, sharedKey, keyPair, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	callState.DrSession = &DrSession{session: session}
-	return keyPair.PublicKey(), nil
+	return &DrSession{session: session}, nil
 }
 
-// InitDrSessionAsCaller initializes a Double Ratchet session for the party
-// that receives the remote's DH public key (typically the caller).
-func InitDrSessionAsCaller(callState *CallState, remoteDrPk []byte) error {
-	if callState == nil {
-		return errors.New("callState cannot be nil")
-	}
-	if len(callState.SharedKey) != 32 {
-		return errors.New("shared key must be 32 bytes")
+// InitDrSessionAsCaller initializes a Double Ratchet session for the caller.
+// The caller uses the recipient's DR public key from the AKE exchange.
+// Called at the end of AkeComplete.
+func InitDrSessionAsCaller(sessionId, sharedKey, remoteDrPk []byte) (*DrSession, error) {
+	if len(sharedKey) != 32 {
+		return nil, errors.New("shared key must be 32 bytes")
 	}
 	if len(remoteDrPk) != 32 {
-		return errors.New("remote DR public key must be 32 bytes")
+		return nil, errors.New("remote DR public key must be 32 bytes")
 	}
 
-	sharedKey := make(dr.Key, 32)
-	copy(sharedKey, callState.SharedKey)
+	sk := make(dr.Key, 32)
+	copy(sk, sharedKey)
 
 	remotePk := make(dr.Key, 32)
 	copy(remotePk, remoteDrPk)
 
-	sessionId := callState.Rua.Topic
-	session, err := dr.NewWithRemoteKey(sessionId, sharedKey, remotePk, nil)
+	session, err := dr.NewWithRemoteKey(sessionId, sk, remotePk, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	callState.DrSession = &DrSession{session: session}
-	return nil
+	return &DrSession{session: session}, nil
 }
 
 // DrEncrypt encrypts a message using the Double Ratchet session.
 // Returns a proto DrMessage that can be serialized and sent.
-func DrEncrypt(callState *CallState, plaintext []byte, associatedData []byte) (*pb.DrMessage, error) {
-	if callState == nil || callState.DrSession == nil {
+func DrEncrypt(drSession *DrSession, plaintext []byte, associatedData []byte) (*pb.DrMessage, error) {
+	if drSession == nil {
 		return nil, errors.New("DR session not initialized")
 	}
 
-	callState.DrSession.mu.Lock()
-	defer callState.DrSession.mu.Unlock()
+	drSession.mu.Lock()
+	defer drSession.mu.Unlock()
 
-	msg, err := callState.DrSession.session.RatchetEncrypt(plaintext, associatedData)
+	msg, err := drSession.session.RatchetEncrypt(plaintext, associatedData)
 	if err != nil {
 		return nil, err
 	}
@@ -109,16 +107,16 @@ func DrEncrypt(callState *CallState, plaintext []byte, associatedData []byte) (*
 }
 
 // DrDecrypt decrypts a message using the Double Ratchet session.
-func DrDecrypt(callState *CallState, msg *pb.DrMessage, associatedData []byte) ([]byte, error) {
-	if callState == nil || callState.DrSession == nil {
+func DrDecrypt(drSession *DrSession, msg *pb.DrMessage, associatedData []byte) ([]byte, error) {
+	if drSession == nil {
 		return nil, errors.New("DR session not initialized")
 	}
 	if msg == nil || msg.Header == nil {
 		return nil, errors.New("message cannot be nil")
 	}
 
-	callState.DrSession.mu.Lock()
-	defer callState.DrSession.mu.Unlock()
+	drSession.mu.Lock()
+	defer drSession.mu.Unlock()
 
 	// Convert proto DrMessage to doubleratchet.Message
 	dhKey := make(dr.Key, len(msg.Header.Dh))
@@ -133,5 +131,5 @@ func DrDecrypt(callState *CallState, msg *pb.DrMessage, associatedData []byte) (
 		Ciphertext: msg.Ciphertext,
 	}
 
-	return callState.DrSession.session.RatchetDecrypt(drMsg, associatedData)
+	return drSession.session.RatchetDecrypt(drMsg, associatedData)
 }

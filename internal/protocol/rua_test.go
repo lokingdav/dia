@@ -127,8 +127,8 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("received self-message, this shouldn't happen in test")
 	}
 
-	// Decode RUA payload (decrypt with shared key)
-	ruaMsg1, err := DecodeRuaPayload(protocolMsg1, recipientState.SharedKey)
+	// Decode RUA payload using DR decryption
+	ruaMsg1, err := DecodeDrRuaPayload(protocolMsg1, recipientState.DrSession)
 	if err != nil {
 		t.Fatalf("failed to decode RUA payload: %v", err)
 	}
@@ -188,8 +188,8 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 		t.Fatal("expected RuaResponse message")
 	}
 
-	// Decode RUA payload (decrypt with AKE shared key)
-	ruaMsg2, err := DecodeRuaPayload(protocolMsg2, akeSharedKey)
+	// Decode RUA payload using DR decryption
+	ruaMsg2, err := DecodeDrRuaPayload(protocolMsg2, callerState.DrSession)
 	if err != nil {
 		t.Fatalf("failed to decode RuaResponse payload: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestCompleteRuaFlowLikeRealUsage(t *testing.T) {
 
 // TestRuaRequest tests RuaRequest independently
 func TestRuaRequest(t *testing.T) {
-	callerState, _ := setupAkeCompletedStates(t, "alice", "bob")
+	callerState, recipientState := setupAkeCompletedStates(t, "alice", "bob")
 
 	callerState.CallReason = "Test call"
 
@@ -277,8 +277,8 @@ func TestRuaRequest(t *testing.T) {
 		t.Fatal("expected RuaRequest message")
 	}
 
-	// Decode RUA payload (decrypt with shared key)
-	ruaMsg, err := DecodeRuaPayload(protocolMsg, callerState.SharedKey)
+	// Decode RUA payload using recipient's DR session (properly initialized from AKE)
+	ruaMsg, err := DecodeDrRuaPayload(protocolMsg, recipientState.DrSession)
 	if err != nil {
 		t.Fatalf("failed to decode RUA payload: %v", err)
 	}
@@ -622,8 +622,8 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 
 	// Verify enrollment signatures are valid
 	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
-		// Test Alice's signature
-		aliceMessage1 := helpers.HashAll(aliceConfig.AmfPublicKey, aliceConfig.PkePublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		// Test Alice's signature (includes dr_pk in message1)
+		aliceMessage1 := helpers.HashAll(aliceConfig.AmfPublicKey, aliceConfig.PkePublicKey, aliceConfig.DrPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
 		aliceMessage2 := []byte(aliceConfig.MyName)
 		aliceValid, err := bbs.Verify([][]byte{aliceMessage1, aliceMessage2}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
 		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
@@ -631,8 +631,8 @@ func TestRealEnrollmentDataRua(t *testing.T) {
 			t.Errorf("Alice's enrollment signature should be valid")
 		}
 
-		// Test Bob's signature
-		bobMessage1 := helpers.HashAll(bobConfig.AmfPublicKey, bobConfig.PkePublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		// Test Bob's signature (includes dr_pk in message1)
+		bobMessage1 := helpers.HashAll(bobConfig.AmfPublicKey, bobConfig.PkePublicKey, bobConfig.DrPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
 		bobMessage2 := []byte(bobConfig.MyName)
 		bobValid, err := bbs.Verify([][]byte{bobMessage1, bobMessage2}, bobConfig.RaPublicKey, bobConfig.RaSignature)
 		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)

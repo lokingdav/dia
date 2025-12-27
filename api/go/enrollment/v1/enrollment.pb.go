@@ -109,6 +109,7 @@ type EnrollmentRequest struct {
 	BlindedTickets [][]byte               `protobuf:"bytes,7,rep,name=blinded_tickets,json=blindedTickets,proto3" json:"blinded_tickets,omitempty"`
 	Sigma          []byte                 `protobuf:"bytes,8,opt,name=sigma,proto3" json:"sigma,omitempty"`
 	PkePk          []byte                 `protobuf:"bytes,9,opt,name=pke_pk,json=pkePk,proto3" json:"pke_pk,omitempty"`
+	DrPk           []byte                 `protobuf:"bytes,10,opt,name=dr_pk,json=drPk,proto3" json:"dr_pk,omitempty"` // Double Ratchet public key
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -202,6 +203,13 @@ func (x *EnrollmentRequest) GetSigma() []byte {
 func (x *EnrollmentRequest) GetPkePk() []byte {
 	if x != nil {
 		return x.PkePk
+	}
+	return nil
+}
+
+func (x *EnrollmentRequest) GetDrPk() []byte {
+	if x != nil {
+		return x.DrPk
 	}
 	return nil
 }
@@ -310,7 +318,7 @@ const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"websiteUrl\x12\x1f\n" +
 	"\vbrand_color\x18\x04 \x01(\tR\n" +
 	"brandColor\x12\x18\n" +
-	"\atagline\x18\x05 \x01(\tR\atagline\"\x8c\x02\n" +
+	"\atagline\x18\x05 \x01(\tR\atagline\"\xa1\x02\n" +
 	"\x11EnrollmentRequest\x12\x0e\n" +
 	"\x02tn\x18\x01 \x01(\tR\x02tn\x12=\n" +
 	"\x04iden\x18\x02 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
@@ -320,7 +328,9 @@ const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"\x03ipk\x18\x06 \x01(\fR\x03ipk\x12'\n" +
 	"\x0fblinded_tickets\x18\a \x03(\fR\x0eblindedTickets\x12\x14\n" +
 	"\x05sigma\x18\b \x01(\fR\x05sigma\x12\x15\n" +
-	"\x06pke_pk\x18\t \x01(\fR\x05pkePk\"\xcd\x01\n" +
+	"\x06pke_pk\x18\t \x01(\fR\x05pkePk\x12\x13\n" +
+	"\x05dr_pk\x18\n" +
+	" \x01(\fR\x04drPk\"\xcd\x01\n" +
 	"\x12EnrollmentResponse\x12\x10\n" +
 	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
 	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +

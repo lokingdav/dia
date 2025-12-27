@@ -18,6 +18,7 @@ import (
 	"github.com/dense-identity/denseid/internal/encryption"
 	"github.com/dense-identity/denseid/internal/signing"
 	"github.com/dense-identity/denseid/internal/voprf"
+	dr "github.com/status-im/doubleratchet"
 )
 
 type newEnrollment struct {
@@ -28,6 +29,8 @@ type newEnrollment struct {
 	amfPk          []byte
 	pkeSk          []byte
 	pkePk          []byte
+	drSk           []byte
+	drPk           []byte
 	blindedTickets []voprf.BlindedTicket
 }
 
@@ -52,6 +55,15 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 		return nil, fmt.Errorf("failed to generate PKE keypair: %w", err)
 	}
 
+	// Generate Double Ratchet key pair (X25519)
+	drCrypto := dr.DefaultCrypto{}
+	drKeyPair, err := drCrypto.GenerateDH()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate DR keypair: %w", err)
+	}
+	drSk := []byte(drKeyPair.PrivateKey())
+	drPk := []byte(drKeyPair.PublicKey())
+
 	blindedTickets := voprf.GenerateTickets(1)
 	blinded := make([][]byte, len(blindedTickets))
 	for i, v := range blindedTickets {
@@ -74,6 +86,7 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 		Ipk:            derIpk,
 		AmfPk:          amfPk,
 		PkePk:          pkePk,
+		DrPk:           drPk,
 		BlindedTickets: blinded,
 	}
 
@@ -90,6 +103,8 @@ func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollme
 		amfPk:          amfPk,
 		pkeSk:          pkeSk,
 		pkePk:          pkePk,
+		drSk:           drSk,
+		drPk:           drPk,
 		blindedTickets: blindedTickets,
 		request:        req,
 	}
@@ -162,6 +177,9 @@ func main() {
 
 		fmt.Sprintf("\nPKE_PRIVATE_KEY=%x", data.pkeSk),
 		fmt.Sprintf("PKE_PUBLIC_KEY=%x", data.pkePk),
+
+		fmt.Sprintf("\nDR_PRIVATE_KEY=%x", data.drSk),
+		fmt.Sprintf("DR_PUBLIC_KEY=%x", data.drPk),
 
 		fmt.Sprintf("\nSUBSCRIBER_PRIVATE_KEY=%x", data.isk),
 		fmt.Sprintf("SUBSCRIBER_PUBLIC_KEY=%x", data.ipk),

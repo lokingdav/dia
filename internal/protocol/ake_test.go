@@ -367,8 +367,8 @@ func TestRealEnrollmentData(t *testing.T) {
 
 	// Let's test whether we can verify the real enrollment signatures directly
 	t.Run("VerifyRealEnrollmentSignatures", func(t *testing.T) {
-		// Test Alice's signature
-		aliceMessage1 := helpers.HashAll(aliceConfig.AmfPublicKey, aliceConfig.PkePublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
+		// Test Alice's signature (includes dr_pk in message1)
+		aliceMessage1 := helpers.HashAll(aliceConfig.AmfPublicKey, aliceConfig.PkePublicKey, aliceConfig.DrPublicKey, aliceConfig.EnExpiration, []byte(aliceConfig.MyPhone))
 		aliceMessage2 := []byte(aliceConfig.MyName)
 		aliceValid, err := dia.BBSVerify([][]byte{aliceMessage1, aliceMessage2}, aliceConfig.RaPublicKey, aliceConfig.RaSignature)
 		t.Logf("Alice signature verification: valid=%v, error=%v", aliceValid, err)
@@ -376,8 +376,8 @@ func TestRealEnrollmentData(t *testing.T) {
 			t.Errorf("Alice's enrollment signature should be valid")
 		}
 
-		// Test Bob's signature
-		bobMessage1 := helpers.HashAll(bobConfig.AmfPublicKey, bobConfig.PkePublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
+		// Test Bob's signature (includes dr_pk in message1)
+		bobMessage1 := helpers.HashAll(bobConfig.AmfPublicKey, bobConfig.PkePublicKey, bobConfig.DrPublicKey, bobConfig.EnExpiration, []byte(bobConfig.MyPhone))
 		bobMessage2 := []byte(bobConfig.MyName)
 		bobValid, err := dia.BBSVerify([][]byte{bobMessage1, bobMessage2}, bobConfig.RaPublicKey, bobConfig.RaSignature)
 		t.Logf("Bob signature verification: valid=%v, error=%v", bobValid, err)

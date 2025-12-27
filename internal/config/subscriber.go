@@ -35,6 +35,11 @@ type SubscriberConfig struct {
 	PkePublicKeyStr             string `env:"PKE_PUBLIC_KEY,required"`
 	PkePrivateKey, PkePublicKey []byte
 
+	// DR keys for Double Ratchet messaging
+	DrPrivateKeyStr           string `env:"DR_PRIVATE_KEY,required"`
+	DrPublicKeyStr            string `env:"DR_PUBLIC_KEY,required"`
+	DrPrivateKey, DrPublicKey []byte
+
 	// Access Ticket
 	AccessTicketVkStr            string `env:"ACCESS_TICKET_VK,required"`
 	SampleTicketStr              string `env:"SAMPLE_TICKET,required"`
@@ -82,6 +87,16 @@ func (conf *SubscriberConfig) ParseKeysAsBytes() error {
 		return err
 	}
 	conf.PkePublicKey, err = signing.DecodeHex(conf.PkePublicKeyStr)
+	if err != nil {
+		return err
+	}
+
+	// DR keys for Double Ratchet
+	conf.DrPrivateKey, err = signing.DecodeHex(conf.DrPrivateKeyStr)
+	if err != nil {
+		return err
+	}
+	conf.DrPublicKey, err = signing.DecodeHex(conf.DrPublicKeyStr)
 	if err != nil {
 		return err
 	}

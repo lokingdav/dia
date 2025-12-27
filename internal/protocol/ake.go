@@ -43,6 +43,7 @@ func AkeRequest(caller *CallState) ([]byte, error) {
 	akeMsg := &AkeMessage{
 		AmfPk:      caller.Config.AmfPublicKey,
 		PkePk:      caller.Config.PkePublicKey,
+		DrPk:       caller.Config.DrPublicKey,
 		Expiration: caller.Config.EnExpiration,
 		Proof:      proof,
 	}
@@ -90,6 +91,7 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		DhPk:       recipient.Ake.DhPk,
 		AmfPk:      recipient.Config.AmfPublicKey,
 		PkePk:      recipient.Config.PkePublicKey,
+		DrPk:       recipient.Config.DrPublicKey,
 		Expiration: recipient.Config.EnExpiration,
 		Proof:      proof,
 	}
@@ -99,6 +101,7 @@ func AkeResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 	recipient.Ake.RecipientProof = proof
 	recipient.CounterpartAmfPk = caller.GetAmfPk()
 	recipient.CounterpartPkePk = caller.GetPkePk()
+	recipient.CounterpartDrPk = caller.GetDrPk()
 
 	// Respond on AKE topic (payload encrypted with caller's PKE public key)
 	msg, err := CreateAkeMessage(recipient.SenderId, recipient.GetAkeTopic(), TypeAkeResponse, akeMsg, caller.GetPkePk())
@@ -140,6 +143,7 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 	// save values for later use
 	caller.CounterpartAmfPk = recipient.GetAmfPk()
 	caller.CounterpartPkePk = recipient.GetPkePk()
+	caller.CounterpartDrPk = recipient.GetDrPk()
 
 	secret, err := dia.DHComputeSecret(caller.Ake.DhSk, recipientDhPk)
 	if err != nil {
@@ -154,6 +158,13 @@ func AkeComplete(caller *CallState, recipientMsg *ProtocolMessage) ([]byte, erro
 		recipientDhPk,
 		secret,
 	))
+
+	// Initialize Double Ratchet session as the caller (Alice initiates with Bob's remote key)
+	drSession, err := InitDrSessionAsCaller(caller.Ake.Topic, caller.SharedKey, caller.CounterpartDrPk)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize DR session: %w", err)
+	}
+	caller.DrSession = drSession
 
 	akeMsg := &AkeMessage{
 		DhPk: helpers.ConcatBytes(caller.Ake.DhPk, recipientDhPk),
@@ -208,6 +219,18 @@ func AkeFinalize(recipient *CallState, callerMsg *ProtocolMessage) error {
 		secret,
 	))
 
+	// Initialize Double Ratchet session as the recipient (Bob responds with his own key pair)
+	drSession, err := InitDrSessionAsRecipient(
+		recipient.Ake.Topic,
+		recipient.SharedKey,
+		recipient.Config.DrPrivateKey,
+		recipient.Config.DrPublicKey,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to initialize DR session: %w", err)
+	}
+	recipient.DrSession = drSession
+
 	return nil
 }
 
@@ -228,6 +251,7 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 		Name:         prover.Config.MyName,
 		AmfPublicKey: prover.Config.AmfPublicKey,
 		PkePublicKey: prover.Config.PkePublicKey,
+		DrPublicKey:  prover.Config.DrPublicKey,
 		Expiration:   prover.Config.EnExpiration,
 		Nonce:        chal,
 		RaPublicKey:  prover.Config.RaPublicKey,
@@ -242,6 +266,7 @@ func CreateZKProof(prover *CallState, chal []byte) ([]byte, error) {
 func VerifyZKProof(prover *AkeMessage, tn string, chal, raPublicKey []byte) bool {
 	amfPublicKey := prover.GetAmfPk()
 	pkePublicKey := prover.GetPkePk()
+	drPublicKey := prover.GetDrPk()
 	expiration := prover.GetExpiration()
 	proof := prover.GetProof()
 
@@ -249,6 +274,7 @@ func VerifyZKProof(prover *AkeMessage, tn string, chal, raPublicKey []byte) bool
 		Tn:           tn,
 		AmfPublicKey: amfPublicKey,
 		PkePublicKey: pkePublicKey,
+		DrPublicKey:  drPublicKey,
 		Expiration:   expiration,
 		Nonce:        chal,
 		RaPublicKey:  raPublicKey,

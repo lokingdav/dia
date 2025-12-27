@@ -164,6 +164,7 @@ func CreateAkeMessage(senderId, topic string, msgType MessageType, payload *AkeM
 
 // CreateRuaMessage creates an RUA protocol message.
 // If sharedKey is provided, the payload is encrypted using symmetric encryption.
+// DEPRECATED: Use CreateDrRuaMessage for Double Ratchet encryption.
 func CreateRuaMessage(senderId, topic string, msgType MessageType, payload *RuaMessage, sharedKey []byte) ([]byte, error) {
 	var payloadBytes []byte
 	var err error
@@ -191,6 +192,78 @@ func CreateRuaMessage(senderId, topic string, msgType MessageType, payload *RuaM
 	}
 
 	return MarshalMessage(msg)
+}
+
+// DrMessage type alias for Double Ratchet messages
+type DrMessage = pb.DrMessage
+type DrHeader = pb.DrHeader
+
+// CreateDrRuaMessage creates an RUA protocol message encrypted with Double Ratchet.
+// The payload is encrypted using the DR session and wrapped in a DrMessage.
+func CreateDrRuaMessage(senderId, topic string, msgType MessageType, payload *RuaMessage, drSession *DrSession) ([]byte, error) {
+	if drSession == nil {
+		return nil, fmt.Errorf("DR session not initialized")
+	}
+
+	var payloadBytes []byte
+	var err error
+
+	if payload != nil {
+		payloadBytes, err = proto.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal RUA payload: %v", err)
+		}
+
+		// Encrypt using Double Ratchet
+		drMsg, err := DrEncrypt(drSession, payloadBytes, []byte(topic))
+		if err != nil {
+			return nil, fmt.Errorf("failed to DR encrypt RUA payload: %v", err)
+		}
+
+		// Serialize the DrMessage as the payload
+		payloadBytes, err = proto.Marshal(drMsg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal DR message: %v", err)
+		}
+	}
+
+	msg := &ProtocolMessage{
+		Type:     msgType,
+		SenderId: senderId,
+		Topic:    topic,
+		Payload:  payloadBytes,
+	}
+
+	return MarshalMessage(msg)
+}
+
+// DecodeDrRuaPayload extracts RuaMessage from ProtocolMessage payload using Double Ratchet decryption.
+func DecodeDrRuaPayload(m *ProtocolMessage, drSession *DrSession) (*RuaMessage, error) {
+	if m == nil {
+		return nil, fmt.Errorf("nil ProtocolMessage")
+	}
+	if drSession == nil {
+		return nil, fmt.Errorf("DR session not initialized")
+	}
+
+	// First unmarshal the DrMessage
+	drMsg := &DrMessage{}
+	if err := proto.Unmarshal(m.Payload, drMsg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal DR message: %v", err)
+	}
+
+	// Decrypt using Double Ratchet
+	plaintext, err := DrDecrypt(drSession, drMsg, []byte(m.Topic))
+	if err != nil {
+		return nil, fmt.Errorf("failed to DR decrypt RUA payload: %v", err)
+	}
+
+	// Unmarshal the decrypted RuaMessage
+	rua := &RuaMessage{}
+	if err := proto.Unmarshal(plaintext, rua); err != nil {
+		return nil, fmt.Errorf("failed to decode RUA payload: %v", err)
+	}
+	return rua, nil
 }
 
 // CreateByeMessage creates a bye message to signal session termination

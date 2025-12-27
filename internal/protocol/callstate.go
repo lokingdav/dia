@@ -31,6 +31,7 @@ type CallState struct {
 	RuaActive                          bool // Protocol phase flag
 	Ticket, SharedKey                  []byte
 	CounterpartAmfPk, CounterpartPkePk []byte
+	CounterpartDrPk                    []byte // Counterpart's DR public key for Double Ratchet
 	Config                             *config.SubscriberConfig
 	Ake                                AkeState
 	Rua                                RuaState

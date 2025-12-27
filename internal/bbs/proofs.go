@@ -6,12 +6,13 @@ import (
 )
 
 type AkeZkProof struct {
-	Tn, Name                                                                     string
-	AmfPublicKey, PkePublicKey, Expiration, Nonce, RaPublicKey, Signature, Proof []byte
+	Tn, Name                                                                                  string
+	AmfPublicKey, PkePublicKey, DrPublicKey, Expiration, Nonce, RaPublicKey, Signature, Proof []byte
 }
 
 func ZkCreateProof(params AkeZkProof) ([]byte, error) {
-	message1 := helpers.HashAll(params.AmfPublicKey, params.PkePublicKey, params.Expiration, []byte(params.Tn))
+	// message1 includes: amf_pk, pke_pk, dr_pk, expiration, telephone_number
+	message1 := helpers.HashAll(params.AmfPublicKey, params.PkePublicKey, params.DrPublicKey, params.Expiration, []byte(params.Tn))
 	message2 := []byte(params.Name)
 
 	return dia.BBSCreateProof(
@@ -24,7 +25,8 @@ func ZkCreateProof(params AkeZkProof) ([]byte, error) {
 }
 
 func ZkVerifyProof(params AkeZkProof) (bool, error) {
-	message1 := helpers.HashAll(params.AmfPublicKey, params.PkePublicKey, params.Expiration, []byte(params.Tn))
+	// message1 includes: amf_pk, pke_pk, dr_pk, expiration, telephone_number
+	message1 := helpers.HashAll(params.AmfPublicKey, params.PkePublicKey, params.DrPublicKey, params.Expiration, []byte(params.Tn))
 	return dia.BBSVerifyProof(
 		[]uint32{1},
 		[][]byte{message1},
