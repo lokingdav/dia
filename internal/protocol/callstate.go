@@ -34,6 +34,7 @@ type CallState struct {
 	Config                             *config.SubscriberConfig
 	Ake                                AkeState
 	Rua                                RuaState
+	DrSession                          *DrSession // Double Ratchet session for secure messaging
 }
 
 func (s *CallState) GetAkeLabel() []byte {

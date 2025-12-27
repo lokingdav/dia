@@ -208,7 +208,6 @@ func RuaResponse(recipient *CallState, callerMsg *ProtocolMessage) ([]byte, erro
 		return nil, err
 	}
 
-	// ctxA, err :=
 	rtuB, err := proto.MarshalOptions{Deterministic: true}.Marshal(caller.Rtu)
 	sharedKey := helpers.HashAll(
 		ddA,

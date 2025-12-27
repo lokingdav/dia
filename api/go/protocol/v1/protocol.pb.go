@@ -394,6 +394,120 @@ func (x *RuaMessage) GetSigma() []byte {
 	return nil
 }
 
+// DrHeader contains the Double Ratchet message header (Signal-compatible)
+type DrHeader struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Dh            []byte                 `protobuf:"bytes,1,opt,name=dh,proto3" json:"dh,omitempty"`  // Current ratchet public key
+	N             uint32                 `protobuf:"varint,2,opt,name=n,proto3" json:"n,omitempty"`   // Message number in current sending chain
+	Pn            uint32                 `protobuf:"varint,3,opt,name=pn,proto3" json:"pn,omitempty"` // Number of messages in previous sending chain
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DrHeader) Reset() {
+	*x = DrHeader{}
+	mi := &file_protocol_v1_protocol_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DrHeader) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DrHeader) ProtoMessage() {}
+
+func (x *DrHeader) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_v1_protocol_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DrHeader.ProtoReflect.Descriptor instead.
+func (*DrHeader) Descriptor() ([]byte, []int) {
+	return file_protocol_v1_protocol_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DrHeader) GetDh() []byte {
+	if x != nil {
+		return x.Dh
+	}
+	return nil
+}
+
+func (x *DrHeader) GetN() uint32 {
+	if x != nil {
+		return x.N
+	}
+	return 0
+}
+
+func (x *DrHeader) GetPn() uint32 {
+	if x != nil {
+		return x.Pn
+	}
+	return 0
+}
+
+// DrMessage is an encrypted message using the Double Ratchet protocol
+type DrMessage struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Header        *DrHeader              `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`         // Ratchet header
+	Ciphertext    []byte                 `protobuf:"bytes,2,opt,name=ciphertext,proto3" json:"ciphertext,omitempty"` // Encrypted message content
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DrMessage) Reset() {
+	*x = DrMessage{}
+	mi := &file_protocol_v1_protocol_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DrMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DrMessage) ProtoMessage() {}
+
+func (x *DrMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_v1_protocol_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DrMessage.ProtoReflect.Descriptor instead.
+func (*DrMessage) Descriptor() ([]byte, []int) {
+	return file_protocol_v1_protocol_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *DrMessage) GetHeader() *DrHeader {
+	if x != nil {
+		return x.Header
+	}
+	return nil
+}
+
+func (x *DrMessage) GetCiphertext() []byte {
+	if x != nil {
+		return x.Ciphertext
+	}
+	return nil
+}
+
 var File_protocol_v1_protocol_proto protoreflect.FileDescriptor
 
 const file_protocol_v1_protocol_proto_rawDesc = "" +
@@ -428,7 +542,16 @@ const file_protocol_v1_protocol_proto_rawDesc = "" +
 	"\x03rtu\x18\x03 \x01(\v2\x18.denseid.protocol.v1.RtuR\x03rtu\x12\x10\n" +
 	"\x03tpc\x18\x04 \x01(\tR\x03tpc\x12\x12\n" +
 	"\x04misc\x18\x05 \x01(\fR\x04misc\x12\x14\n" +
-	"\x05sigma\x18\x06 \x01(\fR\x05sigma*\x9b\x01\n" +
+	"\x05sigma\x18\x06 \x01(\fR\x05sigma\"8\n" +
+	"\bDrHeader\x12\x0e\n" +
+	"\x02dh\x18\x01 \x01(\fR\x02dh\x12\f\n" +
+	"\x01n\x18\x02 \x01(\rR\x01n\x12\x0e\n" +
+	"\x02pn\x18\x03 \x01(\rR\x02pn\"b\n" +
+	"\tDrMessage\x125\n" +
+	"\x06header\x18\x01 \x01(\v2\x1d.denseid.protocol.v1.DrHeaderR\x06header\x12\x1e\n" +
+	"\n" +
+	"ciphertext\x18\x02 \x01(\fR\n" +
+	"ciphertext*\x9b\x01\n" +
 	"\vMessageType\x12\x1c\n" +
 	"\x18MESSAGE_TYPE_UNSPECIFIED\x10\x00\x12\x0f\n" +
 	"\vAKE_REQUEST\x10\x01\x12\x10\n" +
@@ -452,22 +575,25 @@ func file_protocol_v1_protocol_proto_rawDescGZIP() []byte {
 }
 
 var file_protocol_v1_protocol_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_protocol_v1_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_protocol_v1_protocol_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_protocol_v1_protocol_proto_goTypes = []any{
 	(MessageType)(0),        // 0: denseid.protocol.v1.MessageType
 	(*ProtocolMessage)(nil), // 1: denseid.protocol.v1.ProtocolMessage
 	(*AkeMessage)(nil),      // 2: denseid.protocol.v1.AkeMessage
 	(*Rtu)(nil),             // 3: denseid.protocol.v1.Rtu
 	(*RuaMessage)(nil),      // 4: denseid.protocol.v1.RuaMessage
+	(*DrHeader)(nil),        // 5: denseid.protocol.v1.DrHeader
+	(*DrMessage)(nil),       // 6: denseid.protocol.v1.DrMessage
 }
 var file_protocol_v1_protocol_proto_depIdxs = []int32{
 	0, // 0: denseid.protocol.v1.ProtocolMessage.type:type_name -> denseid.protocol.v1.MessageType
 	3, // 1: denseid.protocol.v1.RuaMessage.rtu:type_name -> denseid.protocol.v1.Rtu
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	5, // 2: denseid.protocol.v1.DrMessage.header:type_name -> denseid.protocol.v1.DrHeader
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_protocol_v1_protocol_proto_init() }
@@ -481,7 +607,7 @@ func file_protocol_v1_protocol_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_v1_protocol_proto_rawDesc), len(file_protocol_v1_protocol_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   4,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

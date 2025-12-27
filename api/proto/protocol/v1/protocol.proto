@@ -50,3 +50,16 @@ message RuaMessage {
   bytes misc = 5; // misc data
   bytes sigma = 6;
 }
+
+// DrHeader contains the Double Ratchet message header (Signal-compatible)
+message DrHeader {
+  bytes  dh = 1;  // Current ratchet public key
+  uint32 n  = 2;  // Message number in current sending chain
+  uint32 pn = 3;  // Number of messages in previous sending chain
+}
+
+// DrMessage is an encrypted message using the Double Ratchet protocol
+message DrMessage {
+  DrHeader header     = 1;  // Ratchet header
+  bytes    ciphertext = 2;  // Encrypted message content
+}
