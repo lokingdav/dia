@@ -41,7 +41,7 @@ services:
       - "--build.cmd=go build -o /app/bin/rs /app/cmd/relay"
       - "--build.bin=/app/bin/rs"
     ports:
-      - "50054:50051"
+      - "50052:50051"
     env_file: .env
     profiles: [rs]
     depends_on:
