@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine
+FROM golang:1.25-alpine
 
 # Set the working directory inside the container.
 WORKDIR /app
@@ -9,12 +9,14 @@ ENV GOPROXY="https://proxy.golang.org,direct"
 ENV GOSUMDB="sum.golang.org"
 ENV CGO_ENABLED=1
 
+ARG LIBDIA_VERSION="main"
+
 RUN apk update && \
     apk add --no-cache git build-base cmake gmp-dev netcat-openbsd
 
 RUN git clone https://github.com/lokingdav/libdia.git && \
     cd libdia && \
-    git checkout bindings/go/v1.0.1 && \
+    git checkout ${LIBDIA_VERSION} && \
     mkdir build && cd build && \
     cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release .. && \
     cmake --build . --target install && \
