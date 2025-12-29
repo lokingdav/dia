@@ -3,7 +3,7 @@ package relay
 import (
 	"errors"
 
-	"github.com/dense-identity/denseid/internal/signing"
+	"github.com/dense-identity/denseid/internal/helpers"
 )
 
 type Config struct {
@@ -29,7 +29,7 @@ func (cfg *Config) ParseKeysAsBytes() error {
 
 	var err error
 
-	cfg.AtVerifyKey, err = signing.DecodeHex(cfg.AtVkStr)
+	cfg.AtVerifyKey, err = helpers.DecodeHex(cfg.AtVkStr)
 	if err != nil {
 		return err
 	}
