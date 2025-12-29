@@ -10,7 +10,6 @@ import (
 
 	"github.com/dense-identity/denseid/internal/config"
 	"github.com/dense-identity/denseid/internal/helpers"
-	"github.com/dense-identity/denseid/internal/protocol"
 	"github.com/dense-identity/denseid/internal/subscriber"
 )
 

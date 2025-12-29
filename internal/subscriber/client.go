@@ -1,10 +1,8 @@
 package subscriber
 
 import (
-	"fmt"
 	"time"
 
-	keyderivationpb "github.com/dense-identity/denseid/api/go/keyderivation/v1"
 	relaypb "github.com/dense-identity/denseid/api/go/relay/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -16,11 +14,6 @@ import (
 type RelayClient struct {
 	conn *grpc.ClientConn
 	Stub relaypb.RelayServiceClient
-}
-
-type KeyDeriveClient struct {
-	conn *grpc.ClientConn
-	Stub keyderivationpb.KeyDerivationServiceClient
 }
 
 // NewClient dials host:port with TLS (system roots) or plaintext.
@@ -60,23 +53,5 @@ func NewRelayClient(addr string, useTLS bool, extraOpts ...grpc.DialOption) (*Re
 
 // Close closes the underlying connection.
 func (c *RelayClient) Close() error {
-	return c.conn.Close()
-}
-
-func NewKeyDeriveClient(addr string) (*KeyDeriveClient, error) {
-	conn, err := grpc.NewClient(
-		addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("grpc.NewClient(%q): %v", addr, err)
-	}
-	return &KeyDeriveClient{
-		conn: conn,
-		Stub: keyderivationpb.NewKeyDerivationServiceClient(conn),
-	}, nil
-}
-
-func (c *KeyDeriveClient) Close() error {
 	return c.conn.Close()
 }
