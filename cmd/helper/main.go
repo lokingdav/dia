@@ -16,17 +16,17 @@ func registrationAuthoritySetup(durationDays int) {
 	}
 	defer serverCfg.Close()
 
-	fmt.Println("# DIA Server Configuration Generated")
-	fmt.Println("# Duration:", durationDays, "days")
+	// Output server configuration in DIA format
+	envString, err := serverCfg.ToEnv()
+	if err != nil {
+		log.Fatalf("Error serializing config: %v", err)
+	}
+
+	fmt.Println("# DIA Server Configuration")
+	fmt.Println("# Save this securely - it contains private keys for enrollment processing")
+	fmt.Println("# In production, store in HSM, encrypted file, or secure key management service")
 	fmt.Println()
-	fmt.Println("# IMPORTANT: Store the server configuration securely!")
-	fmt.Println("# The server needs to persist this config to process enrollments.")
-	fmt.Println("# You can serialize it using serverCfg methods or save the individual keys.")
-	fmt.Println()
-	fmt.Println("# For now, this tool demonstrates successful generation.")
-	fmt.Println("# In production, implement proper key storage (HSM, encrypted file, etc.)")
-	fmt.Println()
-	fmt.Println("✓ Server configuration generated successfully")
+	fmt.Println(envString)
 }
 
 func main() {
