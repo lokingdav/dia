@@ -9,7 +9,6 @@ package enrollmentpb
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -22,101 +21,19 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type DisplayInformation struct {
+// EnrollmentRequest contains the serialized DIA enrollment request.
+// All cryptographic details (keys, signatures, tickets, identity info)
+// are encoded within dia_request by the DIA library.
+type EnrollmentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	LogoUrl       string                 `protobuf:"bytes,2,opt,name=logo_url,json=logoUrl,proto3" json:"logo_url,omitempty"`
-	WebsiteUrl    string                 `protobuf:"bytes,3,opt,name=website_url,json=websiteUrl,proto3" json:"website_url,omitempty"`
-	BrandColor    string                 `protobuf:"bytes,4,opt,name=brand_color,json=brandColor,proto3" json:"brand_color,omitempty"`
-	Tagline       string                 `protobuf:"bytes,5,opt,name=tagline,proto3" json:"tagline,omitempty"`
+	DiaRequest    []byte                 `protobuf:"bytes,1,opt,name=dia_request,json=diaRequest,proto3" json:"dia_request,omitempty"` // Serialized DIA enrollment request
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *DisplayInformation) Reset() {
-	*x = DisplayInformation{}
-	mi := &file_enrollment_v1_enrollment_proto_msgTypes[0]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DisplayInformation) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DisplayInformation) ProtoMessage() {}
-
-func (x *DisplayInformation) ProtoReflect() protoreflect.Message {
-	mi := &file_enrollment_v1_enrollment_proto_msgTypes[0]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DisplayInformation.ProtoReflect.Descriptor instead.
-func (*DisplayInformation) Descriptor() ([]byte, []int) {
-	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{0}
-}
-
-func (x *DisplayInformation) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *DisplayInformation) GetLogoUrl() string {
-	if x != nil {
-		return x.LogoUrl
-	}
-	return ""
-}
-
-func (x *DisplayInformation) GetWebsiteUrl() string {
-	if x != nil {
-		return x.WebsiteUrl
-	}
-	return ""
-}
-
-func (x *DisplayInformation) GetBrandColor() string {
-	if x != nil {
-		return x.BrandColor
-	}
-	return ""
-}
-
-func (x *DisplayInformation) GetTagline() string {
-	if x != nil {
-		return x.Tagline
-	}
-	return ""
-}
-
-type EnrollmentRequest struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Tn             string                 `protobuf:"bytes,1,opt,name=tn,proto3" json:"tn,omitempty"`
-	Iden           *DisplayInformation    `protobuf:"bytes,2,opt,name=iden,proto3" json:"iden,omitempty"`
-	NBio           uint32                 `protobuf:"varint,3,opt,name=n_bio,json=nBio,proto3" json:"n_bio,omitempty"`
-	Nonce          string                 `protobuf:"bytes,4,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	AmfPk          []byte                 `protobuf:"bytes,5,opt,name=amf_pk,json=amfPk,proto3" json:"amf_pk,omitempty"`
-	Ipk            []byte                 `protobuf:"bytes,6,opt,name=ipk,proto3" json:"ipk,omitempty"`
-	BlindedTickets [][]byte               `protobuf:"bytes,7,rep,name=blinded_tickets,json=blindedTickets,proto3" json:"blinded_tickets,omitempty"`
-	Sigma          []byte                 `protobuf:"bytes,8,opt,name=sigma,proto3" json:"sigma,omitempty"`
-	PkePk          []byte                 `protobuf:"bytes,9,opt,name=pke_pk,json=pkePk,proto3" json:"pke_pk,omitempty"`
-	DrPk           []byte                 `protobuf:"bytes,10,opt,name=dr_pk,json=drPk,proto3" json:"dr_pk,omitempty"` // Double Ratchet public key
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
-}
-
 func (x *EnrollmentRequest) Reset() {
 	*x = EnrollmentRequest{}
-	mi := &file_enrollment_v1_enrollment_proto_msgTypes[1]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -128,7 +45,7 @@ func (x *EnrollmentRequest) String() string {
 func (*EnrollmentRequest) ProtoMessage() {}
 
 func (x *EnrollmentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_enrollment_v1_enrollment_proto_msgTypes[1]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -141,95 +58,29 @@ func (x *EnrollmentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollmentRequest.ProtoReflect.Descriptor instead.
 func (*EnrollmentRequest) Descriptor() ([]byte, []int) {
-	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{1}
+	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *EnrollmentRequest) GetTn() string {
+func (x *EnrollmentRequest) GetDiaRequest() []byte {
 	if x != nil {
-		return x.Tn
-	}
-	return ""
-}
-
-func (x *EnrollmentRequest) GetIden() *DisplayInformation {
-	if x != nil {
-		return x.Iden
+		return x.DiaRequest
 	}
 	return nil
 }
 
-func (x *EnrollmentRequest) GetNBio() uint32 {
-	if x != nil {
-		return x.NBio
-	}
-	return 0
-}
-
-func (x *EnrollmentRequest) GetNonce() string {
-	if x != nil {
-		return x.Nonce
-	}
-	return ""
-}
-
-func (x *EnrollmentRequest) GetAmfPk() []byte {
-	if x != nil {
-		return x.AmfPk
-	}
-	return nil
-}
-
-func (x *EnrollmentRequest) GetIpk() []byte {
-	if x != nil {
-		return x.Ipk
-	}
-	return nil
-}
-
-func (x *EnrollmentRequest) GetBlindedTickets() [][]byte {
-	if x != nil {
-		return x.BlindedTickets
-	}
-	return nil
-}
-
-func (x *EnrollmentRequest) GetSigma() []byte {
-	if x != nil {
-		return x.Sigma
-	}
-	return nil
-}
-
-func (x *EnrollmentRequest) GetPkePk() []byte {
-	if x != nil {
-		return x.PkePk
-	}
-	return nil
-}
-
-func (x *EnrollmentRequest) GetDrPk() []byte {
-	if x != nil {
-		return x.DrPk
-	}
-	return nil
-}
-
+// EnrollmentResponse contains the serialized DIA enrollment response.
+// All enrollment data (credentials, tickets, expiration, public keys)
+// are encoded within dia_response by the DIA library.
 type EnrollmentResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Eid              string                 `protobuf:"bytes,1,opt,name=eid,proto3" json:"eid,omitempty"`
-	Exp              *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=exp,proto3" json:"exp,omitempty"`
-	Epk              []byte                 `protobuf:"bytes,3,opt,name=epk,proto3" json:"epk,omitempty"`
-	Sigma            []byte                 `protobuf:"bytes,4,opt,name=sigma,proto3" json:"sigma,omitempty"`
-	Mpk              []byte                 `protobuf:"bytes,5,opt,name=mpk,proto3" json:"mpk,omitempty"`
-	Avk              []byte                 `protobuf:"bytes,6,opt,name=avk,proto3" json:"avk,omitempty"`
-	EvaluatedTickets [][]byte               `protobuf:"bytes,7,rep,name=evaluated_tickets,json=evaluatedTickets,proto3" json:"evaluated_tickets,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DiaResponse   []byte                 `protobuf:"bytes,1,opt,name=dia_response,json=diaResponse,proto3" json:"dia_response,omitempty"` // Serialized DIA enrollment response
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *EnrollmentResponse) Reset() {
 	*x = EnrollmentResponse{}
-	mi := &file_enrollment_v1_enrollment_proto_msgTypes[2]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -241,7 +92,7 @@ func (x *EnrollmentResponse) String() string {
 func (*EnrollmentResponse) ProtoMessage() {}
 
 func (x *EnrollmentResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_enrollment_v1_enrollment_proto_msgTypes[2]
+	mi := &file_enrollment_v1_enrollment_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -254,54 +105,12 @@ func (x *EnrollmentResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnrollmentResponse.ProtoReflect.Descriptor instead.
 func (*EnrollmentResponse) Descriptor() ([]byte, []int) {
-	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{2}
+	return file_enrollment_v1_enrollment_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *EnrollmentResponse) GetEid() string {
+func (x *EnrollmentResponse) GetDiaResponse() []byte {
 	if x != nil {
-		return x.Eid
-	}
-	return ""
-}
-
-func (x *EnrollmentResponse) GetExp() *timestamppb.Timestamp {
-	if x != nil {
-		return x.Exp
-	}
-	return nil
-}
-
-func (x *EnrollmentResponse) GetEpk() []byte {
-	if x != nil {
-		return x.Epk
-	}
-	return nil
-}
-
-func (x *EnrollmentResponse) GetSigma() []byte {
-	if x != nil {
-		return x.Sigma
-	}
-	return nil
-}
-
-func (x *EnrollmentResponse) GetMpk() []byte {
-	if x != nil {
-		return x.Mpk
-	}
-	return nil
-}
-
-func (x *EnrollmentResponse) GetAvk() []byte {
-	if x != nil {
-		return x.Avk
-	}
-	return nil
-}
-
-func (x *EnrollmentResponse) GetEvaluatedTickets() [][]byte {
-	if x != nil {
-		return x.EvaluatedTickets
+		return x.DiaResponse
 	}
 	return nil
 }
@@ -310,35 +119,12 @@ var File_enrollment_v1_enrollment_proto protoreflect.FileDescriptor
 
 const file_enrollment_v1_enrollment_proto_rawDesc = "" +
 	"\n" +
-	"\x1eenrollment/v1/enrollment.proto\x12\x15denseid.enrollment.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9f\x01\n" +
-	"\x12DisplayInformation\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x19\n" +
-	"\blogo_url\x18\x02 \x01(\tR\alogoUrl\x12\x1f\n" +
-	"\vwebsite_url\x18\x03 \x01(\tR\n" +
-	"websiteUrl\x12\x1f\n" +
-	"\vbrand_color\x18\x04 \x01(\tR\n" +
-	"brandColor\x12\x18\n" +
-	"\atagline\x18\x05 \x01(\tR\atagline\"\xa1\x02\n" +
-	"\x11EnrollmentRequest\x12\x0e\n" +
-	"\x02tn\x18\x01 \x01(\tR\x02tn\x12=\n" +
-	"\x04iden\x18\x02 \x01(\v2).denseid.enrollment.v1.DisplayInformationR\x04iden\x12\x13\n" +
-	"\x05n_bio\x18\x03 \x01(\rR\x04nBio\x12\x14\n" +
-	"\x05nonce\x18\x04 \x01(\tR\x05nonce\x12\x15\n" +
-	"\x06amf_pk\x18\x05 \x01(\fR\x05amfPk\x12\x10\n" +
-	"\x03ipk\x18\x06 \x01(\fR\x03ipk\x12'\n" +
-	"\x0fblinded_tickets\x18\a \x03(\fR\x0eblindedTickets\x12\x14\n" +
-	"\x05sigma\x18\b \x01(\fR\x05sigma\x12\x15\n" +
-	"\x06pke_pk\x18\t \x01(\fR\x05pkePk\x12\x13\n" +
-	"\x05dr_pk\x18\n" +
-	" \x01(\fR\x04drPk\"\xcd\x01\n" +
-	"\x12EnrollmentResponse\x12\x10\n" +
-	"\x03eid\x18\x01 \x01(\tR\x03eid\x12,\n" +
-	"\x03exp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x03exp\x12\x10\n" +
-	"\x03epk\x18\x03 \x01(\fR\x03epk\x12\x14\n" +
-	"\x05sigma\x18\x04 \x01(\fR\x05sigma\x12\x10\n" +
-	"\x03mpk\x18\x05 \x01(\fR\x03mpk\x12\x10\n" +
-	"\x03avk\x18\x06 \x01(\fR\x03avk\x12+\n" +
-	"\x11evaluated_tickets\x18\a \x03(\fR\x10evaluatedTickets2|\n" +
+	"\x1eenrollment/v1/enrollment.proto\x12\x15denseid.enrollment.v1\"4\n" +
+	"\x11EnrollmentRequest\x12\x1f\n" +
+	"\vdia_request\x18\x01 \x01(\fR\n" +
+	"diaRequest\"7\n" +
+	"\x12EnrollmentResponse\x12!\n" +
+	"\fdia_response\x18\x01 \x01(\fR\vdiaResponse2|\n" +
 	"\x11EnrollmentService\x12g\n" +
 	"\x10EnrollSubscriber\x12(.denseid.enrollment.v1.EnrollmentRequest\x1a).denseid.enrollment.v1.EnrollmentResponseBEZCgithub.com/dense-identity/denseid/api/go/enrollment/v1;enrollmentpbb\x06proto3"
 
@@ -354,23 +140,19 @@ func file_enrollment_v1_enrollment_proto_rawDescGZIP() []byte {
 	return file_enrollment_v1_enrollment_proto_rawDescData
 }
 
-var file_enrollment_v1_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_enrollment_v1_enrollment_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_enrollment_v1_enrollment_proto_goTypes = []any{
-	(*DisplayInformation)(nil),    // 0: denseid.enrollment.v1.DisplayInformation
-	(*EnrollmentRequest)(nil),     // 1: denseid.enrollment.v1.EnrollmentRequest
-	(*EnrollmentResponse)(nil),    // 2: denseid.enrollment.v1.EnrollmentResponse
-	(*timestamppb.Timestamp)(nil), // 3: google.protobuf.Timestamp
+	(*EnrollmentRequest)(nil),  // 0: denseid.enrollment.v1.EnrollmentRequest
+	(*EnrollmentResponse)(nil), // 1: denseid.enrollment.v1.EnrollmentResponse
 }
 var file_enrollment_v1_enrollment_proto_depIdxs = []int32{
-	0, // 0: denseid.enrollment.v1.EnrollmentRequest.iden:type_name -> denseid.enrollment.v1.DisplayInformation
-	3, // 1: denseid.enrollment.v1.EnrollmentResponse.exp:type_name -> google.protobuf.Timestamp
-	1, // 2: denseid.enrollment.v1.EnrollmentService.EnrollSubscriber:input_type -> denseid.enrollment.v1.EnrollmentRequest
-	2, // 3: denseid.enrollment.v1.EnrollmentService.EnrollSubscriber:output_type -> denseid.enrollment.v1.EnrollmentResponse
-	3, // [3:4] is the sub-list for method output_type
-	2, // [2:3] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0, // 0: denseid.enrollment.v1.EnrollmentService.EnrollSubscriber:input_type -> denseid.enrollment.v1.EnrollmentRequest
+	1, // 1: denseid.enrollment.v1.EnrollmentService.EnrollSubscriber:output_type -> denseid.enrollment.v1.EnrollmentResponse
+	1, // [1:2] is the sub-list for method output_type
+	0, // [0:1] is the sub-list for method input_type
+	0, // [0:0] is the sub-list for extension type_name
+	0, // [0:0] is the sub-list for extension extendee
+	0, // [0:0] is the sub-list for field type_name
 }
 
 func init() { file_enrollment_v1_enrollment_proto_init() }
@@ -384,7 +166,7 @@ func file_enrollment_v1_enrollment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_enrollment_v1_enrollment_proto_rawDesc), len(file_enrollment_v1_enrollment_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

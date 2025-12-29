@@ -17,9 +17,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	err = cfg.ParseKeysAsBytes()
+	// Initialize DIA server configuration
+	err = cfg.InitializeDiaServerConfig()
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		log.Fatalf("Failed to initialize DIA server config: %v", err)
 	}
 
 	// Start listening on cfg.Port

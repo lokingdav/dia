@@ -2,18 +2,11 @@ package enrollment
 
 import (
 	"context"
-	"crypto/rand"
 	"log"
 
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
-	"github.com/dense-identity/denseid/internal/bbs"
-	"github.com/dense-identity/denseid/internal/datetime"
-	"github.com/dense-identity/denseid/internal/helpers"
-	"github.com/dense-identity/denseid/internal/signing"
-	"github.com/dense-identity/denseid/internal/voprf"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // Server implements pb.EnrollmentServiceServer.
@@ -27,63 +20,27 @@ func NewServer(cfg *Config) *Server {
 	return &Server{cfg: cfg}
 }
 
-// EnrollSubscriber verifies each RegSig on the request, builds a Merkle root,
-// signs it (with expiry), generates a BBS04 user key, and returns all three.
+// EnrollSubscriber processes an enrollment request using the DIA library.
+// All cryptographic operations (verification, signing, ticket generation) are
+// handled internally by the DIA server configuration.
 func (s *Server) EnrollSubscriber(ctx context.Context, req *pb.EnrollmentRequest) (*pb.EnrollmentResponse, error) {
-	log.Printf("[Enroll] TN=%s, Iden=%v", req.GetTn(), req.GetIden())
+	log.Printf("[Enroll] Processing DIA enrollment request")
 
-	// Verify request signature
-	reqClone := proto.Clone(req).(*pb.EnrollmentRequest)
-	reqClone.Sigma = nil
-	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(reqClone)
-	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to marshal request: %v", err)
-	}
-	clientIpk, err := signing.ImportPublicKeyFromDER(req.GetIpk())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "failed to decode ipk")
-	}
-	if ok := signing.RegSigVerify(clientIpk, data, req.Sigma); !ok {
-		return nil, status.Error(codes.Unauthenticated, "signature verification failed")
+	if s.cfg.DiaServerConfig == nil {
+		return nil, status.Error(codes.Internal, "DIA server config not initialized")
 	}
 
-	// Generate enrollment ID and expiration
-	reid := make([]byte, 32)
-	_, err = rand.Read(reid)
+	// Process enrollment using DIA library (handles all crypto)
+	diaResponse, err := s.cfg.DiaServerConfig.ProcessEnrollment(req.DiaRequest)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to generate eid: %v", err)
-	}
-	eid := signing.EncodeToHex(reid)
-
-	expiryPb := datetime.MakeExpiration(s.cfg.EnrollmentDurationDays)
-	expiryBytes, err := proto.Marshal(expiryPb)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to generate expiry: %v", err)
-	}
-
-	// message1 includes: amf_pk, pke_pk, dr_pk, expiration, telephone_number
-	message1 := helpers.HashAll(req.GetAmfPk(), req.GetPkePk(), req.GetDrPk(), expiryBytes, []byte(req.GetTn()))
-	message2 := []byte(req.GetIden().GetName())
-	sigma, err := bbs.Sign(s.cfg.CiPrivateKey, [][]byte{message1, message2})
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to generate credential: %v", err)
-	}
-
-	evaluatedTickets, err := voprf.BulkEvaluate(s.cfg.AtPrivateKey, req.BlindedTickets)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to generate tickets: %v", err)
+		log.Printf("[Enroll] Failed: %v", err)
+		return nil, status.Errorf(codes.Internal, "enrollment processing failed: %v", err)
 	}
 
 	resp := &pb.EnrollmentResponse{
-		Eid:              eid,
-		Exp:              expiryPb,
-		Epk:              s.cfg.CiPublicKey,
-		Sigma:            sigma,
-		Mpk:              s.cfg.AmfPublicKey,
-		Avk:              s.cfg.AtPublicKey,
-		EvaluatedTickets: evaluatedTickets,
+		DiaResponse: diaResponse,
 	}
 
-	log.Printf("[Enroll] Success TN=%s EID=%s", req.GetTn(), resp.Eid)
+	log.Printf("[Enroll] Success")
 	return resp, nil
 }

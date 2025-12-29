@@ -2,115 +2,16 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"flag"
 	"fmt"
 	"log"
 	mr "math/rand/v2"
 
-	// Import the generated protobuf code.
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
+	dia "github.com/lokingdav/libdia/bindings/go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/proto"
-
-	"github.com/dense-identity/denseid/internal/amf"
-	"github.com/dense-identity/denseid/internal/encryption"
-	"github.com/dense-identity/denseid/internal/signing"
-	"github.com/dense-identity/denseid/internal/voprf"
-	dr "github.com/status-im/doubleratchet"
 )
-
-type newEnrollment struct {
-	request        *pb.EnrollmentRequest
-	isk            []byte
-	ipk            []byte
-	amfSk          []byte
-	amfPk          []byte
-	pkeSk          []byte
-	pkePk          []byte
-	drSk           []byte
-	drPk           []byte
-	blindedTickets []voprf.BlindedTicket
-}
-
-func createNewEnrollment(phoneNumber, displayName, logoUrl string) (*newEnrollment, error) {
-	nonce := make([]byte, 32)
-	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("failed to generate nonce: %w", err)
-	}
-
-	isk, ipk, err := signing.RegSigKeyGen()
-	if err != nil {
-		return nil, err
-	}
-
-	amfSk, amfPk, err := amf.Keygen()
-	if err != nil {
-		return nil, err
-	}
-
-	pkeSk, pkePk, err := encryption.PkeKeygen()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate PKE keypair: %w", err)
-	}
-
-	// Generate Double Ratchet key pair (X25519)
-	drCrypto := dr.DefaultCrypto{}
-	drKeyPair, err := drCrypto.GenerateDH()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate DR keypair: %w", err)
-	}
-	drSk := []byte(drKeyPair.PrivateKey())
-	drPk := []byte(drKeyPair.PublicKey())
-
-	blindedTickets := voprf.GenerateTickets(1)
-	blinded := make([][]byte, len(blindedTickets))
-	for i, v := range blindedTickets {
-		blinded[i] = v.Blinded
-	}
-
-	derIpk, err := signing.ExportPublicKeyToDER(ipk)
-	if err != nil {
-		return nil, fmt.Errorf("failed to export public key to DER format: %w", err)
-	}
-
-	var req = &pb.EnrollmentRequest{
-		Tn:   phoneNumber,
-		NBio: 0,
-		Iden: &pb.DisplayInformation{
-			Name:    displayName,
-			LogoUrl: logoUrl,
-		},
-		Nonce:          signing.EncodeToHex(nonce),
-		Ipk:            derIpk,
-		AmfPk:          amfPk,
-		PkePk:          pkePk,
-		DrPk:           drPk,
-		BlindedTickets: blinded,
-	}
-
-	data, err := proto.Marshal(req)
-	if err != nil {
-		return nil, err
-	}
-	req.Sigma = signing.RegSigSign(isk, data)
-
-	payload := newEnrollment{
-		isk:            isk,
-		ipk:            ipk,
-		amfSk:          amfSk,
-		amfPk:          amfPk,
-		pkeSk:          pkeSk,
-		pkePk:          pkePk,
-		drSk:           drSk,
-		drPk:           drPk,
-		blindedTickets: blindedTickets,
-		request:        req,
-	}
-
-	return &payload, nil
-}
 
 func createGRPCClient(addr string) pb.EnrollmentServiceClient {
 	conn, err := grpc.NewClient(
@@ -140,57 +41,38 @@ func main() {
 		*logoUrl = fmt.Sprintf("https://avatar.iran.liara.run/public/%d", mr.IntN(55))
 	}
 
-	data, err := createNewEnrollment(*phone, *name, *logoUrl)
+	// Create DIA enrollment request (handles all crypto internally)
+	keys, diaRequest, err := dia.CreateEnrollmentRequest(*phone, *name, *logoUrl, 1)
 	if err != nil {
-		log.Fatalf("Error creating enrollment data: %v", err)
+		log.Fatalf("Error creating enrollment request: %v", err)
 	}
 
+	// Wrap DIA request in protobuf for gRPC transport
+	req := &pb.EnrollmentRequest{
+		DiaRequest: diaRequest,
+	}
+
+	// Call gRPC enrollment endpoint
 	client := createGRPCClient(*serverAddr)
-
-	res, err := client.EnrollSubscriber(context.Background(), data.request)
+	res, err := client.EnrollSubscriber(context.Background(), req)
 	if err != nil {
-		log.Fatalf("Error subscribing: %v", err)
+		log.Fatalf("Error enrolling subscriber: %v", err)
 	}
 
-	tickets := voprf.FinalizeTickets(data.blindedTickets, res.EvaluatedTickets)
-
-	// Marshal the expiration timestamp properly
-	expirationBytes, err := proto.Marshal(res.GetExp())
+	// Finalize enrollment with DIA response
+	config, err := dia.FinalizeEnrollment(keys, res.DiaResponse, *phone, *name, *logoUrl)
 	if err != nil {
-		log.Fatalf("Error marshaling expiration: %v", err)
+		log.Fatalf("Error finalizing enrollment: %v", err)
 	}
 
-	env := make([]string, 0)
-
-	env = append(env,
-		fmt.Sprintf("\nMY_PHONE=%s", *phone),
-		fmt.Sprintf("MY_NAME=\"%s\"", *name),
-		fmt.Sprintf("MY_LOGO=\"%s\"", *logoUrl),
-
-		fmt.Sprintf("\nENROLLMENT_ID=%s", res.GetEid()),
-		fmt.Sprintf("ENROLLMENT_EXPIRATION=%x", expirationBytes),
-		fmt.Sprintf("RA_PUBLIC_KEY=%x", res.GetEpk()),
-		fmt.Sprintf("RA_SIGNATURE=%x", res.GetSigma()),
-
-		fmt.Sprintf("\nAMF_PRIVATE_KEY=%x", data.amfSk),
-		fmt.Sprintf("AMF_PUBLIC_KEY=%x", data.amfPk),
-
-		fmt.Sprintf("\nPKE_PRIVATE_KEY=%x", data.pkeSk),
-		fmt.Sprintf("PKE_PUBLIC_KEY=%x", data.pkePk),
-
-		fmt.Sprintf("\nDR_PRIVATE_KEY=%x", data.drSk),
-		fmt.Sprintf("DR_PUBLIC_KEY=%x", data.drPk),
-
-		fmt.Sprintf("\nSUBSCRIBER_PRIVATE_KEY=%x", data.isk),
-		fmt.Sprintf("SUBSCRIBER_PUBLIC_KEY=%x", data.ipk),
-
-		fmt.Sprintf("\nACCESS_TICKET_VK=%x", res.Avk),
-		fmt.Sprintf("\nSAMPLE_TICKET=%x", tickets[0].ToBytes()),
-
-		fmt.Sprintf("MODERATOR_PUBLIC_KEY=%x", res.Mpk),
-	)
-
-	for i := range env {
-		fmt.Println(env[i])
+	// Output client configuration in DIA format
+	envString, err := config.ToEnv()
+	if err != nil {
+		log.Fatalf("Error serializing config: %v", err)
 	}
+
+	fmt.Println("# DIA Client Configuration")
+	fmt.Println("# Save this securely - it contains your enrollment credentials")
+	fmt.Println()
+	fmt.Println(envString)
 }

@@ -2,41 +2,22 @@ syntax = "proto3";
 
 package denseid.enrollment.v1;
 
-import "google/protobuf/timestamp.proto";
-
 option go_package = "github.com/dense-identity/denseid/api/go/enrollment/v1;enrollmentpb";
 
 service EnrollmentService {
   rpc EnrollSubscriber(EnrollmentRequest) returns (EnrollmentResponse);
 }
 
-message DisplayInformation {
-  string name = 1;
-  string logo_url = 2;
-  string website_url = 3;
-  string brand_color = 4;
-  string tagline = 5;
-}
-
+// EnrollmentRequest contains the serialized DIA enrollment request.
+// All cryptographic details (keys, signatures, tickets, identity info)
+// are encoded within dia_request by the DIA library.
 message EnrollmentRequest {
-  string tn = 1;
-  DisplayInformation iden = 2;
-  uint32 n_bio = 3;
-  string nonce = 4;
-  bytes amf_pk = 5;
-  bytes ipk = 6;
-  repeated bytes blinded_tickets = 7;
-  bytes sigma = 8;
-  bytes pke_pk = 9;
-  bytes dr_pk = 10;  // Double Ratchet public key
+  bytes dia_request = 1;  // Serialized DIA enrollment request
 }
 
+// EnrollmentResponse contains the serialized DIA enrollment response.
+// All enrollment data (credentials, tickets, expiration, public keys)
+// are encoded within dia_response by the DIA library.
 message EnrollmentResponse {
-  string eid = 1;
-  google.protobuf.Timestamp exp = 2;
-  bytes epk = 3;
-  bytes sigma = 4;
-  bytes mpk = 5;
-  bytes avk = 6;
-  repeated bytes evaluated_tickets = 7;
+  bytes dia_response = 1;  // Serialized DIA enrollment response
 }
