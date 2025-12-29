@@ -21,7 +21,7 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 	dial := flag.String("dial", "", "The phone number to dial (outgoing call)")
 	receive := flag.String("receive", "", "The phone number to receive call from (incoming call)")
 	envfile := flag.String("env", "", ".env file containing DIA subscriber credentials")
-	relayAddr := flag.String("relay", "localhost:50051", "Relay server address")
+	relayAddr := flag.String("relay", "localhost:50052", "Relay server address")
 	useTLS := flag.Bool("tls", false, "Use TLS for relay connection")
 	flag.Parse()
 
@@ -309,7 +309,9 @@ func handleCallerMessage(callState *dia.CallState, controller *subscriber.Contro
 
 		remoteParty, err := callState.RemoteParty()
 		if err == nil && remoteParty != nil {
-			log.Printf("Remote party: %s (%s) verified=%v", remoteParty.Name, remoteParty.Phone, remoteParty.Verified)
+			log.Printf("Remote party: %s (%s) verified=%v logo=%s", 
+				remoteParty.Name, remoteParty.Phone, remoteParty.Verified, remoteParty.Logo,
+			)
 		}
 	}
 }

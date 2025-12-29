@@ -1,0 +1,14 @@
+# Redis Configuration
+REDIS_ADDR=redis:6379
+REDIS_PASSWORD=
+REDIS_DB=0
+MESSAGE_TTL=10
+
+# Cryptographic Keys
+CI_SK=
+CI_PK=
+AT_SK=
+AT_VK=
+AMF_SK=
+AMF_PK=
+ENROLLMENT_DURATION_DAYS=30

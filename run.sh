@@ -77,10 +77,10 @@ case "$cmd" in
     ;;
 
   alice)
-    go run cmd/client/callauth/main.go --dial bob --env .env.alice
+    go run cmd/client/callauth/main.go --dial bob --env .env.alice --relay localhost:50052
     ;;
   bob)
-    go run cmd/client/callauth/main.go --receive alice --env .env.bob
+    go run cmd/client/callauth/main.go --receive alice --env .env.bob --relay localhost:50052
     ;;
   *)
     echo "Error: unknown command '$cmd'."
