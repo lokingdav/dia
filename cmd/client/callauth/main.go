@@ -236,7 +236,7 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 
 		remoteParty, err := callState.RemoteParty()
 		if err == nil && remoteParty != nil {
-			log.Printf("Remote party: %s (%s) verified=%v", remoteParty.Name, remoteParty.Phone, remoteParty.Verified)
+			log.Printf("Remote party: %s (%s) logo=%s verified=%v", remoteParty.Name, remoteParty.Phone, remoteParty.Logo, remoteParty.Verified)
 		}
 	}
 }
