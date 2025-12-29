@@ -8,7 +8,7 @@ import (
 	mr "math/rand/v2"
 
 	pb "github.com/dense-identity/denseid/api/go/enrollment/v1"
-	dia "github.com/lokingdav/libdia/bindings/go"
+	dia "github.com/lokingdav/libdia/bindings/go/v2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

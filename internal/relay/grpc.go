@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	pb "github.com/dense-identity/denseid/api/go/relay/v1"
-	"github.com/dense-identity/denseid/internal/voprf"
+	dia "github.com/lokingdav/libdia/bindings/go/v2"
 	"google.golang.org/grpc/codes"
 )
 
@@ -187,7 +187,7 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 			s.sendError(sess, codes.PermissionDenied, "ticket required to create new topic", topic)
 			return
 		}
-		ok, err := voprf.VerifyTicket(ticket, s.cfg.AtVerifyKey)
+		ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
 		if err != nil {
 			s.sendError(sess, codes.Internal, "ticket verification failed", topic)
 			return
@@ -254,7 +254,7 @@ func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 			s.sendError(sess, codes.PermissionDenied, "ticket required for publish on new topic", target)
 			return
 		}
-		ok, err := voprf.VerifyTicket(ticket, s.cfg.AtVerifyKey)
+		ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
 		if err != nil {
 			s.sendError(sess, codes.Internal, "ticket verification failed", target)
 			return
@@ -338,7 +338,7 @@ func (s *Server) handleSwap(sess *session, req *pb.RelayRequest) {
 			s.sendError(sess, codes.PermissionDenied, "ticket required for publish on new topic", to)
 			return
 		}
-		ok, err := voprf.VerifyTicket(ticket, s.cfg.AtVerifyKey)
+		ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
 		if err != nil {
 			s.sendError(sess, codes.Internal, "ticket verification failed", to)
 			return

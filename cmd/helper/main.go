@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	dia "github.com/lokingdav/libdia/bindings/go"
+	dia "github.com/lokingdav/libdia/bindings/go/v2"
 )
 
 func registrationAuthoritySetup(durationDays int) {

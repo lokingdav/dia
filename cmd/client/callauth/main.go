@@ -8,249 +8,308 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/dense-identity/denseid/internal/config"
-	"github.com/dense-identity/denseid/internal/helpers"
 	"github.com/dense-identity/denseid/internal/subscriber"
+	dia "github.com/lokingdav/libdia/bindings/go/v2"
 )
 
-func createCallState() *protocol.CallState {
-	dial := flag.String("dial", "", "The phone number to dial")
-	receive := flag.String("receive", "", "The phone number to recieve call from")
-	envfile := flag.String("env", "", ".env file which contains details of the subscriber")
+type AppConfig struct {
+	RelayServerAddr string
+	UseTLS          bool
+}
+
+func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
+	dial := flag.String("dial", "", "The phone number to dial (outgoing call)")
+	receive := flag.String("receive", "", "The phone number to receive call from (incoming call)")
+	envfile := flag.String("env", "", ".env file containing DIA subscriber credentials")
+	relayAddr := flag.String("relay", "localhost:50051", "Relay server address")
+	useTLS := flag.Bool("tls", false, "Use TLS for relay connection")
 	flag.Parse()
 
 	if *dial == "" && *receive == "" {
 		log.Fatal("--dial or --receive option is required")
 	}
 	if *dial != "" && *receive != "" {
-		log.Fatal("You cannot specify both --dial or --receive. Make your mind up.")
+		log.Fatal("You cannot specify both --dial and --receive")
 	}
 	if *envfile == "" {
 		log.Fatal("--env is required for subscriber authentication")
 	}
-	if err := config.LoadEnv(*envfile); err != nil {
-		log.Printf("warning loading %s: %v", *envfile, err)
-	}
 
-	var outgoing bool
-	var phoneNumber string
 	if *dial == "" {
 		outgoing = false
-		phoneNumber = *receive
+		phone = *receive
 	} else {
 		outgoing = true
-		phoneNumber = *dial
+		phone = *dial
 	}
 
-	cfg, err := config.New[config.SubscriberConfig]()
+	appCfg = &AppConfig{
+		RelayServerAddr: *relayAddr,
+		UseTLS:          *useTLS,
+	}
+
+	return *envfile, phone, outgoing, appCfg
+}
+
+func loadDIAConfig(envFile string) (*dia.Config, error) {
+	content, err := os.ReadFile(envFile)
 	if err != nil {
-		log.Fatalf("failed to load subscriber config: %v", err)
+		return nil, fmt.Errorf("reading env file: %w", err)
 	}
-	if err := cfg.ParseKeysAsBytes(); err != nil {
-		log.Fatalf("failed to parse config: %v", err)
-	}
-
-	state := protocol.NewCallState(cfg, phoneNumber, outgoing)
-
-	fmt.Println("===== Call Details =====")
-	fmt.Printf("--> Outgoing: %v\n", outgoing)
-	fmt.Printf("--> Src: %s\n", state.Src)
-	fmt.Printf("--> Dst: %s\n\n", state.Dst)
-
-	return &state
+	return dia.ConfigFromEnv(string(content))
 }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	// 1) Call state & key derivation
-	callState := createCallState()
-	// RunKeyDerivation(ctx, callState)
+	envFile, phone, outgoing, appCfg := parseFlags()
 
-	// 2) IMPORTANT: Initialize AKE BEFORE creating the Relay controller
-	if err := protocol.InitAke(callState); err != nil {
-		log.Fatalf("failed to init AKE: %v", err)
-	}
-	log.Printf("AKE Topic:\n\t%s", callState.GetAkeTopic())
-
-	// 3) Now create the controller (Session will subscribe to CurrentTopic = AkeTopic)
-	oobController, err := subscriber.NewController(callState)
+	// Load DIA config from env file
+	diaCfg, err := loadDIAConfig(envFile)
 	if err != nil {
-		panic(err)
+		log.Fatalf("Failed to load DIA config: %v", err)
 	}
 
-	// 4) Start the Tunnel (initial SUBSCRIBE will use AkeTopic)
-	oobController.Start(func(data []byte) {
-		message, err := getMessage(callState, data)
-		if err != nil {
-			log.Printf("error getting message stream: %v", err)
-			return
-		}
+	// Create call state
+	callState, err := dia.NewCallState(diaCfg, phone, outgoing)
+	if err != nil {
+		log.Fatalf("Failed to create call state: %v", err)
+	}
 
-		log.Printf("New Message. Type:%s, Sender:%s, Topic:%s", message.Type, message.SenderId, message.Topic)
+	// Initialize AKE (generates DH keys, computes topic)
+	if err := callState.AKEInit(); err != nil {
+		log.Fatalf("Failed to init AKE: %v", err)
+	}
 
-		// (Server already suppresses self-echo; this is extra safety)
-		if message.SenderId == callState.SenderId {
-			log.Printf("Ignoring self-authored message")
-			return
-		}
+	akeTopic, _ := callState.AKETopic()
+	senderID, _ := callState.SenderID()
 
-		// Filter by current active topic
-		if message.Topic != callState.GetCurrentTopic() {
-			log.Printf("Ignoring message from inactive topic: %s (current: %s)", message.Topic, callState.GetCurrentTopic())
-			return
-		}
+	fmt.Println("===== Call Details =====")
+	fmt.Printf("--> Outgoing: %v\n", outgoing)
+	fmt.Printf("--> Other Party: %s\n", phone)
+	fmt.Printf("--> Sender ID: %s\n", senderID)
+	fmt.Printf("--> AKE Topic: %s\n\n", akeTopic)
 
-		if protocol.IsBye(message) {
-			log.Println("Received bye message - shutting down")
-			stop()
-			return
-		}
+	// Create controller (will subscribe to AKE topic)
+	controller, err := subscriber.NewController(callState, &subscriber.ControllerConfig{
+		RelayServerAddr: appCfg.RelayServerAddr,
+		UseTLS:          appCfg.UseTLS,
+	})
+	if err != nil {
+		log.Fatalf("Failed to create controller: %v", err)
+	}
 
-		// === Recipient (Bob) ===
-		if callState.IamRecipient() {
-			if protocol.IsAkeRequest(message) {
-				log.Println("Handling AkeRequest Message: Recipient --> Caller")
-
-				response, err := protocol.AkeResponse(callState, message)
-				if err != nil {
-					log.Printf("failed responding to ake init: %v", err)
-					return
-				}
-				if err := oobController.Send(response); err != nil {
-					log.Printf("failed responding to ake init: %v", err)
-					return
-				}
-			}
-
-			if protocol.IsAkeComplete(message) {
-				log.Println("Received AkeComplete message - AKE protocol finished")
-				err := protocol.AkeFinalize(callState, message)
-
-				if err != nil {
-					log.Printf("failed to finalize ake: %v", err)
-				}
-
-				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
-
-				// Derive RUA topic
-				ruaTopic := protocol.DeriveRuaTopic(callState)
-				// FIX: move our state FIRST so replay from ruaTopic isn't filtered
-				callState.TransitionToRua(ruaTopic)
-
-				// Ask server to swap (replay then live)
-				if err := oobController.SwapToTopic(helpers.EncodeToHex(ruaTopic), nil, nil); err != nil {
-					log.Printf("failed to swap to RUA topic: %v", err)
-					// (Optional) revert: callState.TransitionToRua(callState.AkeTopic)
-					return
-				}
-
-				log.Printf("Swapped to RUA topic: %x", ruaTopic)
-
-				// Initialize RTU for recipient
-				if err := protocol.InitRTU(callState); err != nil {
-					log.Printf("failed to init RTU: %v", err)
-					return
-				}
-				log.Println("RTU initialized, waiting for RuaRequest...")
-			}
-
-			if protocol.IsRuaRequest(message) {
-				log.Println("Received RuaRequest message - sending RuaResponse")
-
-				response, err := protocol.RuaResponse(callState, message)
-				if err != nil {
-					log.Printf("failed to create RuaResponse: %v", err)
-					return
-				}
-
-				if err := oobController.Send(response); err != nil {
-					log.Printf("failed to send RuaResponse: %v", err)
-					return
-				}
-
-				log.Printf("RUA completed! New shared secret: %x", callState.SharedKey)
-			}
-		}
-
-		// === Caller (Alice) ===
-		if callState.IamCaller() {
-			if protocol.IsAkeResponse(message) {
-				log.Println("Handling AkeResponse Message: Caller Finalize")
-				complete, err := protocol.AkeComplete(callState, message)
-				if err != nil {
-					log.Printf("failed to process AkeResponse: %v", err)
-					return
-				}
-
-				log.Printf("Computed Shared Secret: %x", callState.SharedKey)
-
-				// Capture old (AKE) topic BEFORE switching
-				oldTopic := callState.Ake.Topic
-
-				ruaReq, err := protocol.RuaRequest(callState)
-
-				// Create RUA init (transitions state to RUA inside)
-				callState.TransitionToRua(callState.Rua.Topic)
-
-				if err != nil {
-					log.Printf("failed to create RUA init: %v", err)
-					return
-				}
-
-				ruaTpcStr := helpers.EncodeToHex(callState.Rua.Topic)
-
-				// Subscribe to RUA and piggy-back RUA init
-				if err := oobController.SubscribeToNewTopicWithPayload(ruaTpcStr, ruaReq, callState.Ticket); err != nil {
-					log.Printf("failed to subscribe+init on RUA topic: %v", err)
-					return
-				}
-				log.Printf("Subscribed to RUA topic (with init): %s", ruaTpcStr)
-
-				// Send response to Bob
-				if err := oobController.SendToTopic(helpers.EncodeToHex(oldTopic), complete, nil); err != nil {
-					log.Printf("failed to send AkeComplete on old topic: %v", err)
-					return
-				}
-				log.Println("Sent AkeComplete on old topic")
-			}
-
-			if protocol.IsRuaResponse(message) {
-				log.Println("Received RuaResponse message - finalizing RUA")
-
-				err := protocol.RuaFinalize(callState, message)
-				if err != nil {
-					log.Printf("failed to finalize RUA: %v", err)
-					return
-				}
-
-				log.Printf("RUA completed! New shared secret: %x", callState.SharedKey)
-			}
-		}
+	// Start the tunnel and handle incoming messages
+	controller.Start(func(data []byte) {
+		handleMessage(callState, controller, data, stop)
 	})
 
-	// 5) For outgoing calls, after Tunnel is started, send AkeRequest
-	if callState.IsOutgoing {
-		ciphertext, err := protocol.AkeRequest(callState)
+	// For outgoing calls, send AKE request
+	if outgoing {
+		request, err := callState.AKERequest()
 		if err != nil {
-			log.Fatalf("failed creating AkeRequest Caller --> Recipient: %v", err)
+			log.Fatalf("Failed to create AKE request: %v", err)
 		}
-		if err := oobController.Send(ciphertext); err != nil {
-			log.Fatalf("publish failed: %v", err)
+		if err := controller.Send(request); err != nil {
+			log.Fatalf("Failed to send AKE request: %v", err)
 		}
-		log.Println("Sent AkeRequest Message: Caller --> Recipient")
+		log.Println("Sent AKE Request")
 	}
 
-	log.Printf("Active Topic:\n\t%s", callState.GetCurrentTopic())
+	currentTopic, _ := callState.CurrentTopic()
+	log.Printf("Listening on topic: %s", currentTopic)
 
 	<-ctx.Done()
-	_ = oobController.Close()
+	_ = controller.Close()
+	log.Println("Shutting down...")
 }
 
-func getMessage(callState *protocol.CallState, data []byte) (*protocol.ProtocolMessage, error) {
-	// ProtocolMessage envelope is always in plaintext
-	// The payload inside is encrypted (PKE for AKE, symmetric for RUA)
-	// Decryption is handled by DecodeAkePayload/DecodeRuaPayload in the protocol functions
-	return protocol.UnmarshalMessage(data)
+func handleMessage(callState *dia.CallState, controller *subscriber.Controller, data []byte, stop context.CancelFunc) {
+	msg, err := dia.ParseMessage(data)
+	if err != nil {
+		log.Printf("Failed to parse message: %v", err)
+		return
+	}
+
+	msgSenderID, _ := msg.SenderID()
+	msgTopic, _ := msg.Topic()
+	mySenderID, _ := callState.SenderID()
+	currentTopic, _ := callState.CurrentTopic()
+
+	log.Printf("Received message type=%d from=%s topic=%s", msg.Type(), msgSenderID, msgTopic)
+
+	// Ignore self-authored messages
+	if msgSenderID == mySenderID {
+		log.Printf("Ignoring self-authored message")
+		return
+	}
+
+	// Filter by current active topic
+	if msgTopic != currentTopic {
+		log.Printf("Ignoring message from inactive topic: %s (current: %s)", msgTopic, currentTopic)
+		return
+	}
+
+	// Handle bye message
+	if msg.Type() == dia.MsgBye {
+		log.Println("Received BYE message - shutting down")
+		stop()
+		return
+	}
+
+	// Route based on role
+	if callState.IsRecipient() {
+		handleRecipientMessage(callState, controller, msg, data)
+	} else if callState.IsCaller() {
+		handleCallerMessage(callState, controller, msg, data)
+	}
+}
+
+// handleRecipientMessage handles messages for the recipient (Bob)
+func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Controller, msg *dia.Message, rawData []byte) {
+	switch msg.Type() {
+	case dia.MsgAKERequest:
+		log.Println("Handling AKE Request")
+		response, err := callState.AKEResponse(rawData)
+		if err != nil {
+			log.Printf("Failed to create AKE response: %v", err)
+			return
+		}
+		if err := controller.Send(response); err != nil {
+			log.Printf("Failed to send AKE response: %v", err)
+			return
+		}
+		log.Println("Sent AKE Response")
+
+	case dia.MsgAKEComplete:
+		log.Println("Handling AKE Complete")
+		if err := callState.AKEFinalize(rawData); err != nil {
+			log.Printf("Failed to finalize AKE: %v", err)
+			return
+		}
+
+		sharedKey, _ := callState.SharedKey()
+		log.Printf("AKE Complete! Shared key: %x", sharedKey)
+
+		// Derive RUA topic and transition
+		ruaTopic, err := callState.RUADeriveTopic()
+		if err != nil {
+			log.Printf("Failed to derive RUA topic: %v", err)
+			return
+		}
+
+		// Transition state to RUA first
+		if err := callState.TransitionToRUA(); err != nil {
+			log.Printf("Failed to transition to RUA: %v", err)
+			return
+		}
+
+		// Swap to RUA topic (with replay)
+		if err := controller.SwapToTopic(ruaTopic, nil, nil); err != nil {
+			log.Printf("Failed to swap to RUA topic: %v", err)
+			return
+		}
+		log.Printf("Swapped to RUA topic: %s", ruaTopic)
+
+		// Initialize RUA
+		if err := callState.RUAInit(); err != nil {
+			log.Printf("Failed to init RUA: %v", err)
+			return
+		}
+		log.Println("RUA initialized, waiting for RUA request...")
+
+	case dia.MsgRUARequest:
+		log.Println("Handling RUA Request")
+		response, err := callState.RUAResponse(rawData)
+		if err != nil {
+			log.Printf("Failed to create RUA response: %v", err)
+			return
+		}
+		if err := controller.Send(response); err != nil {
+			log.Printf("Failed to send RUA response: %v", err)
+			return
+		}
+
+		sharedKey, _ := callState.SharedKey()
+		log.Printf("RUA Complete! New shared key: %x", sharedKey)
+
+		remoteParty, err := callState.RemoteParty()
+		if err == nil && remoteParty != nil {
+			log.Printf("Remote party: %s (%s) verified=%v", remoteParty.Name, remoteParty.Phone, remoteParty.Verified)
+		}
+	}
+}
+
+// handleCallerMessage handles messages for the caller (Alice)
+func handleCallerMessage(callState *dia.CallState, controller *subscriber.Controller, msg *dia.Message, rawData []byte) {
+	switch msg.Type() {
+	case dia.MsgAKEResponse:
+		log.Println("Handling AKE Response")
+
+		// Get old topic before processing
+		oldTopic, _ := callState.CurrentTopic()
+
+		// Process response and get complete message
+		complete, err := callState.AKEComplete(rawData)
+		if err != nil {
+			log.Printf("Failed to complete AKE: %v", err)
+			return
+		}
+
+		sharedKey, _ := callState.SharedKey()
+		log.Printf("AKE Complete! Shared key: %x", sharedKey)
+
+		// Derive RUA topic
+		ruaTopic, err := callState.RUADeriveTopic()
+		if err != nil {
+			log.Printf("Failed to derive RUA topic: %v", err)
+			return
+		}
+
+		// Create RUA request before transitioning
+		ruaRequest, err := callState.RUARequest()
+		if err != nil {
+			log.Printf("Failed to create RUA request: %v", err)
+			return
+		}
+
+		// Transition state to RUA
+		if err := callState.TransitionToRUA(); err != nil {
+			log.Printf("Failed to transition to RUA: %v", err)
+			return
+		}
+
+		// Get ticket for topic creation
+		ticket, _ := callState.Ticket()
+
+		// Subscribe to RUA topic with RUA request as payload
+		if err := controller.SubscribeToNewTopicWithPayload(ruaTopic, ruaRequest, ticket); err != nil {
+			log.Printf("Failed to subscribe to RUA topic: %v", err)
+			return
+		}
+		log.Printf("Subscribed to RUA topic: %s", ruaTopic)
+
+		// Send AKE complete on old topic
+		if err := controller.SendToTopic(oldTopic, complete, nil); err != nil {
+			log.Printf("Failed to send AKE complete: %v", err)
+			return
+		}
+		log.Println("Sent AKE Complete")
+
+	case dia.MsgRUAResponse:
+		log.Println("Handling RUA Response")
+		if err := callState.RUAFinalize(rawData); err != nil {
+			log.Printf("Failed to finalize RUA: %v", err)
+			return
+		}
+
+		sharedKey, _ := callState.SharedKey()
+		log.Printf("RUA Complete! New shared key: %x", sharedKey)
+
+		remoteParty, err := callState.RemoteParty()
+		if err == nil && remoteParty != nil {
+			log.Printf("Remote party: %s (%s) verified=%v", remoteParty.Name, remoteParty.Phone, remoteParty.Verified)
+		}
+	}
 }

@@ -1,6 +1,10 @@
 package subscriber
 
-import "github.com/dense-identity/denseid/internal/protocol"
+import (
+	"fmt"
+
+	dia "github.com/lokingdav/libdia/bindings/go/v2"
+)
 
 // Controller is a small wrapper combining Client + Session for convenience.
 type Controller struct {
@@ -8,16 +12,42 @@ type Controller struct {
 	Session *Session
 }
 
-// NewController builds a Client and Session in one step.
-func NewController(callState *protocol.CallState) (*Controller, error) {
-	c, err := NewRelayClient(callState.Config.RelayServerAddr, callState.Config.UseTls)
+// ControllerConfig holds the configuration for creating a Controller
+type ControllerConfig struct {
+	RelayServerAddr string
+	UseTLS          bool
+}
+
+// NewController builds a Client and Session in one step using DIA CallState.
+func NewController(callState *dia.CallState, cfg *ControllerConfig) (*Controller, error) {
+	if callState == nil || cfg == nil {
+		return nil, fmt.Errorf("callState and config are required")
+	}
+
+	c, err := NewRelayClient(cfg.RelayServerAddr, cfg.UseTLS)
 	if err != nil {
 		return nil, err
 	}
-	
-	initialTopic := callState.GetCurrentTopic()
 
-	sess := NewSession(c, initialTopic, callState.Ticket, callState.SenderId)
+	initialTopic, err := callState.CurrentTopic()
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("failed to get current topic: %w", err)
+	}
+
+	ticket, err := callState.Ticket()
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("failed to get ticket: %w", err)
+	}
+
+	senderID, err := callState.SenderID()
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("failed to get sender ID: %w", err)
+	}
+
+	sess := NewSession(c, initialTopic, ticket, senderID)
 	return &Controller{
 		Client:  c,
 		Session: sess,

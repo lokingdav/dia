@@ -1,7 +1,7 @@
 package enrollment
 
 import (
-	dia "github.com/lokingdav/libdia/bindings/go"
+	dia "github.com/lokingdav/libdia/bindings/go/v2"
 )
 
 type Config struct {
