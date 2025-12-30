@@ -19,7 +19,7 @@ type Config struct {
 	RedisDB       int    `env:"REDIS_DB" envDefault:"0"`
 
 	// Message TTL in seconds (default: 1 hour)
-	MessageTTL int `env:"MESSAGE_TTL" envDefault:"5"`
+	MessageTTL int `env:"MESSAGE_TTL" envDefault:"20"`
 }
 
 func (cfg *Config) ParseKeysAsBytes() error {
