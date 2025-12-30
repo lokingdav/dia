@@ -82,6 +82,9 @@ case "$cmd" in
   bob)
     go run cmd/client/callauth/main.go --receive alice --env .env.bob --relay localhost:50052
     ;;
+  david)
+    go run cmd/client/callauth/main.go --receive bob --env .env.david --relay localhost:50052
+    ;;
   *)
     echo "Error: unknown command '$cmd'."
     usage

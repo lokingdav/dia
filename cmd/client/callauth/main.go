@@ -128,7 +128,7 @@ func main() {
 func handleMessage(callState *dia.CallState, controller *subscriber.Controller, data []byte, stop context.CancelFunc) {
 	msg, err := dia.ParseMessage(data)
 	if err != nil {
-		log.Printf("Failed to parse message: %v", err)
+		log.Printf("Failed to parse message (%d bytes): %v - data[0:min(20,len)]: %x", len(data), err, data[:min(20, len(data))])
 		return
 	}
 
@@ -155,6 +155,12 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 	if msg.Type() == dia.MsgBye {
 		log.Println("Received BYE message - shutting down")
 		stop()
+		return
+	}
+
+	// Handle heartbeat message
+	if msg.Type() == dia.MsgHeartbeat {
+		log.Println("Received HEARTBEAT message - channel active")
 		return
 	}
 

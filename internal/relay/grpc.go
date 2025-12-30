@@ -176,6 +176,7 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 	payload := req.GetPayload()
 
 	if topic == "" || len(payload) == 0 {
+		log.Printf("PUBLISH %s: missing topic or payload", topic)
 		s.sendError(sess, codes.InvalidArgument, "missing topic or payload", topic)
 		return
 	}
@@ -237,11 +238,13 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 		}
 		s.tryEnqueue(sb, resp)
 	}
+	log.Printf("PUBLISH %s: ok (fanned to %d)", topic, len(recipients))
 }
 
 func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 	target := req.GetTopic()
 	if target == "" {
+		log.Printf("SUBSCRIBE: missing topic")
 		s.sendError(sess, codes.InvalidArgument, "missing topic", "")
 		return
 	}
@@ -297,6 +300,7 @@ func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 
 	// Join live delivery
 	s.addToTopic(target, sess)
+	log.Printf("SUBSCRIBE %s: ok", target)
 
 	// Piggy-back publish if payload present
 	if hasPayload {
@@ -376,6 +380,7 @@ func (s *Server) handleSwap(sess *session, req *pb.RelayRequest) {
 
 	// Atomically move: remove from old, add to new
 	s.addToTopic(to, sess)
+	log.Printf("SWAP %s→%s: ok", from, to)
 
 	// Piggy-back publish (to the new topic) if provided
 	if hasPayload {
