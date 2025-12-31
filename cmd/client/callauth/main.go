@@ -164,6 +164,40 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 		return
 	}
 
+	// Handle ODA messages (bidirectional, same logic for both parties)
+	if msg.Type() == dia.MsgODARequest {
+		log.Println("Handling ODA Request")
+		response, err := callState.ODAResponse(data)
+		if err != nil {
+			log.Printf("Failed to create ODA response: %v", err)
+			return
+		}
+		if err := controller.Send(response); err != nil {
+			log.Printf("Failed to send ODA response: %v", err)
+			return
+		}
+		log.Println("Sent ODA Response")
+		return
+	}
+
+	if msg.Type() == dia.MsgODAResponse {
+		log.Println("Handling ODA Response")
+		verification, err := callState.ODAVerify(data)
+		if err != nil {
+			log.Printf("Failed to verify ODA response: %v", err)
+			return
+		}
+		log.Printf("ODA Verification successful!")
+		log.Printf("  Verified: %v", verification.Verified)
+		log.Printf("  Issuer: %s", verification.Issuer)
+		log.Printf("  Credential Type: %s", verification.CredentialType)
+		log.Printf("  Disclosed attributes:")
+		for name, value := range verification.DisclosedAttributes {
+			log.Printf("    %s: %s", name, value)
+		}
+		return
+	}
+
 	// Route based on role
 	if callState.IsRecipient() {
 		handleRecipientMessage(callState, controller, msg, data)
