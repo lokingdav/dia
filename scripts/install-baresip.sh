@@ -16,27 +16,3 @@ sudo apt install -y \
   pulseaudio \
   alsa-utils \
   net-tools
-
-# # ---- accounts placeholder ----
-# ACCOUNTS_FILE="$BARE_DIR/accounts"
-# if [[ ! -f "$ACCOUNTS_FILE" ]]; then
-#   cat > "$ACCOUNTS_FILE" <<'EOF'
-# # Example:
-# # <sip:user@domain>;auth_user=user;auth_pass=pass;outbound=sip:proxy;regint=600
-# EOF
-#   echo "[!] Edit $ACCOUNTS_FILE and add your SIP account before running."
-# fi
-
-# echo "[*] Checking audio devices..."
-# aplay -l || true
-# arecord -l || true
-
-# echo "[*] Starting PulseAudio (if not running)..."
-# pulseaudio --check || pulseaudio --start
-
-# echo "[*] Starting baresip..."
-# echo "    ctrl_tcp listening on 127.0.0.1:4444"
-# echo "    config dir: $BARE_DIR"
-# echo
-
-# # baresip -f "$BARE_DIR"

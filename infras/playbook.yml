@@ -123,9 +123,60 @@
       when: type == 'client' and sip_account.stdout != ''
       tags: [setup, baresip]
     
+    - name: Copy baresip systemd service file
+      copy:
+        src: baresip/baresip.service
+        dest: /etc/systemd/system/baresip.service
+        owner: root
+        group: root
+        mode: '0644'
+      when: type == 'client'
+      tags: [setup, baresip]
+    
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+      when: type == 'client'
+      tags: [setup, baresip]
+    
+    - name: Enable and start baresip service
+      systemd:
+        name: baresip
+        enabled: yes
+        state: started
+      when: type == 'client'
+      tags: [setup, baresip]
+    
+    # ============================================================================
+    # STOP TASKS
+    # ============================================================================
+    
+    - name: Stop baresip service on clients
+      systemd:
+        name: baresip
+        state: stopped
+      when: type == 'client'
+      ignore_errors: yes
+      tags: [stop_baresip, restart_baresip]
+    
+    - name: Stop all Docker Compose services
+      command: docker compose --profile es --profile rs down
+      args:
+        chdir: "{{ repo_dest }}"
+      become_user: ubuntu
+      ignore_errors: yes
+      tags: [stop, stop_services, restart_services]
+    
     # ============================================================================
     # START TASKS
     # ============================================================================
+    
+    - name: Start baresip service on clients
+      systemd:
+        name: baresip
+        state: started
+      when: type == 'client'
+      tags: [start_baresip, restart_baresip]
     
     - name: Start enrollment server and relay server on server instance
       command: docker compose --profile es --profile rs up -d
@@ -136,7 +187,7 @@
         DOCKER_BUILDKIT: "1"
         COMPOSE_DOCKER_CLI_BUILD: "1"
       when: type == 'server'
-      tags: [start, start_services]
+      tags: [start, start_services, restart_services]
     
     - name: Wait for services to be healthy
       pause:
