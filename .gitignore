@@ -35,3 +35,5 @@ go.work.sum
 /bin
 .env.*
 docker/
+infras/*terraform*
+infras/hosts.yml

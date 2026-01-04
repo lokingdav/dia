@@ -15,7 +15,8 @@ RUN apk update && \
     iputils \
     py3-pip \
     python3 \
-    aws-cli
+    aws-cli \
+    openssh-client
 
 # Install k6
 RUN wget -q -O /usr/local/bin/k6 https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz && \

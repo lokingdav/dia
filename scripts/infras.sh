@@ -34,18 +34,8 @@ create() {
         exit 1
     fi
 
-    case "$network" in
-        livenet)
-            echo "Creating Cloud Infrastructure..."
-            run_in_docker "cd $HOME_DIR && terraform apply"
-            ;;
-        *)
-            echo "Available subcommands for create:"
-            echo "create {livenet}"
-            exit 1
-            ;;
-    esac
-    
+    echo "Creating Cloud Infrastructure..."
+    run_in_docker "cd $HOME_DIR && terraform apply"
     echo "Infrastructure created successfully."
 }
 
@@ -102,15 +92,67 @@ runapp() {
     fi
 }
 
+infrassh() {
+    local instance=$1
+    
+    if [ -z "$instance" ]; then
+        echo "Error: Please specify an instance name (client-1, client-2, or server)"
+        exit 1
+    fi
+    
+    hosts_file="infras/$MAIN_HOSTS_FILE"
+    if [ ! -f "$hosts_file" ]; then
+        echo "Error: $hosts_file not found. Please run 'infras create' first."
+        exit 1
+    fi
+    
+    # Extract the host IP from the hosts.yml file
+    host_ip=$(grep -A 1 "^    $instance:" "$hosts_file" | grep "ansible_host:" | awk '{print $2}')
+    
+    if [ -z "$host_ip" ]; then
+        echo "Error: Instance '$instance' not found in $hosts_file"
+        echo "Available instances:"
+        grep -E "^    [a-z0-9-]+:" "$hosts_file" | sed 's/://g' | awk '{print "  - " $1}'
+        exit 1
+    fi
+    
+    # Get the script's directory to build absolute path
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local project_dir="$(dirname "$script_dir")"
+    local ssh_dir="$project_dir/docker/data/.ssh"
+    local ssh_key="$ssh_dir/id_ed25519"
+
+    echo "FILE: $ssh_key"
+    
+    # Fix SSH directory and key permissions (owned by root from Docker)
+    if sudo test -f "$ssh_key"; then
+        echo "Fixing SSH key permissions..."
+        sudo chown -R $USER:$USER "$ssh_dir"
+        chmod 700 "$ssh_dir"
+        chmod 600 "$ssh_key"
+        chmod 644 "$ssh_key.pub" 2>/dev/null || true
+    else
+        echo "Error: SSH key not found at $ssh_key"
+        echo "Run './scripts/infras.sh init' to generate SSH keys."
+        exit 1
+    fi
+    
+    echo "Connecting to $instance ($host_ip)..."
+    ssh -i "$ssh_key" -o StrictHostKeyChecking=no ubuntu@$host_ip
+}
+
 case "$1" in
     init)
         init
         ;;
     create)
-        create $2
+        create
         ;;
     destroy)
         destroy
+        ;;
+    ssh)
+        infrassh $2
         ;;
     reset)
         reset
