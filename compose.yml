@@ -1,5 +1,5 @@
-x-denseid-server: &denseid-server-base
-  image: denseid-dev
+x-dia-server: &dia-server-base
+  image: kofidahmed/dia
   working_dir: /app
   entrypoint: ["air"]
   volumes:
@@ -24,7 +24,7 @@ x-denseid-server: &denseid-server-base
 
 services:
   enrollment-server:
-    <<: *denseid-server-base
+    <<: *dia-server-base
     container_name: enrollment-server
     command:
       - "--build.cmd=go build -o /app/bin/es /app/cmd/enrollment"
@@ -35,7 +35,7 @@ services:
     profiles: [es]
 
   relay-server:
-    <<: *denseid-server-base
+    <<: *dia-server-base
     container_name: relay-server
     command:
       - "--build.cmd=go build -o /app/bin/rs /app/cmd/relay"

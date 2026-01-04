@@ -73,42 +73,6 @@
       tags: [setup, verify]
     
     # ============================================================================
-    # STOP TASKS
-    # ============================================================================
-    
-    - name: Stop all Docker Compose services
-      command: docker compose down
-      args:
-        chdir: "{{ repo_dest }}"
-      become_user: ubuntu
-      ignore_errors: yes
-      tags: [stop, stop_services]
-    
-    # ============================================================================
-    # LOGS TASKS
-    # ============================================================================
-    
-    - name: Clear application logs directory
-      file:
-        path: "{{ log_path }}"
-        state: absent
-      tags: [logs, clear_logs]
-    
-    - name: Recreate logs directory
-      file:
-        path: "{{ log_path }}"
-        state: directory
-        owner: ubuntu
-        group: ubuntu
-        mode: '0755'
-      tags: [logs, clear_logs]
-    
-    - name: Prune Docker logs
-      command: docker system prune -f --volumes
-      become_user: ubuntu
-      tags: [logs, clear_logs]
-    
-    # ============================================================================
     # START TASKS
     # ============================================================================
     
@@ -139,3 +103,39 @@
       debug:
         var: docker_ps.stdout_lines
       tags: [start, start_services, verify]
+
+    # ============================================================================
+    # STOP TASKS
+    # ============================================================================
+    
+    - name: Stop all Docker Compose services
+      command: docker compose --profile es --profile rs down
+      args:
+        chdir: "{{ repo_dest }}"
+      become_user: ubuntu
+      ignore_errors: yes
+      tags: [stop, stop_services]
+    
+    # ============================================================================
+    # LOGS TASKS
+    # ============================================================================
+    
+    - name: Clear application logs directory
+      file:
+        path: "{{ log_path }}"
+        state: absent
+      tags: [logs, clear_logs]
+    
+    - name: Recreate logs directory
+      file:
+        path: "{{ log_path }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      tags: [logs, clear_logs]
+    
+    - name: Prune Docker logs
+      command: docker system prune -f --volumes
+      become_user: ubuntu
+      tags: [logs, clear_logs]
