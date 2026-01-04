@@ -115,6 +115,41 @@ resource "aws_security_group" "sg_region1" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 4444
+    to_port     = 4444
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Baresip ctrl_tcp"
+  }
+  ingress {
+    from_port   = 10000
+    to_port     = 20000
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "RTP media"
+  }  
+  ingress {
+    from_port   = 10000
+    to_port     = 20000
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "RTP media"
+  }  
   egress {
     from_port   = 0
     to_port     = 0
@@ -139,6 +174,34 @@ resource "aws_security_group" "sg_region2" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 4444
+    to_port     = 4444
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Baresip ctrl_tcp"
+  }
+  ingress {
+    from_port   = 10000
+    to_port     = 20000
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "RTP media"
+  }
   egress {
     from_port   = 0
     to_port     = 0
@@ -162,6 +225,34 @@ resource "aws_security_group" "sg_region3" {
     to_port     = var.sg_end_port
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 4444
+    to_port     = 4444
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Baresip ctrl_tcp"
+  }
+  ingress {
+    from_port   = 10000
+    to_port     = 20000
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "RTP media"
   }
   egress {
     from_port   = 0

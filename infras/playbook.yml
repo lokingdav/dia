@@ -75,6 +75,55 @@
       tags: [setup, verify]
     
     # ============================================================================
+    # BARESIP SETUP (CLIENTS ONLY)
+    # ============================================================================
+    
+    - name: Install baresip on client instances
+      script: ../scripts/install-baresip.sh
+      args:
+        creates: /home/ubuntu/.baresip/config
+      when: type == 'client'
+      tags: [setup, baresip]
+    
+    - name: Copy baresip configuration directory to clients
+      copy:
+        src: baresip/
+        dest: /home/ubuntu/.baresip/
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      when: type == 'client'
+      tags: [setup, baresip]
+    
+    - name: Set proper permissions on baresip files
+      file:
+        path: /home/ubuntu/.baresip
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+        recurse: yes
+      when: type == 'client'
+      tags: [setup, baresip]
+    
+    - name: Read SIP account from .env file
+      shell: grep '^SIP_ACCOUNT=' {{ repo_dest }}/.env | cut -d= -f2- | tr -d '"'
+      register: sip_account
+      when: type == 'client'
+      changed_when: false
+      tags: [setup, baresip]
+    
+    - name: Update SIP account in baresip accounts file
+      lineinfile:
+        path: /home/ubuntu/.baresip/accounts
+        regexp: '^#.*Example:.*$'
+        line: "{{ sip_account.stdout }}"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+      when: type == 'client' and sip_account.stdout != ''
+      tags: [setup, baresip]
+    
+    # ============================================================================
     # START TASKS
     # ============================================================================
     

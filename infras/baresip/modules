@@ -1,0 +1,9 @@
+# Audio
+alsa
+pulse
+
+# Control interface
+ctrl_tcp
+
+# Optional (safe defaults)
+uuid

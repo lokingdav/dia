@@ -1,0 +1,18 @@
+# Audio (prefer Pulse; ALSA still available)
+audio_player        pulse
+audio_source        pulse
+audio_alert         pulse
+audio_srate         48000
+audio_channels      2
+
+# SIP
+sip_listen          0.0.0.0:5060
+sip_transports      udp,tcp
+rtp_timeout         60
+rtp_ports           10000-20000
+
+# ctrl_tcp for sidecar controller
+ctrl_tcp_listen     127.0.0.1:4444
+
+# Logging (useful for debugging)
+log_level           2
