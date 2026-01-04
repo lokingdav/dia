@@ -34,3 +34,4 @@ go.work.sum
 /.air
 /bin
 .env.*
+docker/

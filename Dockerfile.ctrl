@@ -1,0 +1,43 @@
+FROM dia
+
+ENV ANSIBLE_VERSION=2.18
+
+WORKDIR /app 
+
+# Install basic dependencies for Alpine
+RUN apk update && \
+    apk add --no-cache \
+    bash \
+    curl \
+    unzip \
+    groff \
+    iproute2 \
+    iputils \
+    py3-pip \
+    python3 \
+    aws-cli
+
+# Install k6
+RUN wget -q -O /usr/local/bin/k6 https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz && \
+    tar -xzf /usr/local/bin/k6 -C /usr/local/bin --strip-components=1 k6-v0.54.0-linux-amd64/k6 || \
+    (wget -q -O k6.tar.gz https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz && \
+    tar -xzf k6.tar.gz && \
+    mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/ && \
+    chmod +x /usr/local/bin/k6 && \
+    rm -rf k6.tar.gz k6-v0.54.0-linux-amd64)
+
+# Install Terraform
+RUN wget -q -O terraform.zip https://releases.hashicorp.com/terraform/1.10.4/terraform_1.10.4_linux_amd64.zip && \
+    unzip terraform.zip && \
+    mv terraform /usr/local/bin/ && \
+    chmod +x /usr/local/bin/terraform && \
+    rm terraform.zip
+
+# Install Ansible via pip
+RUN pip install --break-system-packages --upgrade pip && \
+    pip install --break-system-packages ansible tqdm
+
+# Verify tools
+RUN terraform --version && \
+    ansible --version && \
+    aws --version
