@@ -1,0 +1,141 @@
+---
+- name: Setup and manage DIA infrastructure
+  hosts: all
+  become: yes
+  vars_files:
+    - vars.yml
+  
+  tasks:
+    # ============================================================================
+    # SETUP TASKS
+    # ============================================================================
+    
+    - name: Wait for user data completion
+      wait_for:
+        path: "{{ user_data_done_file }}"
+        timeout: "{{ user_data_wait_timeout }}"
+      tags: [setup, wait]
+    
+    - name: Ensure repository destination directory exists
+      file:
+        path: "{{ repo_dest }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      tags: [setup, clone]
+    
+    - name: Clone repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dest }}"
+        version: "{{ repo_branch }}"
+        force: yes
+      become_user: ubuntu
+      tags: [setup, clone, checkout_branch]
+    
+    - name: Checkout branch
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dest }}"
+        version: "{{ repo_branch }}"
+        update: yes
+      become_user: ubuntu
+      tags: [checkout_branch]
+    
+    - name: Copy environment file
+      copy:
+        src: "../{{ env_files[inventory_hostname] }}"
+        dest: "{{ repo_dest }}/.env"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+      tags: [setup, copy_env]
+    
+    - name: Pull dia Docker image
+      docker_image:
+        name: "{{ dia_image }}"
+        source: pull
+      tags: [setup, pull_images]
+    
+    - name: Pull redis Docker image
+      docker_image:
+        name: "{{ redis_image }}"
+        source: pull
+      when: type == 'server'
+      tags: [setup, pull_images]
+    
+    - name: Verify Docker is running
+      service:
+        name: docker
+        state: started
+        enabled: yes
+      tags: [setup, verify]
+    
+    # ============================================================================
+    # STOP TASKS
+    # ============================================================================
+    
+    - name: Stop all Docker Compose services
+      command: docker compose down
+      args:
+        chdir: "{{ repo_dest }}"
+      become_user: ubuntu
+      ignore_errors: yes
+      tags: [stop, stop_services]
+    
+    # ============================================================================
+    # LOGS TASKS
+    # ============================================================================
+    
+    - name: Clear application logs directory
+      file:
+        path: "{{ log_path }}"
+        state: absent
+      tags: [logs, clear_logs]
+    
+    - name: Recreate logs directory
+      file:
+        path: "{{ log_path }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      tags: [logs, clear_logs]
+    
+    - name: Prune Docker logs
+      command: docker system prune -f --volumes
+      become_user: ubuntu
+      tags: [logs, clear_logs]
+    
+    # ============================================================================
+    # START TASKS
+    # ============================================================================
+    
+    - name: Start enrollment server and relay server on server instance
+      command: docker compose --profile es --profile rs up -d
+      args:
+        chdir: "{{ repo_dest }}"
+      become_user: ubuntu
+      environment:
+        DOCKER_BUILDKIT: "1"
+        COMPOSE_DOCKER_CLI_BUILD: "1"
+      when: type == 'server'
+      tags: [start, start_services]
+    
+    - name: Wait for services to be healthy
+      pause:
+        seconds: 10
+      when: type == 'server'
+      tags: [start, start_services]
+    
+    - name: Show running containers
+      command: docker ps
+      become_user: ubuntu
+      register: docker_ps
+      tags: [start, start_services, verify]
+    
+    - name: Display running containers
+      debug:
+        var: docker_ps.stdout_lines
+      tags: [start, start_services, verify]

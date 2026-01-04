@@ -46,7 +46,7 @@ variable "region_2" {
 }
 
 variable "region_3" {
-  description = "Third region for relay server (Central US)"
+  description = "Third region for server (Central US)"
   type        = string
   default     = "us-east-2"
 }
@@ -204,7 +204,7 @@ resource "aws_instance" "instance_2" {
   }
 }
 
-# Instance 3 - Relay Server (Central)
+# Instance 3 - Server (Central)
 resource "aws_instance" "instance_3" {
   provider        = aws.region3
   ami             = var.ubuntu_ami_map[var.region_3]
@@ -216,7 +216,7 @@ resource "aws_instance" "instance_3" {
 
   tags = {
     Name = "server"
-    Type = "relay"
+    Type = "server"
   }
 }
 
@@ -291,7 +291,7 @@ all:
     ${aws_instance.instance_3.tags.Name}:
       ansible_host: ${aws_instance.instance_3.public_ip}
       ansible_user: ubuntu
-      type: relay
+      type: server
       instance_type: ${aws_instance.instance_3.instance_type}
       region: ${var.region_3}
 EOT

@@ -5,6 +5,7 @@ set -e
 MAIN_HOSTS_FILE=hosts.yml
 CONTROL_IMAGE="dia-ctrl"
 HOME_DIR="infras"
+PLAYBOOK="playbook.yml"
 
 run_in_docker() {
     local command=$1
@@ -25,12 +26,9 @@ init() {
 }
 
 create() {
-    local network=$1
-
-    # if main main.yml exists, notify and exit with error
     hosts_file="infras/$MAIN_HOSTS_FILE"
     if [ -f "$hosts_file" ]; then
-        echo "Error: $hosts_file already exists. Please run 'infras destroy' to destroy the current setup before creating a new infrastructure."
+        echo "Error: $hosts_file already exists. Please run 'infras destroy' first."
         exit 1
     fi
 
@@ -40,56 +38,27 @@ create() {
 }
 
 destroy() {
-    echo "Destroying Cloud Infrastructure (if applicable)..."
+    echo "Destroying Cloud Infrastructure..."
     run_in_docker "cd $HOME_DIR && terraform destroy && rm -rf $MAIN_HOSTS_FILE"
     echo "Destroyed all resources successfully."
 }
 
-reset() {
-    echo "Resetting infrastructure..."
-    destroy
-}
-
-install() {
-    pull="$1"
-    run_in_docker "cd $HOME_DIR && ansible-playbook -i $MAIN_HOSTS_FILE install.yml $pull"
-}
-
-pull_changes() {
-    install "--tags 'checkout_branch'"
-}
-
-runapp() {
-    local app=$1
-    local pull=$2
-    local directly=$3
-
-    tags="stop_services,clear_logs"
-    if [ "$pull" == "--pull" ]; then
-        tags="$tags,checkout_branch"
-    fi
-
-    case "$app" in
-        jodi)
-            tags="$tags,start_jodi"
-            ;;
-        oobss)
-            tags="$tags,start_oobss"
-            ;;
-        *)
-            echo "Unknown app: $app"
-            echo "Usage: infras run {jodi|oobss}"
-            exit 1
-            ;;
-    esac
-
-    local cmd_str="cd $HOME_DIR && ansible-playbook -i $MAIN_HOSTS_FILE playbooks/main.yml --tags $tags"
+play() {
+    local tags=$1
     
-    if [ "$directly" == "--directly" ]; then
-        eval "$cmd_str"
-    else
-        run_in_docker "$cmd_str"
+    if [ -z "$tags" ]; then
+        echo "Error: Please specify tags (setup, stop, start, clear_logs, checkout_branch)"
+        exit 1
     fi
+    
+    hosts_file="infras/$MAIN_HOSTS_FILE"
+    if [ ! -f "$hosts_file" ]; then
+        echo "Error: $hosts_file not found. Please run './scripts/infras.sh create' first."
+        exit 1
+    fi
+    
+    echo "Running playbook with tags: $tags"
+    run_in_docker "cd $HOME_DIR && ansible-playbook -i $MAIN_HOSTS_FILE $PLAYBOOK --tags $tags"
 }
 
 infrassh() {
@@ -151,23 +120,34 @@ case "$1" in
     destroy)
         destroy
         ;;
+    play)
+        play "$2"
+        ;;
     ssh)
-        infrassh $2
-        ;;
-    reset)
-        reset
-        ;;
-    install)
-        install
-        ;;
-    pull)
-        pull_changes
-        ;;
-    run)
-        runapp "$2" "$3" "$4"
+        infrassh "$2"
         ;;
     *)
-        echo "Usage: infras {init|create|destroy|install|pull|run} [args...]"
+        echo "Usage: $0 {init|create|destroy|play <tags>|ssh <instance>}"
+        echo ""
+        echo "Commands:"
+        echo "  init              - Configure AWS CLI and generate SSH keys"
+        echo "  create            - Create cloud infrastructure with Terraform"
+        echo "  destroy           - Destroy cloud infrastructure"
+        echo "  play <tags>       - Run Ansible playbook with specified tags"
+        echo "  ssh <instance>    - SSH into instance (client-1, client-2, server)"
+        echo ""
+        echo "Playbook tags:"
+        echo "  setup             - Full setup (wait, clone, pull images)"
+        echo "  stop              - Stop all services"
+        echo "  start             - Start services"
+        echo "  clear_logs        - Clear application and Docker logs"
+        echo "  checkout_branch   - Update to latest branch"
+        echo ""
+        echo "Examples:"
+        echo "  ./scripts/infras.sh play setup"
+        echo "  ./scripts/infras.sh play stop"
+        echo "  ./scripts/infras.sh play clear_logs,start"
+        echo "  ./scripts/infras.sh ssh server"
         exit 1
         ;;
 esac

@@ -1,5 +1,31 @@
+---
+# Repository settings
+repo_url: https://github.com/lokingdav/dia.git
 repo_branch: main
 repo_dest: /opt/dia
-repo_url: https://github.com/lokingdav/dia.git
+
+# User data completion
 user_data_done_file: /home/ubuntu/done.txt
+user_data_wait_timeout: 300  # 5 minutes
+
+# Docker images
+dia_image: kofidahmed/dia:latest
+redis_image: redis:7-alpine
+
+# Environment files mapping
+env_files:
+  client-1: .env.alice
+  client-2: .env.bob
+  server: .env
+
+# Service settings
+compose_file: "{{ repo_dest }}/compose.yml"
+log_path: "{{ repo_dest }}/logs"
+
+# Docker Compose profiles
+docker_compose_profiles:
+  client: es   # enrollment-server
+  relay: rs    # relay-server + redis
+
+# Ansible settings
 hosts_file: hosts.yml

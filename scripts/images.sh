@@ -5,7 +5,7 @@ set -e
 CMD="$1"
 IMG="$2"
 
-MAIN_IMAGE="dia"
+MAIN_IMAGE="kofidahmed/dia"
 CONTROL_IMAGE="dia-ctrl"
 
 DF_DIA="dia"
