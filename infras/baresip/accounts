@@ -1,2 +1,1 @@
-# Example:
-<sip:user@domain>;auth_user=user;auth_pass=pass;outbound=sip:proxy;regint=600
+# Example:<sip:user@domain>;auth_user=user;auth_pass=pass;outbound=sip:proxy;regint=600
