@@ -23,7 +23,7 @@ build_image() {
   case "$img" in
     dia)
       echo "Building $MAIN_IMAGE"
-      docker build -f "Dockerfile.$DF_DIA" -t "$MAIN_IMAGE" .
+      docker build -f "Dockerfile.$DF_DIA" -t "$MAIN_IMAGE" . --no-cache
       ;;
     ctrl)
       echo "Building $CONTROL_IMAGE"

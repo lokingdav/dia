@@ -56,12 +56,14 @@
       docker_image:
         name: "{{ dia_image }}"
         source: pull
+        force_source: yes
       tags: [setup, pull_images]
     
     - name: Pull redis Docker image
       docker_image:
         name: "{{ redis_image }}"
         source: pull
+        force_source: yes
       when: type == 'server'
       tags: [setup, pull_images]
     
