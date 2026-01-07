@@ -1,10 +1,8 @@
 module_path         /usr/lib/baresip/modules
 
-# UI (optional but useful)
-module              stdio.so
-module              menu.so
+module              account.so
 
-# Codecs (required)
+# Codecs
 module              g711.so
 module              opus.so
 
@@ -12,7 +10,9 @@ module              opus.so
 module              aubridge.so
 module              aufile.so
 
-# Automation/control
+# Optional automation/logging
 module              ctrl_tcp.so
 module              uuid.so
 module              debug_cmd.so
+
+ctrl_tcp_listen     127.0.0.1:4444

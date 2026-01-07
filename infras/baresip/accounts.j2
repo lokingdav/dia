@@ -1,3 +1,3 @@
-{% for ext in asterisk_extensions -%}
+{% for ext in asterisk_extensions if ext.client == inventory_hostname %}
 <sip:{{ ext.id }}@{{ asterisk_externaddr }}>;auth_user={{ ext.id }};auth_pass={{ ext.password }};outbound=sip:{{ asterisk_externaddr }};regint=600
-{% endfor -%}
+{% endfor %}

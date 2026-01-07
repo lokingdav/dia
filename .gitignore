@@ -38,3 +38,4 @@ docker/
 infras/*terraform*
 infras/hosts.yml
 var-asterisk-accounts.yml
+.vars.yml

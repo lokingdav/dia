@@ -1,17 +1,8 @@
-# UI (for interactive testing; safe to keep even on headless)
-stdio
-menu
-
-# Control (for Sidecar controller / automation)
+account
 ctrl_tcp
 uuid
-
-# Audio codecs (you need at least one; g711 is the usual baseline)
 g711
-# opus   # optional if installed/built
-
-# Headless audio driver (no sound card required)
+opus
 aubridge
-
-# WAV file as outgoing audio source ("microphone" = file)
 aufile
+debug_cmd

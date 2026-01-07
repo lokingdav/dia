@@ -4,7 +4,7 @@
   become: yes
   vars_files:
     - vars.yml
-    - vars.env.yml
+    - .vars.yml
 
   handlers:
     - name: Restart asterisk
