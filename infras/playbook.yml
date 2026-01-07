@@ -11,6 +11,13 @@
       ansible.builtin.systemd:
         name: asterisk
         state: restarted
+        delegate_to: "{{ asterisk_host }}"
+        run_once: true
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
 
   tasks:
     # ============================================================================
@@ -23,7 +30,6 @@
         timeout: "{{ user_data_wait_timeout }}"
       tags: [setup, wait]
 
-    # --- Determine which inventory host is the asterisk node (type == 'asterisk') ---
     - name: Compute asterisk inventory host name
       ansible.builtin.set_fact:
         asterisk_host: >-
@@ -49,7 +55,6 @@
           - asterisk-modules
           - net-tools
           - tcpdump
-        update_cache: yes
         state: present
       delegate_to: "{{ asterisk_host }}"
       run_once: true
@@ -112,6 +117,7 @@
 
     - name: Flush handlers so Asterisk restarts before clients configure/register
       ansible.builtin.meta: flush_handlers
+      run_once: true
       tags: [setup, asterisk]
 
     - name: Start Asterisk service
@@ -197,23 +203,31 @@
       tags: [setup, verify]
 
     # ============================================================================
-    # BARESIP SETUP (CLIENTS ONLY) - cleaned accounts handling
+    # BARESIP SETUP (CLIENTS ONLY) - configs always redeployed
     # ============================================================================
 
-    - name: Install baresip on client instances
-      ansible.builtin.script: ../scripts/install-baresip.sh
-      args:
-        creates: /home/ubuntu/.baresip/config
+    - name: Install baresip packages on client instances (apt)
+      ansible.builtin.apt:
+        name:
+          - baresip
+          - baresip-core
+          - libasound2t64
+          - libpulse0
+          - pulseaudio
+          - alsa-utils
+          - net-tools
+        state: present
       when: type == 'client'
       tags: [setup, baresip]
 
-    - name: Copy baresip configuration directory to clients
+    - name: Copy baresip configuration directory to clients (always overwrite)
       ansible.builtin.copy:
         src: baresip/
         dest: /home/ubuntu/.baresip/
         owner: ubuntu
         group: ubuntu
         mode: "0755"
+        force: yes
       when: type == 'client'
       tags: [setup, baresip]
 
@@ -245,8 +259,11 @@
         owner: root
         group: root
         mode: "0644"
+        force: yes
       when: type == 'client'
+      notify: Reload systemd
       tags: [setup, baresip]
+
 
     - name: Reload systemd daemon (clients)
       ansible.builtin.systemd:
