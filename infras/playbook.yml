@@ -4,182 +4,279 @@
   become: yes
   vars_files:
     - vars.yml
-  
+    - var-asterisk-accounts.yml
+
+  handlers:
+    - name: Restart asterisk
+      ansible.builtin.systemd:
+        name: asterisk
+        state: restarted
+      become: yes
+
   tasks:
     # ============================================================================
     # SETUP TASKS
     # ============================================================================
-    
+
     - name: Wait for user data completion
-      wait_for:
+      ansible.builtin.wait_for:
         path: "{{ user_data_done_file }}"
         timeout: "{{ user_data_wait_timeout }}"
       tags: [setup, wait]
-    
+
     - name: Ensure repository destination directory exists
-      file:
+      ansible.builtin.file:
         path: "{{ repo_dest }}"
         state: directory
         owner: ubuntu
         group: ubuntu
-        mode: '0755'
+        mode: "0755"
       tags: [setup, clone]
-    
+
     - name: Clone repository
-      git:
+      ansible.builtin.git:
         repo: "{{ repo_url }}"
         dest: "{{ repo_dest }}"
         version: "{{ repo_branch }}"
         force: yes
       become_user: ubuntu
       tags: [setup, clone, checkout_branch]
-    
+
     - name: Checkout branch
-      git:
+      ansible.builtin.git:
         repo: "{{ repo_url }}"
         dest: "{{ repo_dest }}"
         version: "{{ repo_branch }}"
         update: yes
       become_user: ubuntu
       tags: [checkout_branch]
-    
+
     - name: Copy environment file
-      copy:
+      ansible.builtin.copy:
         src: "../{{ env_files[inventory_hostname] }}"
         dest: "{{ repo_dest }}/.env"
         owner: ubuntu
         group: ubuntu
-        mode: '0644'
+        mode: "0644"
+      when: type in ['client', 'server']
       tags: [setup, copy_env]
-    
+
     - name: Pull dia Docker image
-      docker_image:
+      community.docker.docker_image:
         name: "{{ dia_image }}"
         source: pull
         force_source: yes
       tags: [setup, pull_images]
-    
+
     - name: Pull redis Docker image
-      docker_image:
+      community.docker.docker_image:
         name: "{{ redis_image }}"
         source: pull
         force_source: yes
       when: type == 'server'
       tags: [setup, pull_images]
-    
+
     - name: Verify Docker is running
-      service:
+      ansible.builtin.service:
         name: docker
         state: started
         enabled: yes
       tags: [setup, verify]
-    
+
     # ============================================================================
     # BARESIP SETUP (CLIENTS ONLY)
     # ============================================================================
-    
+
     - name: Install baresip on client instances
-      script: ../scripts/install-baresip.sh
+      ansible.builtin.script: ../scripts/install-baresip.sh
       args:
         creates: /home/ubuntu/.baresip/config
       when: type == 'client'
       tags: [setup, baresip]
-    
+
     - name: Copy baresip configuration directory to clients
-      copy:
+      ansible.builtin.copy:
         src: baresip/
         dest: /home/ubuntu/.baresip/
         owner: ubuntu
         group: ubuntu
-        mode: '0755'
+        mode: "0755"
       when: type == 'client'
       tags: [setup, baresip]
-    
+
     - name: Set proper permissions on baresip files
-      file:
+      ansible.builtin.file:
         path: /home/ubuntu/.baresip
         owner: ubuntu
         group: ubuntu
-        mode: '0755'
+        mode: "0755"
         recurse: yes
       when: type == 'client'
       tags: [setup, baresip]
-    
+
     - name: Read SIP account from .env file
-      shell: grep '^SIP_ACCOUNT=' {{ repo_dest }}/.env | cut -d= -f2- | tr -d '"'
+      ansible.builtin.shell: grep '^SIP_ACCOUNT=' {{ repo_dest }}/.env | cut -d= -f2- | tr -d '"'
       register: sip_account
       when: type == 'client'
       changed_when: false
       tags: [setup, baresip]
-    
+
     - name: Update SIP account in baresip accounts file
-      lineinfile:
+      ansible.builtin.lineinfile:
         path: /home/ubuntu/.baresip/accounts
         regexp: '^#.*Example:.*$'
         line: "{{ sip_account.stdout }}"
         owner: ubuntu
         group: ubuntu
-        mode: '0644'
+        mode: "0644"
       when: type == 'client' and sip_account.stdout != ''
       tags: [setup, baresip]
-    
+
     - name: Copy baresip systemd service file
-      copy:
+      ansible.builtin.copy:
         src: baresip/baresip.service
         dest: /etc/systemd/system/baresip.service
         owner: root
         group: root
-        mode: '0644'
+        mode: "0644"
       when: type == 'client'
       tags: [setup, baresip]
-    
-    - name: Reload systemd daemon
-      systemd:
+
+    - name: Reload systemd daemon (clients)
+      ansible.builtin.systemd:
         daemon_reload: yes
       when: type == 'client'
       tags: [setup, baresip]
-    
+
     - name: Enable and start baresip service
-      systemd:
+      ansible.builtin.systemd:
         name: baresip
         enabled: yes
         state: started
       when: type == 'client'
       tags: [setup, baresip]
-    
+
+    # ============================================================================
+    # ASTERISK SETUP (ASTERISK SERVER ONLY)
+    # ============================================================================
+
+    - name: Install Asterisk packages on asterisk instance (apt)
+      ansible.builtin.apt:
+        name:
+          - asterisk
+          - asterisk-core-sounds-en
+          - asterisk-moh-opsound-wav
+          - asterisk-modules
+          - net-tools
+          - tcpdump
+        update_cache: yes
+        state: present
+      when: type == 'asterisk'
+      tags: [setup, asterisk]
+
+    - name: Ensure Asterisk is enabled (do not force stop/start here)
+      ansible.builtin.systemd:
+        name: asterisk
+        enabled: yes
+      when: type == 'asterisk'
+      tags: [setup, asterisk]
+
+    - name: Set Asterisk external address from inventory ansible_host
+      ansible.builtin.set_fact:
+        asterisk_externaddr: "{{ ansible_host }}"
+      when: type == 'asterisk'
+      tags: [setup, asterisk]
+
+    - name: Deploy Asterisk PJSIP configuration (templated)
+      ansible.builtin.template:
+        src: asterisk/pjsip.conf.j2
+        dest: /etc/asterisk/pjsip.conf
+        owner: root
+        group: root
+        mode: "0644"
+      no_log: true
+      when: type == 'asterisk'
+      notify: Restart asterisk
+      tags: [setup, asterisk]
+
+
+    - name: Deploy Asterisk dialplan (extensions.conf)
+      ansible.builtin.copy:
+        src: asterisk/extensions.conf
+        dest: /etc/asterisk/extensions.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: type == 'asterisk'
+      notify: Restart asterisk
+      tags: [setup, asterisk]
+
+    - name: Deploy Asterisk RTP configuration (rtp.conf)
+      ansible.builtin.copy:
+        src: asterisk/rtp.conf
+        dest: /etc/asterisk/rtp.conf
+        owner: root
+        group: root
+        mode: "0644"
+      when: type == 'asterisk'
+      notify: Restart asterisk
+      tags: [setup, asterisk]
+
+    - name: Start Asterisk service
+      ansible.builtin.systemd:
+        name: asterisk
+        state: started
+      when: type == 'asterisk'
+      tags: [setup, asterisk]
+
     # ============================================================================
     # STOP TASKS
     # ============================================================================
-    
+
     - name: Stop baresip service on clients
-      systemd:
+      ansible.builtin.systemd:
         name: baresip
         state: stopped
       when: type == 'client'
       ignore_errors: yes
       tags: [stop_baresip, restart_baresip]
-    
+
+    - name: Stop Asterisk service on asterisk server
+      ansible.builtin.systemd:
+        name: asterisk
+        state: stopped
+      when: type == 'asterisk'
+      ignore_errors: yes
+      tags: [stop_asterisk, restart_asterisk]
+
     - name: Stop all Docker Compose services
-      command: docker compose --profile es --profile rs down
+      ansible.builtin.command: docker compose --profile es --profile rs down
       args:
         chdir: "{{ repo_dest }}"
       become_user: ubuntu
       ignore_errors: yes
       tags: [stop, stop_services, restart_services]
-    
+
     # ============================================================================
     # START TASKS
     # ============================================================================
-    
+
     - name: Start baresip service on clients
-      systemd:
+      ansible.builtin.systemd:
         name: baresip
         state: started
       when: type == 'client'
       tags: [start_baresip, restart_baresip]
-    
+
+    - name: Start Asterisk service on asterisk server
+      ansible.builtin.systemd:
+        name: asterisk
+        state: started
+      when: type == 'asterisk'
+      tags: [start_asterisk, restart_asterisk]
+
     - name: Start enrollment server and relay server on server instance
-      command: docker compose --profile es --profile rs up -d
+      ansible.builtin.command: docker compose --profile es --profile rs up -d
       args:
         chdir: "{{ repo_dest }}"
       become_user: ubuntu
@@ -188,56 +285,56 @@
         COMPOSE_DOCKER_CLI_BUILD: "1"
       when: type == 'server'
       tags: [start, start_services, restart_services]
-    
+
     - name: Wait for services to be healthy
-      pause:
+      ansible.builtin.pause:
         seconds: 10
       when: type == 'server'
       tags: [start, start_services]
-    
+
     - name: Show running containers
-      command: docker ps
+      ansible.builtin.command: docker ps
       become_user: ubuntu
       register: docker_ps
       tags: [start, start_services, verify]
-    
+
     - name: Display running containers
-      debug:
+      ansible.builtin.debug:
         var: docker_ps.stdout_lines
       tags: [start, start_services, verify]
 
     # ============================================================================
-    # STOP TASKS
+    # STOP TASKS (duplicate in original; kept as-is for drop-in compatibility)
     # ============================================================================
-    
+
     - name: Stop all Docker Compose services
-      command: docker compose --profile es --profile rs down
+      ansible.builtin.command: docker compose --profile es --profile rs down
       args:
         chdir: "{{ repo_dest }}"
       become_user: ubuntu
       ignore_errors: yes
       tags: [stop, stop_services]
-    
+
     # ============================================================================
     # LOGS TASKS
     # ============================================================================
-    
+
     - name: Clear application logs directory
-      file:
+      ansible.builtin.file:
         path: "{{ log_path }}"
         state: absent
       tags: [logs, clear_logs]
-    
+
     - name: Recreate logs directory
-      file:
+      ansible.builtin.file:
         path: "{{ log_path }}"
         state: directory
         owner: ubuntu
         group: ubuntu
-        mode: '0755'
+        mode: "0755"
       tags: [logs, clear_logs]
-    
+
     - name: Prune Docker logs
-      command: docker system prune -f --volumes
+      ansible.builtin.command: docker system prune -f --volumes
       become_user: ubuntu
       tags: [logs, clear_logs]

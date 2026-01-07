@@ -15,6 +15,7 @@ variable "ubuntu_ami_map" {
     "us-east-1" = "ami-04b4f1a9cf54c11d0"
     "us-east-2" = "ami-0cb91c7de36eed2cb"
     "us-west-1" = "ami-07d2649d67dbe8900"
+    "us-west-2" = "ami-05134c8ef96964280"
   }
 }
 
@@ -51,6 +52,37 @@ variable "region_3" {
   default     = "us-east-2"
 }
 
+variable "region_4" {
+  description = "Fourth region for Asterisk server"
+  type        = string
+  default     = "us-west-2"
+}
+
+# Enable/disable instances
+variable "enable_client_1" {
+  description = "Enable client-1 instance"
+  type        = bool
+  default     = false
+}
+
+variable "enable_client_2" {
+  description = "Enable client-2 instance"
+  type        = bool
+  default     = false
+}
+
+variable "enable_server" {
+  description = "Enable relay server instance"
+  type        = bool
+  default     = true
+}
+
+variable "enable_asterisk" {
+  description = "Enable Asterisk server instance"
+  type        = bool
+  default     = true
+}
+
 variable "key_name" {
   default = "dia-keypair"
 }
@@ -63,7 +95,7 @@ variable "sg_end_port" {
   default = 50055
 }
 
-# AWS Providers for 3 regions
+# AWS Providers for 4 regions
 provider "aws" {
   alias  = "region1"
   region = var.region_1
@@ -79,27 +111,43 @@ provider "aws" {
   region = var.region_3
 }
 
+provider "aws" {
+  alias  = "region4"
+  region = var.region_4
+}
+
 # SSH Key Pairs
 resource "aws_key_pair" "region1" {
+  count      = var.enable_client_1 ? 1 : 0
   provider   = aws.region1
   key_name   = var.key_name
   public_key = file("~/.ssh/id_ed25519.pub")
 }
 
 resource "aws_key_pair" "region2" {
+  count      = var.enable_client_2 ? 1 : 0
   provider   = aws.region2
   key_name   = var.key_name
   public_key = file("~/.ssh/id_ed25519.pub")
 }
 
 resource "aws_key_pair" "region3" {
+  count      = var.enable_server ? 1 : 0
   provider   = aws.region3
+  key_name   = var.key_name
+  public_key = file("~/.ssh/id_ed25519.pub")
+}
+
+resource "aws_key_pair" "region4" {
+  count      = var.enable_asterisk ? 1 : 0
+  provider   = aws.region4
   key_name   = var.key_name
   public_key = file("~/.ssh/id_ed25519.pub")
 }
 
 # Security Groups
 resource "aws_security_group" "sg_region1" {
+  count       = var.enable_client_1 ? 1 : 0
   provider    = aws.region1
   name_prefix = "dia-sg-${var.region_1}-"
 
@@ -159,6 +207,7 @@ resource "aws_security_group" "sg_region1" {
 }
 
 resource "aws_security_group" "sg_region2" {
+  count       = var.enable_client_2 ? 1 : 0
   provider    = aws.region2
   name_prefix = "dia-sg-${var.region_2}-"
 
@@ -211,6 +260,7 @@ resource "aws_security_group" "sg_region2" {
 }
 
 resource "aws_security_group" "sg_region3" {
+  count       = var.enable_server ? 1 : 0
   provider    = aws.region3
   name_prefix = "dia-sg-${var.region_3}-"
 
@@ -262,14 +312,62 @@ resource "aws_security_group" "sg_region3" {
   }
 }
 
+resource "aws_security_group" "sg_region4" {
+  count       = var.enable_asterisk ? 1 : 0
+  provider    = aws.region4
+  name_prefix = "dia-sg-${var.region_4}-"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 5060
+    to_port     = 5060
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SIP"
+  }
+  ingress {
+    from_port   = 10000
+    to_port     = 20000
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "RTP media"
+  }
+  ingress {
+    from_port   = 5038
+    to_port     = 5038
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Asterisk AMI"
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
 # EC2 Instances
 # Instance 1 - Client (West Coast)
 resource "aws_instance" "instance_1" {
+  count           = var.enable_client_1 ? 1 : 0
   provider        = aws.region1
   ami             = var.ubuntu_ami_map[var.region_1]
   instance_type   = var.standard_instance_type
-  key_name        = aws_key_pair.region1.key_name
-  security_groups = [aws_security_group.sg_region1.name]
+  key_name        = aws_key_pair.region1[0].key_name
+  security_groups = [aws_security_group.sg_region1[0].name]
 
   user_data = file("../${path.module}/scripts/setup-instance.sh")
 
@@ -281,11 +379,12 @@ resource "aws_instance" "instance_1" {
 
 # Instance 2 - Client (East Coast)
 resource "aws_instance" "instance_2" {
+  count           = var.enable_client_2 ? 1 : 0
   provider        = aws.region2
   ami             = var.ubuntu_ami_map[var.region_2]
   instance_type   = var.standard_instance_type
-  key_name        = aws_key_pair.region2.key_name
-  security_groups = [aws_security_group.sg_region2.name]
+  key_name        = aws_key_pair.region2[0].key_name
+  security_groups = [aws_security_group.sg_region2[0].name]
 
   user_data = file("../${path.module}/scripts/setup-instance.sh")
 
@@ -297,11 +396,12 @@ resource "aws_instance" "instance_2" {
 
 # Instance 3 - Server (Central)
 resource "aws_instance" "instance_3" {
+  count           = var.enable_server ? 1 : 0
   provider        = aws.region3
   ami             = var.ubuntu_ami_map[var.region_3]
   instance_type   = var.high_spec_instance_type
-  key_name        = aws_key_pair.region3.key_name
-  security_groups = [aws_security_group.sg_region3.name]
+  key_name        = aws_key_pair.region3[0].key_name
+  security_groups = [aws_security_group.sg_region3[0].name]
 
   user_data = file("../${path.module}/scripts/setup-instance.sh")
 
@@ -311,81 +411,123 @@ resource "aws_instance" "instance_3" {
   }
 }
 
+# Instance 4 - Asterisk Server
+resource "aws_instance" "instance_4" {
+  count           = var.enable_asterisk ? 1 : 0
+  provider        = aws.region4
+  ami             = var.ubuntu_ami_map[var.region_4]
+  instance_type   = var.standard_instance_type
+  key_name        = aws_key_pair.region4[0].key_name
+  security_groups = [aws_security_group.sg_region4[0].name]
+
+  user_data = file("../${path.module}/scripts/setup-instance.sh")
+
+  tags = {
+    Name = "asterisk"
+    Type = "asterisk"
+  }
+}
+
+# Outputs
 # Outputs
 output "public_ips" {
-  value = [
-    aws_instance.instance_1.public_ip,
-    aws_instance.instance_2.public_ip,
-    aws_instance.instance_3.public_ip
-  ]
+  value = compact(concat(
+    var.enable_client_1 ? [aws_instance.instance_1[0].public_ip] : [],
+    var.enable_client_2 ? [aws_instance.instance_2[0].public_ip] : [],
+    var.enable_server ? [aws_instance.instance_3[0].public_ip] : [],
+    var.enable_asterisk ? [aws_instance.instance_4[0].public_ip] : []
+  ))
 }
 
 output "private_ips" {
-  value = [
-    aws_instance.instance_1.private_ip,
-    aws_instance.instance_2.private_ip,
-    aws_instance.instance_3.private_ip
-  ]
+  value = compact(concat(
+    var.enable_client_1 ? [aws_instance.instance_1[0].private_ip] : [],
+    var.enable_client_2 ? [aws_instance.instance_2[0].private_ip] : [],
+    var.enable_server ? [aws_instance.instance_3[0].private_ip] : [],
+    var.enable_asterisk ? [aws_instance.instance_4[0].private_ip] : []
+  ))
 }
 
 output "instance_details" {
-  value = {
-    instance_1 = {
-      name          = aws_instance.instance_1.tags.Name
-      public_ip     = aws_instance.instance_1.public_ip
-      private_ip    = aws_instance.instance_1.private_ip
-      instance_type = aws_instance.instance_1.instance_type
-      region        = var.region_1
-    }
-    instance_2 = {
-      name          = aws_instance.instance_2.tags.Name
-      public_ip     = aws_instance.instance_2.public_ip
-      private_ip    = aws_instance.instance_2.private_ip
-      instance_type = aws_instance.instance_2.instance_type
-      region        = var.region_2
-    }
-    instance_3 = {
-      name          = aws_instance.instance_3.tags.Name
-      public_ip     = aws_instance.instance_3.public_ip
-      private_ip    = aws_instance.instance_3.private_ip
-      instance_type = aws_instance.instance_3.instance_type
-      region        = var.region_3
-    }
-  }
+  value = merge(
+    var.enable_client_1 ? {
+      instance_1 = {
+        name          = aws_instance.instance_1[0].tags.Name
+        public_ip     = aws_instance.instance_1[0].public_ip
+        private_ip    = aws_instance.instance_1[0].private_ip
+        instance_type = aws_instance.instance_1[0].instance_type
+        region        = var.region_1
+      }
+    } : {},
+    var.enable_client_2 ? {
+      instance_2 = {
+        name          = aws_instance.instance_2[0].tags.Name
+        public_ip     = aws_instance.instance_2[0].public_ip
+        private_ip    = aws_instance.instance_2[0].private_ip
+        instance_type = aws_instance.instance_2[0].instance_type
+        region        = var.region_2
+      }
+    } : {},
+    var.enable_server ? {
+      instance_3 = {
+        name          = aws_instance.instance_3[0].tags.Name
+        public_ip     = aws_instance.instance_3[0].public_ip
+        private_ip    = aws_instance.instance_3[0].private_ip
+        instance_type = aws_instance.instance_3[0].instance_type
+        region        = var.region_3
+      }
+    } : {},
+    var.enable_asterisk ? {
+      instance_4 = {
+        name          = aws_instance.instance_4[0].tags.Name
+        public_ip     = aws_instance.instance_4[0].public_ip
+        private_ip    = aws_instance.instance_4[0].private_ip
+        instance_type = aws_instance.instance_4[0].instance_type
+        region        = var.region_4
+      }
+    } : {}
+  )
 }
 
 # Ansible hosts file
 locals {
-  all_instances = [
-    aws_instance.instance_1,
-    aws_instance.instance_2,
-    aws_instance.instance_3
-  ]
+  hosts_yaml = join("\n", concat(
+    var.enable_client_1 ? [
+      "    ${aws_instance.instance_1[0].tags.Name}:",
+      "      ansible_host: ${aws_instance.instance_1[0].public_ip}",
+      "      ansible_user: ubuntu",
+      "      type: client",
+      "      instance_type: ${aws_instance.instance_1[0].instance_type}",
+      "      region: ${var.region_1}"
+    ] : [],
+    var.enable_client_2 ? [
+      "    ${aws_instance.instance_2[0].tags.Name}:",
+      "      ansible_host: ${aws_instance.instance_2[0].public_ip}",
+      "      ansible_user: ubuntu",
+      "      type: client",
+      "      instance_type: ${aws_instance.instance_2[0].instance_type}",
+      "      region: ${var.region_2}"
+    ] : [],
+    var.enable_server ? [
+      "    ${aws_instance.instance_3[0].tags.Name}:",
+      "      ansible_host: ${aws_instance.instance_3[0].public_ip}",
+      "      ansible_user: ubuntu",
+      "      type: server",
+      "      instance_type: ${aws_instance.instance_3[0].instance_type}",
+      "      region: ${var.region_3}"
+    ] : [],
+    var.enable_asterisk ? [
+      "    ${aws_instance.instance_4[0].tags.Name}:",
+      "      ansible_host: ${aws_instance.instance_4[0].public_ip}",
+      "      ansible_user: ubuntu",
+      "      type: asterisk",
+      "      instance_type: ${aws_instance.instance_4[0].instance_type}",
+      "      region: ${var.region_4}"
+    ] : []
+  ))
 }
 
 resource "local_file" "ansible_hosts" {
-  content = <<EOT
-all:
-  hosts:
-    ${aws_instance.instance_1.tags.Name}:
-      ansible_host: ${aws_instance.instance_1.public_ip}
-      ansible_user: ubuntu
-      type: client
-      instance_type: ${aws_instance.instance_1.instance_type}
-      region: ${var.region_1}
-    ${aws_instance.instance_2.tags.Name}:
-      ansible_host: ${aws_instance.instance_2.public_ip}
-      ansible_user: ubuntu
-      type: client
-      instance_type: ${aws_instance.instance_2.instance_type}
-      region: ${var.region_2}
-    ${aws_instance.instance_3.tags.Name}:
-      ansible_host: ${aws_instance.instance_3.public_ip}
-      ansible_user: ubuntu
-      type: server
-      instance_type: ${aws_instance.instance_3.instance_type}
-      region: ${var.region_3}
-EOT
-
+  content  = "all:\n  hosts:\n${local.hosts_yaml}\n"
   filename = "./hosts.yml"
 }

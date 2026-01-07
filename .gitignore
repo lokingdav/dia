@@ -37,3 +37,4 @@ go.work.sum
 docker/
 infras/*terraform*
 infras/hosts.yml
+var-asterisk-accounts.yml

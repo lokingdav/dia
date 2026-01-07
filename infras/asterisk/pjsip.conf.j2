@@ -1,0 +1,54 @@
+[global]
+type=global
+user_agent=Asterisk-EC2
+
+; -------- Transport --------
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:5060
+
+; NAT: EC2 has private IP, clients reach public IP
+external_signaling_address={{ asterisk_externaddr }}
+external_signaling_port=5060
+external_media_address={{ asterisk_externaddr }}
+
+; set this to your VPC CIDR
+local_net=172.31.0.0/16
+
+; -------- Common endpoint policy --------
+[endpoint-common](!)
+type=endpoint
+context=from-internal
+disallow=all
+allow=ulaw,alaw
+; add opus only if you know endpoints support it and module exists
+;allow=opus
+
+; NAT helpers for typical internet clients
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+
+; Avoid endpoint-to-endpoint direct media (keeps Asterisk in path; easier on EC2)
+direct_media=no
+
+{% for ext in asterisk_extensions %}
+[{{ ext.id }}]
+type=endpoint
+inherit=endpoint-common
+auth={{ ext.id }}
+aors={{ ext.id }}
+
+[{{ ext.id }}]
+type=auth
+auth_type=userpass
+username={{ ext.id }}
+password={{ ext.password }}
+
+[{{ ext.id }}]
+type=aor
+max_contacts=1
+remove_existing=yes
+
+{% endfor %}
