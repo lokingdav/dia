@@ -1,0 +1,3 @@
+{% for ext in asterisk_extensions %}
+<sip:{{ ext.id }}@{{ asterisk_externaddr }}>;auth_user={{ ext.id }};auth_pass={{ ext.password }}
+{% endfor %}

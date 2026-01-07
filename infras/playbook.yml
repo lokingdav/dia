@@ -4,18 +4,17 @@
   become: yes
   vars_files:
     - vars.yml
-    - var-asterisk-accounts.yml
+    - vars.env.yml
 
   handlers:
     - name: Restart asterisk
       ansible.builtin.systemd:
         name: asterisk
         state: restarted
-      become: yes
 
   tasks:
     # ============================================================================
-    # SETUP TASKS
+    # SETUP TASKS (ordering: wait_for -> asterisk -> others -> baresip)
     # ============================================================================
 
     - name: Wait for user data completion
@@ -23,6 +22,115 @@
         path: "{{ user_data_done_file }}"
         timeout: "{{ user_data_wait_timeout }}"
       tags: [setup, wait]
+
+    # --- Determine which inventory host is the asterisk node (type == 'asterisk') ---
+    - name: Compute asterisk inventory host name
+      ansible.builtin.set_fact:
+        asterisk_host: >-
+          {{
+            (hostvars
+              | dict2items
+              | selectattr('value.type', 'defined')
+              | selectattr('value.type', 'equalto', 'asterisk')
+              | map(attribute='key')
+              | list
+            )[0]
+          }}
+      run_once: true
+      tags: [setup, asterisk]
+
+    # --- ASTERISK SETUP FIRST (runs once, delegated to the asterisk host) ---
+    - name: Install Asterisk packages on asterisk instance (apt)
+      ansible.builtin.apt:
+        name:
+          - asterisk
+          - asterisk-core-sounds-en
+          - asterisk-moh-opsound-wav
+          - asterisk-modules
+          - net-tools
+          - tcpdump
+        update_cache: yes
+        state: present
+      delegate_to: "{{ asterisk_host }}"
+      run_once: true
+      tags: [setup, asterisk]
+
+    - name: Ensure Asterisk is enabled (do not force stop/start here)
+      ansible.builtin.systemd:
+        name: asterisk
+        enabled: yes
+      delegate_to: "{{ asterisk_host }}"
+      run_once: true
+      tags: [setup, asterisk]
+
+    - name: Set Asterisk external address on asterisk host from inventory ansible_host
+      ansible.builtin.set_fact:
+        asterisk_externaddr: "{{ hostvars[asterisk_host].ansible_host }}"
+      delegate_to: "{{ asterisk_host }}"
+      delegate_facts: true
+      run_once: true
+      tags: [setup, asterisk]
+
+    - name: Deploy Asterisk PJSIP configuration (templated)
+      ansible.builtin.template:
+        src: asterisk/pjsip.conf.j2
+        dest: /etc/asterisk/pjsip.conf
+        owner: root
+        group: root
+        mode: "0644"
+      delegate_to: "{{ asterisk_host }}"
+      run_once: true
+      no_log: true
+      vars:
+        asterisk_externaddr: "{{ hostvars[asterisk_host].ansible_host }}"
+      notify: Restart asterisk
+      tags: [setup, asterisk]
+
+    - name: Deploy Asterisk dialplan (extensions.conf)
+      ansible.builtin.copy:
+        src: asterisk/extensions.conf
+        dest: /etc/asterisk/extensions.conf
+        owner: root
+        group: root
+        mode: "0644"
+      delegate_to: "{{ asterisk_host }}"
+      run_once: true
+      notify: Restart asterisk
+      tags: [setup, asterisk]
+
+    - name: Deploy Asterisk RTP configuration (rtp.conf)
+      ansible.builtin.copy:
+        src: asterisk/rtp.conf
+        dest: /etc/asterisk/rtp.conf
+        owner: root
+        group: root
+        mode: "0644"
+      delegate_to: "{{ asterisk_host }}"
+      run_once: true
+      notify: Restart asterisk
+      tags: [setup, asterisk]
+
+    - name: Flush handlers so Asterisk restarts before clients configure/register
+      ansible.builtin.meta: flush_handlers
+      tags: [setup, asterisk]
+
+    - name: Start Asterisk service
+      ansible.builtin.systemd:
+        name: asterisk
+        state: started
+      delegate_to: "{{ asterisk_host }}"
+      run_once: true
+      tags: [setup, asterisk]
+
+    - name: Set asterisk_externaddr for clients (from inventory asterisk host)
+      ansible.builtin.set_fact:
+        asterisk_externaddr: "{{ hostvars[asterisk_host].ansible_host }}"
+      when: type == 'client'
+      tags: [setup, baresip]
+
+    # ============================================================================
+    # DIA REPO/DOCKER SETUP (CLIENTS + SERVER)
+    # ============================================================================
 
     - name: Ensure repository destination directory exists
       ansible.builtin.file:
@@ -89,7 +197,7 @@
       tags: [setup, verify]
 
     # ============================================================================
-    # BARESIP SETUP (CLIENTS ONLY)
+    # BARESIP SETUP (CLIENTS ONLY) - cleaned accounts handling
     # ============================================================================
 
     - name: Install baresip on client instances
@@ -109,6 +217,17 @@
       when: type == 'client'
       tags: [setup, baresip]
 
+    - name: Deploy baresip accounts (templated)
+      ansible.builtin.template:
+        src: baresip/accounts.j2
+        dest: /home/ubuntu/.baresip/accounts
+        owner: ubuntu
+        group: ubuntu
+        mode: "0644"
+      no_log: true
+      when: type == 'client'
+      tags: [setup, baresip]
+
     - name: Set proper permissions on baresip files
       ansible.builtin.file:
         path: /home/ubuntu/.baresip
@@ -117,24 +236,6 @@
         mode: "0755"
         recurse: yes
       when: type == 'client'
-      tags: [setup, baresip]
-
-    - name: Read SIP account from .env file
-      ansible.builtin.shell: grep '^SIP_ACCOUNT=' {{ repo_dest }}/.env | cut -d= -f2- | tr -d '"'
-      register: sip_account
-      when: type == 'client'
-      changed_when: false
-      tags: [setup, baresip]
-
-    - name: Update SIP account in baresip accounts file
-      ansible.builtin.lineinfile:
-        path: /home/ubuntu/.baresip/accounts
-        regexp: '^#.*Example:.*$'
-        line: "{{ sip_account.stdout }}"
-        owner: ubuntu
-        group: ubuntu
-        mode: "0644"
-      when: type == 'client' and sip_account.stdout != ''
       tags: [setup, baresip]
 
     - name: Copy baresip systemd service file
@@ -160,79 +261,6 @@
         state: started
       when: type == 'client'
       tags: [setup, baresip]
-
-    # ============================================================================
-    # ASTERISK SETUP (ASTERISK SERVER ONLY)
-    # ============================================================================
-
-    - name: Install Asterisk packages on asterisk instance (apt)
-      ansible.builtin.apt:
-        name:
-          - asterisk
-          - asterisk-core-sounds-en
-          - asterisk-moh-opsound-wav
-          - asterisk-modules
-          - net-tools
-          - tcpdump
-        update_cache: yes
-        state: present
-      when: type == 'asterisk'
-      tags: [setup, asterisk]
-
-    - name: Ensure Asterisk is enabled (do not force stop/start here)
-      ansible.builtin.systemd:
-        name: asterisk
-        enabled: yes
-      when: type == 'asterisk'
-      tags: [setup, asterisk]
-
-    - name: Set Asterisk external address from inventory ansible_host
-      ansible.builtin.set_fact:
-        asterisk_externaddr: "{{ ansible_host }}"
-      when: type == 'asterisk'
-      tags: [setup, asterisk]
-
-    - name: Deploy Asterisk PJSIP configuration (templated)
-      ansible.builtin.template:
-        src: asterisk/pjsip.conf.j2
-        dest: /etc/asterisk/pjsip.conf
-        owner: root
-        group: root
-        mode: "0644"
-      no_log: true
-      when: type == 'asterisk'
-      notify: Restart asterisk
-      tags: [setup, asterisk]
-
-
-    - name: Deploy Asterisk dialplan (extensions.conf)
-      ansible.builtin.copy:
-        src: asterisk/extensions.conf
-        dest: /etc/asterisk/extensions.conf
-        owner: root
-        group: root
-        mode: "0644"
-      when: type == 'asterisk'
-      notify: Restart asterisk
-      tags: [setup, asterisk]
-
-    - name: Deploy Asterisk RTP configuration (rtp.conf)
-      ansible.builtin.copy:
-        src: asterisk/rtp.conf
-        dest: /etc/asterisk/rtp.conf
-        owner: root
-        group: root
-        mode: "0644"
-      when: type == 'asterisk'
-      notify: Restart asterisk
-      tags: [setup, asterisk]
-
-    - name: Start Asterisk service
-      ansible.builtin.systemd:
-        name: asterisk
-        state: started
-      when: type == 'asterisk'
-      tags: [setup, asterisk]
 
     # ============================================================================
     # STOP TASKS
