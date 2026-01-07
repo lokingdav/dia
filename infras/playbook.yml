@@ -254,6 +254,15 @@
       when: type == 'client'
       tags: [setup, baresip]
 
+    - name: Create symlink for ua command
+      ansible.builtin.file:
+        src: /home/ubuntu/.baresip/ua.sh
+        dest: /usr/local/bin/ua
+        state: link
+        force: yes
+      when: type == 'client'
+      tags: [setup, baresip]
+
     - name: Copy baresip systemd service file
       ansible.builtin.copy:
         src: baresip/baresip.service
