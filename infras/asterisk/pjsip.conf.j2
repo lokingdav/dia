@@ -16,13 +16,13 @@ external_media_address={{ asterisk_externaddr }}
 ; set this to your VPC CIDR
 local_net=172.31.0.0/16
 
-; -------- Common endpoint policy --------
+; -------- Common endpoint policy (TEMPLATE) --------
 [endpoint-common](!)
 type=endpoint
 context=from-internal
 disallow=all
 allow=ulaw,alaw
-; add opus only if you know endpoints support it and module exists
+; enable only if you know you have codec + endpoints
 ;allow=opus
 
 ; NAT helpers for typical internet clients
@@ -30,25 +30,24 @@ rtp_symmetric=yes
 force_rport=yes
 rewrite_contact=yes
 
-; Avoid endpoint-to-endpoint direct media (keeps Asterisk in path; easier on EC2)
+; Keep Asterisk in media path (simpler on EC2)
 direct_media=no
 
 {% for ext in asterisk_extensions %}
-[{{ ext.id }}]
+; Endpoint name == extension number (easy dialing)
+[{{ ext.id }}](endpoint-common)
 type=endpoint
-inherit=endpoint-common
-auth={{ ext.id }}
-aors={{ ext.id }}
+auth={{ ext.id }}-auth
+aors={{ ext.id }}-aor
 
-[{{ ext.id }}]
+[{{ ext.id }}-auth]
 type=auth
 auth_type=userpass
 username={{ ext.id }}
 password={{ ext.password }}
 
-[{{ ext.id }}]
+[{{ ext.id }}-aor]
 type=aor
 max_contacts=1
 remove_existing=yes
-
 {% endfor %}

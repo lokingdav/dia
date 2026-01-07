@@ -1,0 +1,5 @@
+asterisk_extensions:
+  - id: "1001"
+    password: "secret"
+  - id: "1002"
+    password: "secret"
