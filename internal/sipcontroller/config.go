@@ -38,6 +38,9 @@ type Config struct {
 	ExperimentPhone       string
 	ExperimentRuns        int
 	ExperimentConcurrency int
+
+	// Output
+	OutputCSV string
 }
 
 // ParseFlags parses command line flags and returns Config
@@ -60,6 +63,7 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.ExperimentPhone, "phone", "", "Phone number/URI to dial for -experiment")
 	flag.IntVar(&cfg.ExperimentRuns, "runs", 1, "Number of calls to place in -experiment")
 	flag.IntVar(&cfg.ExperimentConcurrency, "concurrency", 1, "Max in-flight calls for -experiment")
+	flag.StringVar(&cfg.OutputCSV, "csv", "", "Write experiment results to a CSV file")
 
 	flag.Parse()
 

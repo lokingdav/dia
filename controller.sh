@@ -7,6 +7,7 @@ HOSTS_YML="$ROOT_DIR/infras/hosts.yml"
 BARESIP_PORT="${BARESIP_PORT:-4444}"
 RELAY_PORT="${RELAY_PORT:-50052}"
 DEFAULT_ODA_ATTRS="${ODA_ATTRS:-name,issuer}"
+DEFAULT_CSV_DIR="${CSV_DIR:-$ROOT_DIR/results}"
 
 usage() {
   cat <<EOF
@@ -26,8 +27,8 @@ Usage:
   $0 recv-int-oda <account> [attrs]
 
   # Caller batch experiments (prints JSONL results)
-  $0 call-base <account> <phone_or_uri> [runs] [concurrency]
-  $0 call-int  <account> <phone_or_uri> [runs] [concurrency]
+  $0 call-base <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
+  $0 call-int  <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
 
   # Start two interactive controllers (tries tmux; otherwise prints commands)
   $0 pair <accountA> <accountB>
@@ -36,6 +37,7 @@ Notes:
   - Account selects client automatically: 1XXX -> client-1, 2XXX -> client-2
   - Env file is inferred as: .env.<account> (e.g. .env.1001)
   - Addresses are read from: infras/hosts.yml
+  - call-* writes CSV by default to: results/<mode>_<account>_<timestamp>.csv (override with -csv)
 
 Examples:
   $0 it 1001
@@ -124,6 +126,25 @@ split_passthrough() {
   printf '%s\n' "${before[*]}" "${after[*]}"
 }
 
+has_csv_flag() {
+  for a in "$@"; do
+    case "$a" in
+      -csv|-csv=*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+default_csv_path() {
+  local mode="$1"
+  local account="$2"
+  local ts
+  ts="$(date +%Y%m%d-%H%M%S)"
+  echo "$DEFAULT_CSV_DIR/${mode}_${account}_${ts}.csv"
+}
+
 cmd=${1:-}
 shift || true
 
@@ -194,11 +215,17 @@ case "$cmd" in
     phone=${2:-}
     runs=${3:-1}
     conc=${4:-1}
-    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-base <account> <phone_or_uri> [runs] [concurrency]"
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-base <account> <phone_or_uri> [runs] [concurrency] [-- extra flags]"
+    shift 4 || true
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path baseline "$account")\""
+    fi
+    read -r before after < <(split_passthrough "$@")
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    eval "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc"
+    eval "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
     ;;
 
   call-int)
@@ -206,11 +233,17 @@ case "$cmd" in
     phone=${2:-}
     runs=${3:-1}
     conc=${4:-1}
-    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-int <account> <phone_or_uri> [runs] [concurrency]"
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-int <account> <phone_or_uri> [runs] [concurrency] [-- extra flags]"
+    shift 4 || true
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
+    fi
+    read -r before after < <(split_passthrough "$@")
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    eval "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc"
+    eval "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
     ;;
 
   pair)

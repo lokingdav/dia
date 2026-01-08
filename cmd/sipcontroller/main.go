@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -41,7 +43,12 @@ func main() {
 		if cfg.ExperimentPhone == "" {
 			log.Fatalf("-phone is required when -experiment is set")
 		}
-		if err := runExperiment(controller, cfg.ExperimentMode, cfg.ExperimentPhone, cfg.ExperimentRuns, cfg.ExperimentConcurrency); err != nil {
+		if err := runExperiment(ctx, controller, cfg, cfg.ExperimentMode, cfg.ExperimentPhone, cfg.ExperimentRuns, cfg.ExperimentConcurrency); err != nil {
+			if err == context.Canceled {
+				// Graceful Ctrl+C
+				controller.Stop()
+				return
+			}
 			log.Fatalf("Experiment failed: %v", err)
 		}
 		controller.Stop()
@@ -67,7 +74,7 @@ func main() {
 	log.Println("")
 
 	// Start command input loop
-	go commandLoop(controller, stop)
+	go commandLoop(ctx, controller, cfg, stop)
 
 	// Wait for shutdown signal
 	<-ctx.Done()
@@ -78,7 +85,7 @@ func main() {
 }
 
 // commandLoop reads commands from stdin
-func commandLoop(controller *sipcontroller.Controller, stop context.CancelFunc) {
+func commandLoop(ctx context.Context, controller *sipcontroller.Controller, cfg *sipcontroller.Config, stop context.CancelFunc) {
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for scanner.Scan() {
@@ -161,7 +168,7 @@ func commandLoop(controller *sipcontroller.Controller, stop context.CancelFunc) 
 			if len(parts) >= 5 {
 				fmt.Sscanf(parts[4], "%d", &conc)
 			}
-			if err := runExperiment(controller, mode, phone, runs, conc); err != nil {
+			if err := runExperiment(ctx, controller, cfg, mode, phone, runs, conc); err != nil {
 				fmt.Printf("Run failed: %v\n", err)
 			}
 
@@ -178,7 +185,7 @@ func commandLoop(controller *sipcontroller.Controller, stop context.CancelFunc) 
 	}
 }
 
-func runExperiment(controller *sipcontroller.Controller, mode, phone string, runs, concurrency int) error {
+func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cfg *sipcontroller.Config, mode, phone string, runs, concurrency int) error {
 	if runs <= 0 {
 		return fmt.Errorf("runs must be > 0")
 	}
@@ -196,6 +203,53 @@ func runExperiment(controller *sipcontroller.Controller, mode, phone string, run
 	}
 
 	log.Printf("[Experiment] mode=%s phone=%s runs=%d concurrency=%d", mode, phone, runs, concurrency)
+
+	var csvFile *os.File
+	var csvWriter *csv.Writer
+	if cfg != nil && strings.TrimSpace(cfg.OutputCSV) != "" {
+		path := strings.TrimSpace(cfg.OutputCSV)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
+			return fmt.Errorf("creating csv output dir: %w", err)
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			return fmt.Errorf("creating csv file: %w", err)
+		}
+		csvFile = f
+		csvWriter = csv.NewWriter(f)
+		header := []string{
+			"attempt_id",
+			"call_id",
+			"peer_phone",
+			"peer_uri",
+			"direction",
+			"protocol_enabled",
+			"dial_sent_unix_ms",
+			"answered_unix_ms",
+			"latency_ms",
+			"oda_requested_unix_ms",
+			"oda_completed_unix_ms",
+			"oda_latency_ms",
+			"outcome",
+			"error",
+		}
+		if err := csvWriter.Write(header); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("writing csv header: %w", err)
+		}
+		csvWriter.Flush()
+		if err := csvWriter.Error(); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("flushing csv header: %w", err)
+		}
+		log.Printf("[Experiment] Writing CSV results to %s", path)
+	}
+	if csvFile != nil {
+		defer func() {
+			csvWriter.Flush()
+			_ = csvFile.Close()
+		}()
+	}
 
 	results := controller.Results()
 	started := 0
@@ -223,7 +277,12 @@ func runExperiment(controller *sipcontroller.Controller, mode, phone string, run
 	}
 
 	for completed < runs {
-		res := <-results
+		var res sipcontroller.CallResult
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case res = <-results:
+		}
 		mu.Lock()
 		_, ok := inFlight[res.AttemptID]
 		if ok {
@@ -236,6 +295,31 @@ func runExperiment(controller *sipcontroller.Controller, mode, phone string, run
 
 		if data, err := json.Marshal(res); err == nil {
 			fmt.Println(string(data))
+		}
+		if csvWriter != nil {
+			rec := []string{
+				res.AttemptID,
+				res.CallID,
+				res.PeerPhone,
+				res.PeerURI,
+				res.Direction,
+				fmt.Sprintf("%v", res.ProtocolEnabled),
+				fmt.Sprintf("%d", res.DialSentAtUnixMs),
+				fmt.Sprintf("%d", res.AnsweredAtUnixMs),
+				fmt.Sprintf("%d", res.LatencyMs),
+				fmt.Sprintf("%d", res.ODAReqUnixMs),
+				fmt.Sprintf("%d", res.ODADoneUnixMs),
+				fmt.Sprintf("%d", res.ODALatencyMs),
+				res.Outcome,
+				res.Error,
+			}
+			if err := csvWriter.Write(rec); err != nil {
+				return fmt.Errorf("writing csv record: %w", err)
+			}
+			csvWriter.Flush()
+			if err := csvWriter.Error(); err != nil {
+				return fmt.Errorf("flushing csv: %w", err)
+			}
 		}
 		completed++
 
