@@ -120,6 +120,14 @@ func (c *Controller) handleBaresipEvent(event BaresipEvent) {
 	case EventCallIncoming:
 		c.handleIncomingCall(event)
 
+	case EventCallRemoteSDP:
+		// Some baresip setups don't emit CALL_INCOMING; the callee may only see
+		// CALL_REMOTE_SDP (class=other) before any CALL_* (class=call) events.
+		// If we don't have a session yet, treat this as the incoming-call signal.
+		if c.callMgr.GetByCallID(event.ID) == nil {
+			c.handleIncomingCall(event)
+		}
+
 	case EventCallOutgoing:
 		c.handleCallOutgoing(event)
 

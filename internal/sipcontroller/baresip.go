@@ -15,6 +15,8 @@ type BaresipEventType string
 
 const (
 	EventCallIncoming    BaresipEventType = "CALL_INCOMING"
+	EventCallRemoteSDP   BaresipEventType = "CALL_REMOTE_SDP"
+	EventCallLocalSDP    BaresipEventType = "CALL_LOCAL_SDP"
 	EventCallOutgoing    BaresipEventType = "CALL_OUTGOING"
 	EventCallRinging     BaresipEventType = "CALL_RINGING"
 	EventCallProgress    BaresipEventType = "CALL_PROGRESS"

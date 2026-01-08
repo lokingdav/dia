@@ -26,8 +26,8 @@ Usage:
   $0 recv-int-oda <account> [attrs]
 
   # Caller batch experiments (prints JSONL results)
-  $0 call-base <account> <phone_or_uri> <runs> [concurrency]
-  $0 call-int  <account> <phone_or_uri> <runs> [concurrency]
+  $0 call-base <account> <phone_or_uri> [runs] [concurrency]
+  $0 call-int  <account> <phone_or_uri> [runs] [concurrency]
 
   # Start two interactive controllers (tries tmux; otherwise prints commands)
   $0 pair <accountA> <accountB>
@@ -192,9 +192,9 @@ case "$cmd" in
   call-base)
     account=${1:-}
     phone=${2:-}
-    runs=${3:-}
+    runs=${3:-1}
     conc=${4:-1}
-    [[ -n "$account" && -n "$phone" && -n "$runs" ]] || die "usage: $0 call-base <account> <phone_or_uri> <runs> [concurrency]"
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-base <account> <phone_or_uri> [runs] [concurrency]"
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
@@ -204,9 +204,9 @@ case "$cmd" in
   call-int)
     account=${1:-}
     phone=${2:-}
-    runs=${3:-}
+    runs=${3:-1}
     conc=${4:-1}
-    [[ -n "$account" && -n "$phone" && -n "$runs" ]] || die "usage: $0 call-int <account> <phone_or_uri> <runs> [concurrency]"
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-int <account> <phone_or_uri> [runs] [concurrency]"
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
