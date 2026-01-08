@@ -257,6 +257,11 @@ func (c *Controller) emitResult(r CallResult) {
 	}
 
 	// Also log JSON for easy automation.
+	// In experiments we typically print a single record per attempt from main,
+	// so avoid duplicating noisy close records when the call was already answered.
+	if r.Outcome == "closed" && !c.config.Verbose && r.AnsweredAtUnixMs != 0 {
+		return
+	}
 	if data, err := json.Marshal(r); err == nil {
 		log.Printf("[Result] %s", string(data))
 	}
@@ -953,7 +958,16 @@ func (c *Controller) handleCallClosed(event BaresipEvent) {
 		return
 	}
 
-	log.Printf("[Controller] Call %s closed: %s", event.ID, event.Param)
+	// This often contains low-level socket text (e.g., ECONNRESET from media) even
+	// for normal teardown. Only surface the reason by default if the call closed
+	// before we observed it as answered/established.
+	if session.AnsweredAt.IsZero() {
+		log.Printf("[Controller] Call %s closed before answer: %s", event.ID, event.Param)
+	} else if c.config.Verbose {
+		log.Printf("[Controller] Call %s closed: %s", event.ID, event.Param)
+	} else {
+		log.Printf("[Controller] Call %s closed", event.ID)
+	}
 
 	// Send DIA BYE message if DIA is active
 	if session.DIAController != nil && session.DIAState != nil {
