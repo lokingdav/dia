@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // BaresipEventType represents Baresip call event types
@@ -62,6 +63,7 @@ type BaresipClient struct {
 	conn    net.Conn
 	encoder *NetstringEncoder
 	decoder *NetstringDecoder
+	writeMu sync.Mutex
 
 	eventChan    chan BaresipEvent
 	responseChan chan BaresipResponse
@@ -70,6 +72,7 @@ type BaresipClient struct {
 	tokenCounter atomic.Uint64
 	pendingCmds  map[string]chan BaresipResponse
 	pendingMu    sync.Mutex
+	cmdTimeout   time.Duration
 
 	closed   atomic.Bool
 	closedCh chan struct{}
@@ -87,6 +90,7 @@ func NewBaresipClient(addr string, verbose bool) *BaresipClient {
 		pendingCmds:  make(map[string]chan BaresipResponse),
 		closedCh:     make(chan struct{}),
 		verbose:      verbose,
+		cmdTimeout:   2 * time.Second,
 	}
 }
 
@@ -198,8 +202,8 @@ func (b *BaresipClient) readLoop() {
 	}
 }
 
-// sendCommand sends a command and waits for response
-func (b *BaresipClient) sendCommand(cmd, params string) (*BaresipResponse, error) {
+// sendCommandCore sends a command, returning the time at which the netstring was written.
+func (b *BaresipClient) sendCommandCore(cmd, params string) (*BaresipResponse, time.Time, error) {
 	token := fmt.Sprintf("tok%d", b.tokenCounter.Add(1))
 
 	command := BaresipCommand{
@@ -210,7 +214,7 @@ func (b *BaresipClient) sendCommand(cmd, params string) (*BaresipResponse, error
 
 	data, err := json.Marshal(command)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling command: %w", err)
+		return nil, time.Time{}, fmt.Errorf("marshaling command: %w", err)
 	}
 
 	// Register pending command
@@ -223,25 +227,53 @@ func (b *BaresipClient) sendCommand(cmd, params string) (*BaresipResponse, error
 		log.Printf("[Baresip] Sending: %s", string(data))
 	}
 
-	if err := b.encoder.Encode(data); err != nil {
+	b.writeMu.Lock()
+	sentAt := time.Now()
+	err = b.encoder.Encode(data)
+	b.writeMu.Unlock()
+	if err != nil {
 		b.pendingMu.Lock()
 		delete(b.pendingCmds, token)
 		b.pendingMu.Unlock()
-		return nil, fmt.Errorf("sending command: %w", err)
+		return nil, time.Time{}, fmt.Errorf("sending command: %w", err)
 	}
 
 	// Wait for response
 	select {
 	case resp := <-respChan:
-		return &resp, nil
+		return &resp, sentAt, nil
 	case <-b.closedCh:
-		return nil, fmt.Errorf("connection closed")
+		b.pendingMu.Lock()
+		delete(b.pendingCmds, token)
+		b.pendingMu.Unlock()
+		return nil, time.Time{}, fmt.Errorf("connection closed")
+	case <-time.After(b.cmdTimeout):
+		b.pendingMu.Lock()
+		delete(b.pendingCmds, token)
+		b.pendingMu.Unlock()
+		return nil, time.Time{}, fmt.Errorf("command timeout: %s", cmd)
 	}
+}
+
+// sendCommand sends a command and waits for response.
+func (b *BaresipClient) sendCommand(cmd, params string) (*BaresipResponse, error) {
+	resp, _, err := b.sendCommandCore(cmd, params)
+	return resp, err
+}
+
+// sendCommandWithSentAt sends a command and returns the netstring write timestamp.
+func (b *BaresipClient) sendCommandWithSentAt(cmd, params string) (*BaresipResponse, time.Time, error) {
+	return b.sendCommandCore(cmd, params)
 }
 
 // Dial initiates an outgoing call
 func (b *BaresipClient) Dial(uri string) (*BaresipResponse, error) {
 	return b.sendCommand("dial", uri)
+}
+
+// DialWithSentAt initiates an outgoing call and returns the timestamp at which the dial command was written.
+func (b *BaresipClient) DialWithSentAt(uri string) (*BaresipResponse, time.Time, error) {
+	return b.sendCommandWithSentAt("dial", uri)
 }
 
 // Accept answers an incoming call

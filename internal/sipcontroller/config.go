@@ -13,6 +13,7 @@ import (
 type Config struct {
 	// Baresip ctrl_tcp connection
 	BaresipAddr string
+	SipAccount  string
 
 	// DIA configuration
 	DIAEnvFile string
@@ -26,12 +27,19 @@ type Config struct {
 
 	// Debug
 	Verbose bool
+
+	// Experiments (optional, non-interactive)
+	ExperimentMode        string
+	ExperimentPhone       string
+	ExperimentRuns        int
+	ExperimentConcurrency int
 }
 
 // ParseFlags parses command line flags and returns Config
 func ParseFlags() *Config {
 	cfg := &Config{}
 
+	flag.StringVar(&cfg.SipAccount, "account", "", "User SIP account number")
 	flag.StringVar(&cfg.BaresipAddr, "baresip", "localhost:4444", "Baresip ctrl_tcp address")
 	flag.StringVar(&cfg.DIAEnvFile, "env", "", "Path to .env file with DIA credentials (required)")
 	flag.StringVar(&cfg.RelayAddr, "relay", "localhost:50052", "DIA relay server address")
@@ -40,6 +48,10 @@ func ParseFlags() *Config {
 	flag.BoolVar(&cfg.AutoODA, "auto-oda", false, "Automatically trigger ODA after RUA")
 	odaAttrs := flag.String("oda-attrs", "", "Comma-separated ODA attributes to request")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging")
+	flag.StringVar(&cfg.ExperimentMode, "experiment", "", "Run experiment mode: baseline|integrated")
+	flag.StringVar(&cfg.ExperimentPhone, "phone", "", "Phone number/URI to dial for -experiment")
+	flag.IntVar(&cfg.ExperimentRuns, "runs", 1, "Number of calls to place in -experiment")
+	flag.IntVar(&cfg.ExperimentConcurrency, "concurrency", 1, "Max in-flight calls for -experiment")
 
 	flag.Parse()
 

@@ -2,6 +2,7 @@ package sipcontroller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -19,6 +20,24 @@ type Controller struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	results chan CallResult
+}
+
+// CallResult is emitted when a call reaches a terminal measurement state.
+// For experiments, we primarily emit when CALL_ANSWERED is observed.
+type CallResult struct {
+	AttemptID        string `json:"attempt_id"`
+	CallID           string `json:"call_id"`
+	PeerPhone        string `json:"peer_phone"`
+	PeerURI          string `json:"peer_uri"`
+	Direction        string `json:"direction"`
+	ProtocolEnabled  bool   `json:"protocol_enabled"`
+	DialSentAtUnixMs int64  `json:"dial_sent_unix_ms"`
+	AnsweredAtUnixMs int64  `json:"answered_unix_ms,omitempty"`
+	LatencyMs        int64  `json:"latency_ms,omitempty"`
+	Outcome          string `json:"outcome"` // answered | closed | error
+	Error            string `json:"error,omitempty"`
 }
 
 // NewController creates a new SIP controller
@@ -31,7 +50,13 @@ func NewController(cfg *Config, diaCfg *dia.Config) *Controller {
 		callMgr:   NewCallManager(),
 		ctx:       ctx,
 		cancel:    cancel,
+		results:   make(chan CallResult, 1000),
 	}
+}
+
+// Results returns a stream of per-call results for experiments.
+func (c *Controller) Results() <-chan CallResult {
+	return c.results
 }
 
 // Start connects to Baresip and starts the event loop
@@ -92,8 +117,14 @@ func (c *Controller) handleBaresipEvent(event BaresipEvent) {
 	case EventCallIncoming:
 		c.handleIncomingCall(event)
 
+	case EventCallOutgoing:
+		c.handleCallOutgoing(event)
+
 	case EventCallRinging:
 		c.handleCallRinging(event)
+
+	case EventCallAnswered:
+		c.handleCallAnswered(event)
 
 	case EventCallEstablished:
 		c.handleCallEstablished(event)
@@ -112,37 +143,79 @@ func (c *Controller) handleBaresipEvent(event BaresipEvent) {
 	}
 }
 
-// InitiateOutgoingCall starts an outgoing call with DIA + Baresip dial
-func (c *Controller) InitiateOutgoingCall(phoneNumber string) error {
-	log.Printf("[Controller] Initiating outgoing call to %s", phoneNumber)
+// InitiateOutgoingCall starts an outgoing call. If protocolEnabled is true, DIA is started in parallel.
+// Returns the controller-generated attempt ID.
+func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bool) (string, error) {
+	log.Printf("[Controller] Initiating outgoing call to %s (protocol=%v)", phoneNumber, protocolEnabled)
 
-	// Create session
-	session := c.callMgr.CreateSession(phoneNumber, "", "outgoing")
+	peerPhone := ExtractPhoneFromURI(phoneNumber)
+
+	// Create outgoing attempt (call-id not known yet)
+	session := c.callMgr.NewOutgoingAttempt(peerPhone, "", protocolEnabled)
 	session.SetState(StateDIAInitializing)
 
-	// Start DIA protocol in background
-	go c.runOutgoingDIA(session)
+	// Start DIA protocol in background (only when enabled)
+	if protocolEnabled {
+		go c.runOutgoingDIA(session)
+	}
 
-	// Dial via Baresip immediately (parallel with DIA)
-	resp, err := c.baresip.Dial(phoneNumber)
+	// Dial via Baresip
+	resp, sentAt, err := c.baresip.DialWithSentAt(phoneNumber)
+	session.DialSentAt = sentAt
 	if err != nil {
 		session.LastError = err
+		c.emitResult(CallResult{
+			AttemptID:        session.AttemptID,
+			CallID:           session.CallID,
+			PeerPhone:        session.PeerPhone,
+			PeerURI:          session.PeerURI,
+			Direction:        session.Direction,
+			ProtocolEnabled:  session.ProtocolEnabled,
+			DialSentAtUnixMs: sentAt.UnixMilli(),
+			Outcome:          "error",
+			Error:            err.Error(),
+		})
 		session.Cleanup()
 		c.callMgr.RemoveSession(session)
-		return fmt.Errorf("baresip dial failed: %w", err)
+		return "", fmt.Errorf("baresip dial failed: %w", err)
 	}
 
 	if !resp.OK {
-		session.LastError = fmt.Errorf("baresip dial rejected: %s", resp.Data)
+		err := fmt.Errorf("baresip dial rejected: %s", resp.Data)
+		session.LastError = err
+		c.emitResult(CallResult{
+			AttemptID:        session.AttemptID,
+			CallID:           session.CallID,
+			PeerPhone:        session.PeerPhone,
+			PeerURI:          session.PeerURI,
+			Direction:        session.Direction,
+			ProtocolEnabled:  session.ProtocolEnabled,
+			DialSentAtUnixMs: sentAt.UnixMilli(),
+			Outcome:          "error",
+			Error:            err.Error(),
+		})
 		session.Cleanup()
 		c.callMgr.RemoveSession(session)
-		return session.LastError
+		return "", err
 	}
 
 	session.SetState(StateBaresipDialing)
-	log.Printf("[Controller] Dial sent for %s: %s", phoneNumber, resp.Data)
+	log.Printf("[Controller] Dial sent (attempt=%s) for %s: %s", session.AttemptID, phoneNumber, resp.Data)
 
-	return nil
+	return session.AttemptID, nil
+}
+
+func (c *Controller) emitResult(r CallResult) {
+	select {
+	case c.results <- r:
+	default:
+		// Avoid blocking controller; drop if overwhelmed.
+	}
+
+	// Also log JSON for easy automation.
+	if data, err := json.Marshal(r); err == nil {
+		log.Printf("[Result] %s", string(data))
+	}
 }
 
 // runOutgoingDIA runs the DIA protocol for an outgoing call
@@ -214,9 +287,7 @@ func (c *Controller) handleIncomingCall(event BaresipEvent) {
 	log.Printf("[Controller] Incoming call from %s (call-id: %s)", peerPhone, event.ID)
 
 	// Create session
-	session := c.callMgr.CreateSession(peerPhone, event.PeerURI, "incoming")
-	session.PeerName = event.PeerName
-	c.callMgr.RegisterCallID(session, event.ID)
+	session := c.callMgr.NewIncomingSession(event.ID, event.PeerURI, event.PeerName, event.AccountAOR)
 
 	session.SetState(StateDIAInitializing)
 
@@ -227,6 +298,20 @@ func (c *Controller) handleIncomingCall(event BaresipEvent) {
 
 	// Run DIA as recipient
 	go c.runIncomingDIA(session)
+}
+
+// handleCallOutgoing binds an outgoing call-id to the next pending attempt for the peer.
+func (c *Controller) handleCallOutgoing(event BaresipEvent) {
+	peerPhone := ExtractPhoneFromURI(event.PeerURI)
+	session := c.callMgr.GetByCallID(event.ID)
+	if session == nil {
+		session = c.callMgr.BindOutgoingCallID(peerPhone, event.ID, event.PeerURI, event.AccountAOR)
+	}
+	if session == nil {
+		log.Printf("[Controller] CALL_OUTGOING for %s (peer=%s) with no pending attempt", event.ID, peerPhone)
+		return
+	}
+	log.Printf("[Controller] Outgoing call bound: attempt=%s call-id=%s peer=%s", session.AttemptID, session.CallID, peerPhone)
 }
 
 // runIncomingDIA runs the DIA protocol for an incoming call
@@ -611,18 +696,49 @@ func (c *Controller) rejectCall(session *CallSession, scode int, reason string) 
 
 // handleCallRinging handles call ringing event
 func (c *Controller) handleCallRinging(event BaresipEvent) {
-	// Try to find session by phone
-	peerPhone := ExtractPhoneFromURI(event.PeerURI)
-	session := c.callMgr.GetByPhone(peerPhone)
+	session := c.callMgr.GetByCallID(event.ID)
 	if session == nil {
-		session = c.callMgr.GetByCallID(event.ID)
+		peerPhone := ExtractPhoneFromURI(event.PeerURI)
+		session = c.callMgr.BindOutgoingCallID(peerPhone, event.ID, event.PeerURI, event.AccountAOR)
+	}
+	if session == nil {
+		return
+	}
+	session.SetState(StateBaresipRinging)
+	log.Printf("[Controller] Call %s ringing", event.ID)
+}
+
+// handleCallAnswered captures the primary experiment metric: caller-side latency to CALL_ANSWERED.
+func (c *Controller) handleCallAnswered(event BaresipEvent) {
+	session := c.callMgr.GetByCallID(event.ID)
+	if session == nil {
+		peerPhone := ExtractPhoneFromURI(event.PeerURI)
+		session = c.callMgr.BindOutgoingCallID(peerPhone, event.ID, event.PeerURI, event.AccountAOR)
+	}
+	if session == nil {
+		log.Printf("[Controller] CALL_ANSWERED for %s with no session", event.ID)
+		return
 	}
 
-	if session != nil {
-		c.callMgr.RegisterCallID(session, event.ID)
-		session.SetState(StateBaresipRinging)
-		log.Printf("[Controller] Call %s ringing", event.ID)
+	now := time.Now()
+	session.AnsweredAt = now
+	lat := int64(0)
+	if !session.DialSentAt.IsZero() {
+		lat = now.Sub(session.DialSentAt).Milliseconds()
 	}
+
+	c.emitResult(CallResult{
+		AttemptID:        session.AttemptID,
+		CallID:           session.CallID,
+		PeerPhone:        session.PeerPhone,
+		PeerURI:          session.PeerURI,
+		Direction:        session.Direction,
+		ProtocolEnabled:  session.ProtocolEnabled,
+		DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
+		AnsweredAtUnixMs: now.UnixMilli(),
+		LatencyMs:        lat,
+		Outcome:          "answered",
+	})
 }
 
 // handleCallEstablished handles call established event
@@ -630,7 +746,7 @@ func (c *Controller) handleCallEstablished(event BaresipEvent) {
 	session := c.callMgr.GetByCallID(event.ID)
 	if session == nil {
 		peerPhone := ExtractPhoneFromURI(event.PeerURI)
-		session = c.callMgr.GetByPhone(peerPhone)
+		session = c.callMgr.BindOutgoingCallID(peerPhone, event.ID, event.PeerURI, event.AccountAOR)
 	}
 
 	if session != nil {
@@ -674,6 +790,19 @@ func (c *Controller) handleCallClosed(event BaresipEvent) {
 	}
 
 	session.SetState(StateClosed)
+	if !session.DialSentAt.IsZero() && session.AnsweredAt.IsZero() {
+		c.emitResult(CallResult{
+			AttemptID:        session.AttemptID,
+			CallID:           session.CallID,
+			PeerPhone:        session.PeerPhone,
+			PeerURI:          session.PeerURI,
+			Direction:        session.Direction,
+			ProtocolEnabled:  session.ProtocolEnabled,
+			DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
+			Outcome:          "closed",
+			Error:            event.Param,
+		})
+	}
 	session.Cleanup()
 	c.callMgr.RemoveSession(session)
 }

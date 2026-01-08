@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dense-identity/denseid/internal/subscriber"
@@ -43,11 +44,18 @@ func (s CallState) String() string {
 // CallSession represents a single call with its DIA and Baresip state
 type CallSession struct {
 	// Identity
-	CallID    string // Baresip call-id
-	PeerPhone string // E.164 phone number
-	PeerURI   string // Full SIP URI
-	PeerName  string // Display name if available
-	Direction string // "outgoing" or "incoming"
+	AttemptID  string // controller-generated attempt ID (unique per dial/invite)
+	CallID     string // Baresip call-id
+	AccountAOR string // Baresip account AOR handling the call (if provided)
+	PeerPhone  string // E.164 phone number
+	PeerURI    string // Full SIP URI
+	PeerName   string // Display name if available
+	Direction  string // "outgoing" or "incoming"
+
+	// Experiment
+	ProtocolEnabled bool
+	DialSentAt      time.Time
+	AnsweredAt      time.Time
 
 	// State
 	State          CallState
@@ -135,53 +143,108 @@ func (s *CallSession) Cleanup() {
 
 // CallManager manages multiple concurrent call sessions
 type CallManager struct {
-	sessions map[string]*CallSession // callID -> session
-	byPhone  map[string]*CallSession // phone -> session (for lookup before callID known)
-	mu       sync.RWMutex
+	attemptCounter atomic.Uint64
+
+	byAttempt map[string]*CallSession // attemptID -> session
+	byCallID  map[string]*CallSession // callID -> session
+
+	// Outgoing calls are created before call-id is known.
+	// We associate subsequent CALL_OUTGOING/CALL_RINGING events to the oldest
+	// pending attempt for that peer.
+	pendingByPeer map[string][]*CallSession // peerPhone -> FIFO queue of sessions
+
+	mu sync.RWMutex
 }
 
 // NewCallManager creates a new call manager
 func NewCallManager() *CallManager {
 	return &CallManager{
-		sessions: make(map[string]*CallSession),
-		byPhone:  make(map[string]*CallSession),
+		byAttempt:     make(map[string]*CallSession),
+		byCallID:      make(map[string]*CallSession),
+		pendingByPeer: make(map[string][]*CallSession),
 	}
 }
 
-// CreateSession creates a new call session
-func (m *CallManager) CreateSession(peerPhone, peerURI, direction string) *CallSession {
-	session := NewCallSession(peerPhone, peerURI, direction)
+// NewOutgoingAttempt creates a new outgoing call attempt.
+// It does not yet have a Baresip call-id; that will be bound when we observe
+// CALL_OUTGOING (or another call event carrying the call-id).
+func (m *CallManager) NewOutgoingAttempt(peerPhone, peerURI string, protocolEnabled bool) *CallSession {
+	attemptID := fmt.Sprintf("a%d", m.attemptCounter.Add(1))
+	session := NewCallSession(peerPhone, peerURI, "outgoing")
+	session.AttemptID = attemptID
+	session.ProtocolEnabled = protocolEnabled
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	// Index by phone number initially (callID not yet known for outgoing)
-	m.byPhone[peerPhone] = session
+	m.byAttempt[attemptID] = session
+	m.pendingByPeer[peerPhone] = append(m.pendingByPeer[peerPhone], session)
 
 	return session
 }
 
-// RegisterCallID associates a callID with an existing session
-func (m *CallManager) RegisterCallID(session *CallSession, callID string) {
+// NewIncomingSession creates and registers an incoming session with a known call-id.
+func (m *CallManager) NewIncomingSession(callID, peerURI, peerName, accountAOR string) *CallSession {
+	peerPhone := ExtractPhoneFromURI(peerURI)
+	attemptID := fmt.Sprintf("a%d", m.attemptCounter.Add(1))
+	session := NewCallSession(peerPhone, peerURI, "incoming")
+	session.AttemptID = attemptID
+	session.CallID = callID
+	session.PeerName = peerName
+	session.AccountAOR = accountAOR
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.byAttempt[attemptID] = session
+	if callID != "" {
+		m.byCallID[callID] = session
+	}
+
+	return session
+}
+
+// BindOutgoingCallID associates a call-id with the next pending outgoing attempt for the peer.
+// Returns nil if no pending attempt exists.
+func (m *CallManager) BindOutgoingCallID(peerPhone, callID, peerURI, accountAOR string) *CallSession {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	queue := m.pendingByPeer[peerPhone]
+	if len(queue) == 0 {
+		return nil
+	}
+
+	session := queue[0]
+	queue = queue[1:]
+	if len(queue) == 0 {
+		delete(m.pendingByPeer, peerPhone)
+	} else {
+		m.pendingByPeer[peerPhone] = queue
+	}
+
 	session.CallID = callID
-	m.sessions[callID] = session
+	session.PeerURI = peerURI
+	session.AccountAOR = accountAOR
+	if callID != "" {
+		m.byCallID[callID] = session
+	}
+
+	return session
 }
 
 // GetByCallID retrieves a session by call ID
 func (m *CallManager) GetByCallID(callID string) *CallSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.sessions[callID]
+	return m.byCallID[callID]
 }
 
-// GetByPhone retrieves a session by phone number
-func (m *CallManager) GetByPhone(phone string) *CallSession {
+// GetByAttemptID retrieves a session by attempt ID.
+func (m *CallManager) GetByAttemptID(attemptID string) *CallSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return m.byPhone[phone]
+	return m.byAttempt[attemptID]
 }
 
 // RemoveSession removes a session from the manager
@@ -189,11 +252,30 @@ func (m *CallManager) RemoveSession(session *CallSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if session.CallID != "" {
-		delete(m.sessions, session.CallID)
+	if session.AttemptID != "" {
+		delete(m.byAttempt, session.AttemptID)
 	}
-	if session.PeerPhone != "" {
-		delete(m.byPhone, session.PeerPhone)
+	if session.CallID != "" {
+		delete(m.byCallID, session.CallID)
+	}
+
+	// If it was still pending, remove it from the peer queue.
+	peer := session.PeerPhone
+	if peer != "" {
+		queue := m.pendingByPeer[peer]
+		if len(queue) > 0 {
+			filtered := queue[:0]
+			for _, s := range queue {
+				if s != session {
+					filtered = append(filtered, s)
+				}
+			}
+			if len(filtered) == 0 {
+				delete(m.pendingByPeer, peer)
+			} else {
+				m.pendingByPeer[peer] = filtered
+			}
+		}
 	}
 }
 
@@ -202,8 +284,8 @@ func (m *CallManager) GetAllSessions() []*CallSession {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	result := make([]*CallSession, 0, len(m.sessions))
-	for _, s := range m.sessions {
+	result := make([]*CallSession, 0, len(m.byAttempt))
+	for _, s := range m.byAttempt {
 		result = append(result, s)
 	}
 	return result
@@ -213,7 +295,7 @@ func (m *CallManager) GetAllSessions() []*CallSession {
 func (m *CallManager) Count() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return len(m.sessions)
+	return len(m.byAttempt)
 }
 
 // ExtractPhoneFromURI extracts phone number from SIP URI
