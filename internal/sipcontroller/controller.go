@@ -36,6 +36,9 @@ type CallResult struct {
 	DialSentAtUnixMs int64  `json:"dial_sent_unix_ms"`
 	AnsweredAtUnixMs int64  `json:"answered_unix_ms,omitempty"`
 	LatencyMs        int64  `json:"latency_ms,omitempty"`
+	ODAReqUnixMs     int64  `json:"oda_requested_unix_ms,omitempty"`
+	ODADoneUnixMs    int64  `json:"oda_completed_unix_ms,omitempty"`
+	ODALatencyMs     int64  `json:"oda_latency_ms,omitempty"`
 	Outcome          string `json:"outcome"` // answered | closed | error
 	Error            string `json:"error,omitempty"`
 }
@@ -288,6 +291,17 @@ func (c *Controller) handleIncomingCall(event BaresipEvent) {
 
 	// Create session
 	session := c.callMgr.NewIncomingSession(event.ID, event.PeerURI, event.PeerName, event.AccountAOR)
+
+	// Baseline mode: always auto-answer, no DIA.
+	if c.config.IncomingMode == "baseline" {
+		session.ProtocolEnabled = false
+		session.SetState(StateBaresipRinging)
+		c.answerCall(session)
+		return
+	}
+
+	// Integrated mode: run DIA gating, then answer after verification.
+	session.ProtocolEnabled = true
 
 	session.SetState(StateDIAInitializing)
 
@@ -625,6 +639,86 @@ func (c *Controller) handleODAResponse(session *CallSession, rawData []byte) {
 	for name, value := range verification.DisclosedAttributes {
 		log.Printf("[Controller]   %s: %s", name, value)
 	}
+
+	// If this controller initiated ODA (integrated incoming flow), record latency and hang up.
+	if !session.ODARequestedAt.IsZero() && session.ODACompletedAt.IsZero() {
+		now := time.Now()
+		session.ODACompletedAt = now
+		session.CancelODATimeout()
+
+		odaLat := now.Sub(session.ODARequestedAt).Milliseconds()
+		c.emitResult(CallResult{
+			AttemptID:       session.AttemptID,
+			CallID:          session.CallID,
+			PeerPhone:       session.PeerPhone,
+			PeerURI:         session.PeerURI,
+			Direction:       session.Direction,
+			ProtocolEnabled: session.ProtocolEnabled,
+			ODAReqUnixMs:    session.ODARequestedAt.UnixMilli(),
+			ODADoneUnixMs:   now.UnixMilli(),
+			ODALatencyMs:    odaLat,
+			Outcome:         "oda_done",
+		})
+
+		if session.CallID != "" {
+			_, err := c.baresip.Hangup(session.CallID, 0, "")
+			if err != nil {
+				log.Printf("[Controller] Hangup after ODA failed for %s: %v", session.CallID, err)
+			}
+		}
+	}
+}
+
+func (c *Controller) startODAAfterAnswerIfConfigured(session *CallSession) {
+	if c.config.IncomingMode != "integrated" {
+		return
+	}
+	if !c.config.ODAAfterAnswer {
+		return
+	}
+	if !session.IsIncoming() {
+		return
+	}
+	if len(c.config.ODAAttributes) == 0 {
+		return
+	}
+	if session.DIAState == nil || session.DIAController == nil || !session.DIAComplete {
+		log.Printf("[Controller] Cannot start ODA after answer: DIA not complete for %s", session.PeerPhone)
+		return
+	}
+	if !session.ODARequestedAt.IsZero() {
+		return
+	}
+
+	session.ODARequestedAt = time.Now()
+	log.Printf("[Controller] Starting ODA after answer for %s", session.PeerPhone)
+
+	// Start timeout guard
+	if c.config.ODATimeoutSec > 0 {
+		session.ODATimeout = time.AfterFunc(time.Duration(c.config.ODATimeoutSec)*time.Second, func() {
+			if !session.ODARequestedAt.IsZero() && session.ODACompletedAt.IsZero() {
+				now := time.Now()
+				c.emitResult(CallResult{
+					AttemptID:       session.AttemptID,
+					CallID:          session.CallID,
+					PeerPhone:       session.PeerPhone,
+					PeerURI:         session.PeerURI,
+					Direction:       session.Direction,
+					ProtocolEnabled: session.ProtocolEnabled,
+					ODAReqUnixMs:    session.ODARequestedAt.UnixMilli(),
+					ODADoneUnixMs:   now.UnixMilli(),
+					ODALatencyMs:    now.Sub(session.ODARequestedAt).Milliseconds(),
+					Outcome:         "oda_timeout",
+					Error:           "oda timeout",
+				})
+				if session.CallID != "" {
+					_, _ = c.baresip.Hangup(session.CallID, 0, "")
+				}
+			}
+		})
+	}
+
+	go c.triggerODA(session, c.config.ODAAttributes)
 }
 
 // triggerODA initiates an ODA request
@@ -722,23 +816,26 @@ func (c *Controller) handleCallAnswered(event BaresipEvent) {
 
 	now := time.Now()
 	session.AnsweredAt = now
-	lat := int64(0)
-	if !session.DialSentAt.IsZero() {
-		lat = now.Sub(session.DialSentAt).Milliseconds()
+
+	// Caller-side setup latency: only meaningful for outgoing attempts where we captured DialSentAt.
+	if session.IsOutgoing() && !session.DialSentAt.IsZero() {
+		lat := now.Sub(session.DialSentAt).Milliseconds()
+		c.emitResult(CallResult{
+			AttemptID:        session.AttemptID,
+			CallID:           session.CallID,
+			PeerPhone:        session.PeerPhone,
+			PeerURI:          session.PeerURI,
+			Direction:        session.Direction,
+			ProtocolEnabled:  session.ProtocolEnabled,
+			DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
+			AnsweredAtUnixMs: now.UnixMilli(),
+			LatencyMs:        lat,
+			Outcome:          "answered",
+		})
 	}
 
-	c.emitResult(CallResult{
-		AttemptID:        session.AttemptID,
-		CallID:           session.CallID,
-		PeerPhone:        session.PeerPhone,
-		PeerURI:          session.PeerURI,
-		Direction:        session.Direction,
-		ProtocolEnabled:  session.ProtocolEnabled,
-		DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
-		AnsweredAtUnixMs: now.UnixMilli(),
-		LatencyMs:        lat,
-		Outcome:          "answered",
-	})
+	// Recipient-side ODA measurement: start ODA after CALL_ANSWERED in integrated mode.
+	c.startODAAfterAnswerIfConfigured(session)
 }
 
 // handleCallEstablished handles call established event

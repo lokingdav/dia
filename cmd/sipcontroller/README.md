@@ -110,3 +110,33 @@ Fields (typical):
 - If the controller can’t connect to baresip: verify `-baresip host:port` and that `ctrl_tcp` is enabled in baresip.
 - If calls never reach `CALL_ANSWERED`: the remote may not be answering, or baresip may be emitting `CALL_ESTABLISHED` only (check baresip logs).
 - If you see dropped events: run with `-verbose` to inspect raw ctrl messages.
+
+## Integrated incoming + ODA-after-answer
+
+To run the **recipient** in integrated mode (answer after DIA verification, then trigger ODA after `CALL_ANSWERED`, then hang up):
+
+- `-incoming-mode integrated -oda-after-answer -oda-attrs <attrs> [-oda-timeout <seconds>]`
+
+Baseline incoming auto-answer (no DIA):
+
+- `-incoming-mode baseline`
+
+## Convenience wrapper: `controller.sh`
+
+There is a helper script at `denseid/controller.sh` that:
+
+- Reads infra IPs from `denseid/infras/hosts.yml`
+- Infers host from account (1XXX → client-1, 2XXX → client-2)
+- Infers env file as `.env.<account>` (e.g. `.env.1001`)
+- Provides “recipes” so you don’t need to remember controller flags
+
+Default ODA attrs for `recv-int-oda` are `name,issuer` (override via optional arg or `ODA_ATTRS`).
+
+Examples:
+
+- Interactive controller (REPL + logs): `./controller.sh it 1001`
+- Recipient baseline (auto-answer): `./controller.sh recv-base 2002`
+- Recipient integrated + ODA-after-answer: `./controller.sh recv-int-oda 2002`
+- Caller baseline batch: `./controller.sh call-base 1001 +15551234567 50 5`
+- Caller integrated batch: `./controller.sh call-int 1001 +15551234567 50 5`
+- Print resolved IPs: `./controller.sh ips`

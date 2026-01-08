@@ -357,11 +357,13 @@
       ansible.builtin.command: docker ps
       become_user: ubuntu
       register: docker_ps
+      when: type in ['client', 'server']
       tags: [start, start_services, verify]
 
     - name: Display running containers
       ansible.builtin.debug:
         var: docker_ps.stdout_lines
+      when: type in ['client', 'server']
       tags: [start, start_services, verify]
 
     # ============================================================================
@@ -374,6 +376,7 @@
         chdir: "{{ repo_dest }}"
       become_user: ubuntu
       ignore_errors: yes
+      when: type in ['client', 'server']
       tags: [stop, stop_services]
 
     # ============================================================================

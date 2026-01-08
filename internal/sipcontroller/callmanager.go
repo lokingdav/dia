@@ -56,6 +56,9 @@ type CallSession struct {
 	ProtocolEnabled bool
 	DialSentAt      time.Time
 	AnsweredAt      time.Time
+	ODARequestedAt  time.Time
+	ODACompletedAt  time.Time
+	ODATimeout      *time.Timer
 
 	// State
 	State          CallState
@@ -125,9 +128,20 @@ func (s *CallSession) CancelTimeout() {
 	}
 }
 
+// CancelODATimeout cancels the ODA timeout if set.
+func (s *CallSession) CancelODATimeout() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ODATimeout != nil {
+		s.ODATimeout.Stop()
+		s.ODATimeout = nil
+	}
+}
+
 // Cleanup releases resources associated with the session
 func (s *CallSession) Cleanup() {
 	s.CancelTimeout()
+	s.CancelODATimeout()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
