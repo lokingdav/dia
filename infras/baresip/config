@@ -11,6 +11,10 @@ module              opus.so
 module              aubridge.so
 module              aufile.so
 
+# without a real audio device.
+audio_player        aubridge,nil
+audio_source        aubridge,nil
+
 # Optional automation/logging
 module              ctrl_tcp.so
 module              uuid.so

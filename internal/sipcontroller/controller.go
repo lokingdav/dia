@@ -800,6 +800,12 @@ func (c *Controller) rejectCall(session *CallSession, scode int, reason string) 
 func (c *Controller) handleCallRinging(event BaresipEvent) {
 	session := c.callMgr.GetByCallID(event.ID)
 	if session == nil {
+		// On the callee, some baresip setups emit CALL_RINGING (direction=incoming)
+		// without a prior CALL_INCOMING. In baseline mode we still want to auto-answer.
+		if event.Direction == "incoming" {
+			c.handleIncomingCall(event)
+			return
+		}
 		peerPhone := ExtractPhoneFromURI(event.PeerURI)
 		session = c.callMgr.BindOutgoingCallID(peerPhone, event.ID, event.PeerURI, event.AccountAOR)
 	}
@@ -819,6 +825,12 @@ func (c *Controller) handleCallAnswered(event BaresipEvent) {
 	}
 	if session == nil {
 		log.Printf("[Controller] CALL_ANSWERED for %s with no session", event.ID)
+		return
+	}
+
+	// Some baresip instances emit CALL_ESTABLISHED but not CALL_ANSWERED; others emit both.
+	// If we've already marked the call as answered (e.g., on ESTABLISHED), don't double-emit.
+	if !session.AnsweredAt.IsZero() {
 		return
 	}
 
@@ -859,6 +871,32 @@ func (c *Controller) handleCallEstablished(event BaresipEvent) {
 		session.SetState(StateBaresipEstablished)
 		log.Printf("[Controller] Call %s established", event.ID)
 
+		// Some baresip setups do not emit CALL_ANSWERED. Treat CALL_ESTABLISHED as the
+		// answer signal if we haven't observed CALL_ANSWERED yet.
+		if session.AnsweredAt.IsZero() {
+			now := time.Now()
+			session.AnsweredAt = now
+
+			if session.IsOutgoing() && !session.DialSentAt.IsZero() {
+				lat := now.Sub(session.DialSentAt).Milliseconds()
+				c.emitResult(CallResult{
+					AttemptID:        session.AttemptID,
+					CallID:           session.CallID,
+					PeerPhone:        session.PeerPhone,
+					PeerURI:          session.PeerURI,
+					Direction:        session.Direction,
+					ProtocolEnabled:  session.ProtocolEnabled,
+					DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
+					AnsweredAtUnixMs: now.UnixMilli(),
+					LatencyMs:        lat,
+					Outcome:          "answered",
+				})
+			}
+
+			// Recipient-side ODA measurement: also allow ODA-after-answer on ESTABLISHED.
+			c.startODAAfterAnswerIfConfigured(session)
+		}
+
 		// Display remote party info if available
 		if session.RemoteParty != nil {
 			log.Printf("[Controller] ===== VERIFIED CALLER =====")
@@ -875,7 +913,37 @@ func (c *Controller) handleCallEstablished(event BaresipEvent) {
 		if session.IsIncoming() && c.config.AutoODA && len(c.config.ODAAttributes) > 0 {
 			go c.triggerODA(session, c.config.ODAAttributes)
 		}
+
+		// Baseline incoming flow: answer then end the call.
+		if session.IsIncoming() && c.config.IncomingMode == "baseline" {
+			c.scheduleBaselineHangup(session)
+		}
 	}
+}
+
+func (c *Controller) scheduleBaselineHangup(session *CallSession) {
+	if session == nil || session.CallID == "" {
+		return
+	}
+
+	session.mu.Lock()
+	if session.BaselineHangupScheduled {
+		session.mu.Unlock()
+		return
+	}
+	session.BaselineHangupScheduled = true
+	session.mu.Unlock()
+
+	go func(callID string) {
+		// Small delay so the caller reliably observes establishment first.
+		time.Sleep(250 * time.Millisecond)
+		_, err := c.baresip.Hangup(callID, 0, "")
+		if err != nil {
+			log.Printf("[Controller] Baseline hangup failed for %s: %v", callID, err)
+			return
+		}
+		log.Printf("[Controller] Baseline hangup sent for %s", callID)
+	}(session.CallID)
 }
 
 // handleCallClosed handles call closed event

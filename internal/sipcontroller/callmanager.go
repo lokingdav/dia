@@ -65,6 +65,9 @@ type CallSession struct {
 	DIAComplete    bool
 	SIPEstablished bool
 
+	// Control flags
+	BaselineHangupScheduled bool
+
 	// DIA components
 	DIAState      *dia.CallState
 	DIAController *subscriber.Controller
