@@ -16,4 +16,4 @@ module              ctrl_tcp.so
 module              uuid.so
 module              debug_cmd.so
 
-ctrl_tcp_listen     127.0.0.1:4444
+ctrl_tcp_listen     0.0.0.0:4444
