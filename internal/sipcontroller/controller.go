@@ -173,6 +173,9 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 	// Dial via Baresip
 	resp, sentAt, err := c.baresip.DialWithSentAt(phoneNumber)
 	session.DialSentAt = sentAt
+	// If the call already reached ANSWERED/ESTABLISHED before the dial command response
+	// was processed, we may already have AnsweredAt. Emit the answered metric now.
+	c.maybeEmitAnsweredResult(session)
 	if err != nil {
 		session.LastError = err
 		c.emitResult(CallResult{
@@ -214,6 +217,36 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 	log.Printf("[Controller] Dial sent (attempt=%s) for %s: %s", session.AttemptID, phoneNumber, resp.Data)
 
 	return session.AttemptID, nil
+}
+
+func (c *Controller) maybeEmitAnsweredResult(session *CallSession) {
+	if session == nil {
+		return
+	}
+	if !session.IsOutgoing() {
+		return
+	}
+	if session.AnsweredResultEmitted {
+		return
+	}
+	if session.DialSentAt.IsZero() || session.AnsweredAt.IsZero() {
+		return
+	}
+
+	lat := session.AnsweredAt.Sub(session.DialSentAt).Milliseconds()
+	c.emitResult(CallResult{
+		AttemptID:        session.AttemptID,
+		CallID:           session.CallID,
+		PeerPhone:        session.PeerPhone,
+		PeerURI:          session.PeerURI,
+		Direction:        session.Direction,
+		ProtocolEnabled:  session.ProtocolEnabled,
+		DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
+		AnsweredAtUnixMs: session.AnsweredAt.UnixMilli(),
+		LatencyMs:        lat,
+		Outcome:          "answered",
+	})
+	session.AnsweredResultEmitted = true
 }
 
 func (c *Controller) emitResult(r CallResult) {
@@ -829,30 +862,12 @@ func (c *Controller) handleCallAnswered(event BaresipEvent) {
 	}
 
 	// Some baresip instances emit CALL_ESTABLISHED but not CALL_ANSWERED; others emit both.
-	// If we've already marked the call as answered (e.g., on ESTABLISHED), don't double-emit.
-	if !session.AnsweredAt.IsZero() {
-		return
+	// If we've already captured AnsweredAt, don't overwrite it.
+	if session.AnsweredAt.IsZero() {
+		session.AnsweredAt = time.Now()
 	}
-
-	now := time.Now()
-	session.AnsweredAt = now
-
-	// Caller-side setup latency: only meaningful for outgoing attempts where we captured DialSentAt.
-	if session.IsOutgoing() && !session.DialSentAt.IsZero() {
-		lat := now.Sub(session.DialSentAt).Milliseconds()
-		c.emitResult(CallResult{
-			AttemptID:        session.AttemptID,
-			CallID:           session.CallID,
-			PeerPhone:        session.PeerPhone,
-			PeerURI:          session.PeerURI,
-			Direction:        session.Direction,
-			ProtocolEnabled:  session.ProtocolEnabled,
-			DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
-			AnsweredAtUnixMs: now.UnixMilli(),
-			LatencyMs:        lat,
-			Outcome:          "answered",
-		})
-	}
+	// Emit answered metric if we have both timestamps.
+	c.maybeEmitAnsweredResult(session)
 
 	// Recipient-side ODA measurement: start ODA after CALL_ANSWERED in integrated mode.
 	c.startODAAfterAnswerIfConfigured(session)
@@ -872,30 +887,14 @@ func (c *Controller) handleCallEstablished(event BaresipEvent) {
 		log.Printf("[Controller] Call %s established", event.ID)
 
 		// Some baresip setups do not emit CALL_ANSWERED. Treat CALL_ESTABLISHED as the
-		// answer signal if we haven't observed CALL_ANSWERED yet.
+		// answer signal (but keep first AnsweredAt if already set).
 		if session.AnsweredAt.IsZero() {
-			now := time.Now()
-			session.AnsweredAt = now
-
-			if session.IsOutgoing() && !session.DialSentAt.IsZero() {
-				lat := now.Sub(session.DialSentAt).Milliseconds()
-				c.emitResult(CallResult{
-					AttemptID:        session.AttemptID,
-					CallID:           session.CallID,
-					PeerPhone:        session.PeerPhone,
-					PeerURI:          session.PeerURI,
-					Direction:        session.Direction,
-					ProtocolEnabled:  session.ProtocolEnabled,
-					DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
-					AnsweredAtUnixMs: now.UnixMilli(),
-					LatencyMs:        lat,
-					Outcome:          "answered",
-				})
-			}
-
-			// Recipient-side ODA measurement: also allow ODA-after-answer on ESTABLISHED.
-			c.startODAAfterAnswerIfConfigured(session)
+			session.AnsweredAt = time.Now()
 		}
+		// Emit answered metric if we have both timestamps.
+		c.maybeEmitAnsweredResult(session)
+		// Recipient-side ODA measurement: also allow ODA-after-answer on ESTABLISHED.
+		c.startODAAfterAnswerIfConfigured(session)
 
 		// Display remote party info if available
 		if session.RemoteParty != nil {
@@ -963,19 +962,29 @@ func (c *Controller) handleCallClosed(event BaresipEvent) {
 	}
 
 	session.SetState(StateClosed)
-	if !session.DialSentAt.IsZero() && session.AnsweredAt.IsZero() {
-		c.emitResult(CallResult{
-			AttemptID:        session.AttemptID,
-			CallID:           session.CallID,
-			PeerPhone:        session.PeerPhone,
-			PeerURI:          session.PeerURI,
-			Direction:        session.Direction,
-			ProtocolEnabled:  session.ProtocolEnabled,
-			DialSentAtUnixMs: session.DialSentAt.UnixMilli(),
-			Outcome:          "closed",
-			Error:            event.Param,
-		})
+	// Always emit a close event for experiments so callers can wait for the call to
+	// actually tear down before starting the next attempt.
+	res := CallResult{
+		AttemptID:       session.AttemptID,
+		CallID:          session.CallID,
+		PeerPhone:       session.PeerPhone,
+		PeerURI:         session.PeerURI,
+		Direction:       session.Direction,
+		ProtocolEnabled: session.ProtocolEnabled,
+		Outcome:         "closed",
+		Error:           event.Param,
 	}
+	if !session.DialSentAt.IsZero() {
+		res.DialSentAtUnixMs = session.DialSentAt.UnixMilli()
+	}
+	if !session.AnsweredAt.IsZero() {
+		res.AnsweredAtUnixMs = session.AnsweredAt.UnixMilli()
+		if !session.DialSentAt.IsZero() {
+			res.LatencyMs = session.AnsweredAt.Sub(session.DialSentAt).Milliseconds()
+		}
+	}
+	c.emitResult(res)
+
 	session.Cleanup()
 	c.callMgr.RemoveSession(session)
 }

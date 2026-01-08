@@ -255,7 +255,11 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 	started := 0
 	completed := 0
 	var mu sync.Mutex
-	inFlight := make(map[string]struct{})
+	type attemptState struct {
+		printed bool
+		closed  bool
+	}
+	inFlight := make(map[string]*attemptState)
 
 	startOne := func() error {
 		attemptID, err := controller.InitiateOutgoingCall(phone, protocolEnabled)
@@ -263,7 +267,7 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 			return err
 		}
 		mu.Lock()
-		inFlight[attemptID] = struct{}{}
+		inFlight[attemptID] = &attemptState{}
 		mu.Unlock()
 		started++
 		return nil
@@ -284,48 +288,69 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 		case res = <-results:
 		}
 		mu.Lock()
-		_, ok := inFlight[res.AttemptID]
-		if ok {
-			delete(inFlight, res.AttemptID)
-		}
+		st, ok := inFlight[res.AttemptID]
 		mu.Unlock()
 		if !ok {
 			continue
 		}
 
-		if data, err := json.Marshal(res); err == nil {
-			fmt.Println(string(data))
+		// Print exactly one record per attempt: prefer the first "answered" (or error/closed if it ends early).
+		if !st.printed {
+			if res.Outcome == "answered" || res.Outcome == "error" || res.Outcome == "closed" {
+				if data, err := json.Marshal(res); err == nil {
+					fmt.Println(string(data))
+				}
+				if csvWriter != nil {
+					rec := []string{
+						res.AttemptID,
+						res.CallID,
+						res.PeerPhone,
+						res.PeerURI,
+						res.Direction,
+						fmt.Sprintf("%v", res.ProtocolEnabled),
+						fmt.Sprintf("%d", res.DialSentAtUnixMs),
+						fmt.Sprintf("%d", res.AnsweredAtUnixMs),
+						fmt.Sprintf("%d", res.LatencyMs),
+						fmt.Sprintf("%d", res.ODAReqUnixMs),
+						fmt.Sprintf("%d", res.ODADoneUnixMs),
+						fmt.Sprintf("%d", res.ODALatencyMs),
+						res.Outcome,
+						res.Error,
+					}
+					if err := csvWriter.Write(rec); err != nil {
+						return fmt.Errorf("writing csv record: %w", err)
+					}
+					csvWriter.Flush()
+					if err := csvWriter.Error(); err != nil {
+						return fmt.Errorf("flushing csv: %w", err)
+					}
+				}
+				st.printed = true
+			}
 		}
-		if csvWriter != nil {
-			rec := []string{
-				res.AttemptID,
-				res.CallID,
-				res.PeerPhone,
-				res.PeerURI,
-				res.Direction,
-				fmt.Sprintf("%v", res.ProtocolEnabled),
-				fmt.Sprintf("%d", res.DialSentAtUnixMs),
-				fmt.Sprintf("%d", res.AnsweredAtUnixMs),
-				fmt.Sprintf("%d", res.LatencyMs),
-				fmt.Sprintf("%d", res.ODAReqUnixMs),
-				fmt.Sprintf("%d", res.ODADoneUnixMs),
-				fmt.Sprintf("%d", res.ODALatencyMs),
-				res.Outcome,
-				res.Error,
-			}
-			if err := csvWriter.Write(rec); err != nil {
-				return fmt.Errorf("writing csv record: %w", err)
-			}
-			csvWriter.Flush()
-			if err := csvWriter.Error(); err != nil {
-				return fmt.Errorf("flushing csv: %w", err)
-			}
-		}
-		completed++
 
-		if started < runs {
-			if err := startOne(); err != nil {
-				return err
+		// Completion gating: don't start a new attempt until this one is actually closed.
+		if res.Outcome == "closed" {
+			st.closed = true
+		}
+		if res.Outcome == "error" {
+			// No call to wait for.
+			st.closed = true
+		}
+
+		if st.closed {
+			mu.Lock()
+			// Double-check it's still in-flight and then remove.
+			if _, ok := inFlight[res.AttemptID]; ok {
+				delete(inFlight, res.AttemptID)
+			}
+			mu.Unlock()
+			completed++
+
+			if started < runs {
+				if err := startOne(); err != nil {
+					return err
+				}
 			}
 		}
 	}

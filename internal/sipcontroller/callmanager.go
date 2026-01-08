@@ -67,6 +67,7 @@ type CallSession struct {
 
 	// Control flags
 	BaselineHangupScheduled bool
+	AnsweredResultEmitted   bool
 
 	// DIA components
 	DIAState      *dia.CallState
