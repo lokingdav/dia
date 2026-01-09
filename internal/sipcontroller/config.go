@@ -17,6 +17,7 @@ type Config struct {
 
 	// DIA configuration
 	DIAEnvFile string
+	SelfPhone  string // extracted from DIAEnvFile (MY_PHONE)
 	RelayAddr  string
 	RelayTLS   bool
 
@@ -90,4 +91,39 @@ func LoadDIAConfig(envFile string) (*dia.Config, error) {
 		return nil, fmt.Errorf("reading env file: %w", err)
 	}
 	return dia.ConfigFromEnv(string(content))
+}
+
+// ExtractSelfPhoneFromDIAEnv returns MY_PHONE from an env-content string.
+// Lines are expected to be in KEY=value format; empty lines and comments are ignored.
+func ExtractSelfPhoneFromDIAEnv(envContent string) string {
+	for _, line := range strings.Split(envContent, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		eq := strings.IndexByte(line, '=')
+		if eq <= 0 {
+			continue
+		}
+		key := strings.TrimSpace(line[:eq])
+		val := strings.TrimSpace(line[eq+1:])
+		if key == "MY_PHONE" {
+			return val
+		}
+	}
+	return ""
+}
+
+// LoadDIAConfigAndSelfPhone loads DIA config and extracts MY_PHONE from the same env file.
+func LoadDIAConfigAndSelfPhone(envFile string) (*dia.Config, string, error) {
+	content, err := os.ReadFile(envFile)
+	if err != nil {
+		return nil, "", fmt.Errorf("reading env file: %w", err)
+	}
+	selfPhone := ExtractSelfPhoneFromDIAEnv(string(content))
+	cfg, err := dia.ConfigFromEnv(string(content))
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, selfPhone, nil
 }

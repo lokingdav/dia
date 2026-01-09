@@ -29,6 +29,7 @@ type Controller struct {
 type CallResult struct {
 	AttemptID        string `json:"attempt_id"`
 	CallID           string `json:"call_id"`
+	SelfPhone        string `json:"self_phone"`
 	PeerPhone        string `json:"peer_phone"`
 	PeerURI          string `json:"peer_uri"`
 	Direction        string `json:"direction"`
@@ -181,6 +182,7 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 		c.emitResult(CallResult{
 			AttemptID:        session.AttemptID,
 			CallID:           session.CallID,
+			SelfPhone:        c.config.SelfPhone,
 			PeerPhone:        session.PeerPhone,
 			PeerURI:          session.PeerURI,
 			Direction:        session.Direction,
@@ -200,6 +202,7 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 		c.emitResult(CallResult{
 			AttemptID:        session.AttemptID,
 			CallID:           session.CallID,
+			SelfPhone:        c.config.SelfPhone,
 			PeerPhone:        session.PeerPhone,
 			PeerURI:          session.PeerURI,
 			Direction:        session.Direction,
@@ -237,6 +240,7 @@ func (c *Controller) maybeEmitAnsweredResult(session *CallSession) {
 	c.emitResult(CallResult{
 		AttemptID:        session.AttemptID,
 		CallID:           session.CallID,
+		SelfPhone:        c.config.SelfPhone,
 		PeerPhone:        session.PeerPhone,
 		PeerURI:          session.PeerURI,
 		Direction:        session.Direction,
@@ -426,6 +430,11 @@ func (c *Controller) runIncomingDIA(session *CallSession) {
 
 // handleDIAMessage handles incoming DIA protocol messages
 func (c *Controller) handleDIAMessage(session *CallSession, data []byte) {
+	if len(data) == 0 {
+		log.Printf("[Controller] Ignoring empty DIA payload")
+		return
+	}
+
 	msg, err := dia.ParseMessage(data)
 	if err != nil {
 		log.Printf("[Controller] Failed to parse DIA message: %v", err)
@@ -696,6 +705,7 @@ func (c *Controller) handleODAResponse(session *CallSession, rawData []byte) {
 		c.emitResult(CallResult{
 			AttemptID:       session.AttemptID,
 			CallID:          session.CallID,
+			SelfPhone:       c.config.SelfPhone,
 			PeerPhone:       session.PeerPhone,
 			PeerURI:         session.PeerURI,
 			Direction:       session.Direction,
@@ -747,6 +757,7 @@ func (c *Controller) startODAAfterAnswerIfConfigured(session *CallSession) {
 				c.emitResult(CallResult{
 					AttemptID:       session.AttemptID,
 					CallID:          session.CallID,
+					SelfPhone:       c.config.SelfPhone,
 					PeerPhone:       session.PeerPhone,
 					PeerURI:         session.PeerURI,
 					Direction:       session.Direction,
@@ -981,6 +992,7 @@ func (c *Controller) handleCallClosed(event BaresipEvent) {
 	res := CallResult{
 		AttemptID:       session.AttemptID,
 		CallID:          session.CallID,
+		SelfPhone:       c.config.SelfPhone,
 		PeerPhone:       session.PeerPhone,
 		PeerURI:         session.PeerURI,
 		Direction:       session.Direction,

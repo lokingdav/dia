@@ -105,7 +105,7 @@ sipcontroller_cmd_base() {
   baresip_addr="${client_ip}:${BARESIP_PORT}"
   relay_addr="${server_ip}:${RELAY_PORT}"
 
-  echo "go run ./cmd/sipcontroller/main.go -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$relay_addr\""
+  echo "go run ./cmd/sipcontroller/main.go -account \"$account\" -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$relay_addr\""
 }
 
 split_passthrough() {
@@ -207,7 +207,11 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    eval "$base_cmd -incoming-mode integrated -oda-after-answer -oda-attrs \"$attrs\"" < /dev/null
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path oda "$account")\""
+    fi
+    eval "$base_cmd -incoming-mode integrated -oda-after-answer -oda-attrs \"$attrs\" $csv_arg" < /dev/null
     ;;
 
   call-base)

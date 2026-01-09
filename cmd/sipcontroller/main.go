@@ -16,14 +16,92 @@ import (
 	"github.com/dense-identity/denseid/internal/sipcontroller"
 )
 
+func openCSV(path string) (*os.File, *csv.Writer, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, nil, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
+		return nil, nil, fmt.Errorf("creating csv output dir: %w", err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating csv file: %w", err)
+	}
+	w := csv.NewWriter(f)
+	header := []string{
+		"attempt_id",
+		"call_id",
+		"self_phone",
+		"peer_phone",
+		"peer_uri",
+		"direction",
+		"protocol_enabled",
+		"dial_sent_unix_ms",
+		"answered_unix_ms",
+		"latency_ms",
+		"oda_requested_unix_ms",
+		"oda_completed_unix_ms",
+		"oda_latency_ms",
+		"outcome",
+		"error",
+	}
+	if err := w.Write(header); err != nil {
+		_ = f.Close()
+		return nil, nil, fmt.Errorf("writing csv header: %w", err)
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		_ = f.Close()
+		return nil, nil, fmt.Errorf("flushing csv header: %w", err)
+	}
+	log.Printf("[CSV] Writing results to %s", path)
+	return f, w, nil
+}
+
+func writeCSVRecord(w *csv.Writer, res sipcontroller.CallResult) error {
+	if w == nil {
+		return nil
+	}
+	rec := []string{
+		res.AttemptID,
+		res.CallID,
+		res.SelfPhone,
+		res.PeerPhone,
+		res.PeerURI,
+		res.Direction,
+		fmt.Sprintf("%v", res.ProtocolEnabled),
+		fmt.Sprintf("%d", res.DialSentAtUnixMs),
+		fmt.Sprintf("%d", res.AnsweredAtUnixMs),
+		fmt.Sprintf("%d", res.LatencyMs),
+		fmt.Sprintf("%d", res.ODAReqUnixMs),
+		fmt.Sprintf("%d", res.ODADoneUnixMs),
+		fmt.Sprintf("%d", res.ODALatencyMs),
+		res.Outcome,
+		res.Error,
+	}
+	if err := w.Write(rec); err != nil {
+		return err
+	}
+	w.Flush()
+	return w.Error()
+}
+
 func main() {
 	// Parse configuration
 	cfg := sipcontroller.ParseFlags()
 
 	// Load DIA config
-	diaCfg, err := sipcontroller.LoadDIAConfig(cfg.DIAEnvFile)
+	diaCfg, selfPhone, err := sipcontroller.LoadDIAConfigAndSelfPhone(cfg.DIAEnvFile)
 	if err != nil {
 		log.Fatalf("Failed to load DIA config: %v", err)
+	}
+	if strings.TrimSpace(selfPhone) != "" {
+		cfg.SelfPhone = selfPhone
+	} else {
+		cfg.SelfPhone = strings.TrimSpace(cfg.SipAccount)
+		if cfg.SelfPhone == "" {
+			log.Printf("[Config] Warning: MY_PHONE not found in DIA env file and -account not set; CSV self_phone will be empty")
+		}
 	}
 
 	// Create controller
@@ -53,6 +131,46 @@ func main() {
 		}
 		controller.Stop()
 		return
+	}
+
+	// Non-experiment mode: optionally write results (including incoming ODA outcomes)
+	// to CSV. This is useful for receiver processes like recv-int-oda.
+	var csvFile *os.File
+	var csvWriter *csv.Writer
+	if strings.TrimSpace(cfg.OutputCSV) != "" {
+		f, w, err := openCSV(strings.TrimSpace(cfg.OutputCSV))
+		if err != nil {
+			log.Fatalf("CSV init failed: %v", err)
+		}
+		csvFile = f
+		csvWriter = w
+		defer func() {
+			if csvWriter != nil {
+				csvWriter.Flush()
+			}
+			if csvFile != nil {
+				_ = csvFile.Close()
+			}
+		}()
+
+		go func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case res := <-controller.Results():
+					// Receiver CSVs (e.g., recv-int-oda) are intended to capture protocol
+					// outcomes like oda_done/oda_timeout. The controller also emits a
+					// synthetic "closed" result for lifecycle gating, which is noisy here.
+					if cfg.IncomingMode != "" && res.Outcome == "closed" {
+						continue
+					}
+					if err := writeCSVRecord(csvWriter, res); err != nil {
+						log.Printf("[CSV] write failed: %v", err)
+					}
+				}
+			}
+		}()
 	}
 
 	log.Println("===== SIP Controller Started =====")
@@ -207,42 +325,13 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 	var csvFile *os.File
 	var csvWriter *csv.Writer
 	if cfg != nil && strings.TrimSpace(cfg.OutputCSV) != "" {
-		path := strings.TrimSpace(cfg.OutputCSV)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
-			return fmt.Errorf("creating csv output dir: %w", err)
-		}
-		f, err := os.Create(path)
+		f, w, err := openCSV(strings.TrimSpace(cfg.OutputCSV))
 		if err != nil {
-			return fmt.Errorf("creating csv file: %w", err)
+			return err
 		}
 		csvFile = f
-		csvWriter = csv.NewWriter(f)
-		header := []string{
-			"attempt_id",
-			"call_id",
-			"peer_phone",
-			"peer_uri",
-			"direction",
-			"protocol_enabled",
-			"dial_sent_unix_ms",
-			"answered_unix_ms",
-			"latency_ms",
-			"oda_requested_unix_ms",
-			"oda_completed_unix_ms",
-			"oda_latency_ms",
-			"outcome",
-			"error",
-		}
-		if err := csvWriter.Write(header); err != nil {
-			_ = f.Close()
-			return fmt.Errorf("writing csv header: %w", err)
-		}
-		csvWriter.Flush()
-		if err := csvWriter.Error(); err != nil {
-			_ = f.Close()
-			return fmt.Errorf("flushing csv header: %w", err)
-		}
-		log.Printf("[Experiment] Writing CSV results to %s", path)
+		csvWriter = w
+		log.Printf("[Experiment] Writing CSV results to %s", strings.TrimSpace(cfg.OutputCSV))
 	}
 	if csvFile != nil {
 		defer func() {
@@ -301,28 +390,8 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 					fmt.Println(string(data))
 				}
 				if csvWriter != nil {
-					rec := []string{
-						res.AttemptID,
-						res.CallID,
-						res.PeerPhone,
-						res.PeerURI,
-						res.Direction,
-						fmt.Sprintf("%v", res.ProtocolEnabled),
-						fmt.Sprintf("%d", res.DialSentAtUnixMs),
-						fmt.Sprintf("%d", res.AnsweredAtUnixMs),
-						fmt.Sprintf("%d", res.LatencyMs),
-						fmt.Sprintf("%d", res.ODAReqUnixMs),
-						fmt.Sprintf("%d", res.ODADoneUnixMs),
-						fmt.Sprintf("%d", res.ODALatencyMs),
-						res.Outcome,
-						res.Error,
-					}
-					if err := csvWriter.Write(rec); err != nil {
+					if err := writeCSVRecord(csvWriter, res); err != nil {
 						return fmt.Errorf("writing csv record: %w", err)
-					}
-					csvWriter.Flush()
-					if err := csvWriter.Error(); err != nil {
-						return fmt.Errorf("flushing csv: %w", err)
 					}
 				}
 				st.printed = true
