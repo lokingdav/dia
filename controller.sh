@@ -54,6 +54,36 @@ die() {
   exit 1
 }
 
+run_allow_sigint() {
+  # When you Ctrl+C a bash script, bash itself will often exit with 130 even if
+  # the child handles SIGINT gracefully. Run the child in the background and
+  # forward SIGINT so we return the child's real exit code.
+  local cmd="$1"
+  local pid rc interrupted=0
+
+  set +e
+  eval "$cmd" &
+  pid=$!
+
+  trap 'interrupted=1; kill -INT "$pid" 2>/dev/null' INT
+
+  # Wait for the child to exit. If Ctrl+C was pressed, the trap above will
+  # signal the child; we still wait to collect its exit code.
+  wait "$pid"
+  rc=$?
+
+  # With `go run`, the go toolchain may exit 130 on SIGINT even if the actual
+  # program handled SIGINT gracefully and printed its normal shutdown logs.
+  # Treat that as a clean exit for our wrapper purposes.
+  if [[ $interrupted -eq 1 && $rc -eq 130 ]]; then
+    rc=0
+  fi
+
+  trap - INT
+  set -e
+  return $rc
+}
+
 require_file() {
   [[ -f "$1" ]] || die "missing file: $1"
 }
@@ -174,7 +204,7 @@ case "$cmd" in
     echo "[controller.sh] cmd: $base_cmd $before $after" >&2
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    eval "$base_cmd $before $after"
+    run_allow_sigint "$base_cmd $before $after"
     ;;
 
   recv)
@@ -188,7 +218,7 @@ case "$cmd" in
     cd "$ROOT_DIR"
     # Run with stdin closed so it behaves like a daemon-ish log sink.
     # shellcheck disable=SC2086
-    eval "$base_cmd $before $after" < /dev/null
+    run_allow_sigint "$base_cmd $before $after" < /dev/null
     ;;
 
   recv-base)
@@ -197,7 +227,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    eval "$base_cmd -incoming-mode baseline" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode baseline" < /dev/null
     ;;
 
   recv-int-oda)
@@ -211,7 +241,7 @@ case "$cmd" in
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path oda "$account")\""
     fi
-    eval "$base_cmd -incoming-mode integrated -oda-after-answer -oda-attrs \"$attrs\" $csv_arg" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated -oda-after-answer -oda-attrs \"$attrs\" $csv_arg" < /dev/null
     ;;
 
   call-base)
@@ -229,7 +259,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    eval "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
+    run_allow_sigint "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
     ;;
 
   call-int)
@@ -247,7 +277,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    eval "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
+    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
     ;;
 
   pair)
