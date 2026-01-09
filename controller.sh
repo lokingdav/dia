@@ -133,7 +133,7 @@ sipcontroller_cmd_base() {
 
   local baresip_addr relay_addr
   baresip_addr="${client_ip}:${BARESIP_PORT}"
-  relay_addr="${server_ip}:${RELAY_PORT}"
+  relay_addr="localhost:${RELAY_PORT}"
 
   echo "go run ./cmd/sipcontroller/main.go -account \"$account\" -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$relay_addr\""
 }

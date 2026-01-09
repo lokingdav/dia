@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/dense-identity/denseid/internal/subscriber"
@@ -22,6 +23,9 @@ type Controller struct {
 	cancel context.CancelFunc
 
 	results chan CallResult
+
+	registeredOnce sync.Once
+	registeredCh   chan struct{}
 }
 
 // CallResult is emitted when a call reaches a terminal measurement state.
@@ -48,13 +52,42 @@ type CallResult struct {
 func NewController(cfg *Config, diaCfg *dia.Config) *Controller {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Controller{
-		config:    cfg,
-		diaConfig: diaCfg,
-		baresip:   NewBaresipClient(cfg.BaresipAddr, cfg.Verbose),
-		callMgr:   NewCallManager(),
-		ctx:       ctx,
-		cancel:    cancel,
-		results:   make(chan CallResult, 1000),
+		config:       cfg,
+		diaConfig:    diaCfg,
+		baresip:      NewBaresipClient(cfg.BaresipAddr, cfg.Verbose),
+		callMgr:      NewCallManager(),
+		ctx:          ctx,
+		cancel:       cancel,
+		results:      make(chan CallResult, 1000),
+		registeredCh: make(chan struct{}),
+	}
+}
+
+func (c *Controller) markRegistered() {
+	c.registeredOnce.Do(func() {
+		close(c.registeredCh)
+	})
+}
+
+// WaitForRegister blocks until the controller observes a REGISTER_OK event.
+func (c *Controller) WaitForRegister(ctx context.Context, timeout time.Duration) error {
+	// Fast-path if already registered
+	select {
+	case <-c.registeredCh:
+		return nil
+	default:
+	}
+
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.registeredCh:
+		return nil
+	case <-t.C:
+		return fmt.Errorf("timeout waiting for REGISTER_OK")
 	}
 }
 
@@ -68,6 +101,13 @@ func (c *Controller) Start() error {
 	// Connect to Baresip
 	if err := c.baresip.Connect(); err != nil {
 		return fmt.Errorf("connecting to baresip: %w", err)
+	}
+
+	// Best-effort registration snapshot. This avoids guessing based on periodic REGISTER_OK.
+	if resp, err := c.baresip.RegInfo(); err == nil {
+		log.Printf("[Baresip] reginfo ok=%v data=%q", resp.OK, resp.Data)
+	} else {
+		log.Printf("[Baresip] reginfo failed: %v", err)
 	}
 
 	// Start event processing
@@ -114,8 +154,14 @@ func (c *Controller) eventLoop() {
 
 // handleBaresipEvent routes Baresip events to appropriate handlers
 func (c *Controller) handleBaresipEvent(event BaresipEvent) {
-	log.Printf("[Controller] Event: type=%s class=%s id=%s peer=%s",
-		event.Type, event.Class, event.ID, event.PeerURI)
+	// Avoid printing large SDP bodies in logs.
+	if event.Type == EventCallLocalSDP || event.Type == EventCallRemoteSDP {
+		log.Printf("[Controller] Event: type=%s class=%s dir=%s aor=%s id=%s peer=%s",
+			event.Type, event.Class, event.Direction, event.AccountAOR, event.ID, event.PeerURI)
+	} else {
+		log.Printf("[Controller] Event: type=%s class=%s dir=%s aor=%s id=%s peer=%s param=%q",
+			event.Type, event.Class, event.Direction, event.AccountAOR, event.ID, event.PeerURI, event.Param)
+	}
 
 	switch event.Type {
 	case EventCallIncoming:
@@ -148,6 +194,21 @@ func (c *Controller) handleBaresipEvent(event BaresipEvent) {
 		// Call is progressing, may receive early media
 		log.Printf("[Controller] Call %s: progress", event.ID)
 
+	case EventRegisterOK:
+		c.markRegistered()
+		if event.AccountAOR != "" {
+			log.Printf("[Controller] REGISTER_OK: %s", event.AccountAOR)
+		} else {
+			log.Printf("[Controller] REGISTER_OK")
+		}
+
+	case EventRegisterFail:
+		if event.AccountAOR != "" {
+			log.Printf("[Controller] REGISTER_FAIL: %s (%s)", event.AccountAOR, event.Param)
+		} else {
+			log.Printf("[Controller] REGISTER_FAIL: %s", event.Param)
+		}
+
 	default:
 		if c.config.Verbose {
 			log.Printf("[Controller] Unhandled event: %s", event.Type)
@@ -160,7 +221,34 @@ func (c *Controller) handleBaresipEvent(event BaresipEvent) {
 func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bool) (string, error) {
 	log.Printf("[Controller] Initiating outgoing call to %s (protocol=%v)", phoneNumber, protocolEnabled)
 
+	// Best-effort registration snapshot before placing an outgoing call.
+	if resp, err := c.baresip.RegInfo(); err == nil {
+		log.Printf("[Baresip] reginfo ok=%v data=%q", resp.OK, resp.Data)
+	}
+
 	peerPhone := ExtractPhoneFromURI(phoneNumber)
+	if existing := c.callMgr.GetActiveSessionByPeer(peerPhone); existing != nil {
+		err := fmt.Errorf("peer %s already has an active session (attempt=%s call-id=%s state=%s)",
+			peerPhone, existing.AttemptID, existing.CallID, existing.GetState().String())
+		// Emit an error record so experiments remain correlated even when we refuse
+		// to start a second overlapping call.
+		session := c.callMgr.NewOutgoingAttempt(peerPhone, "", protocolEnabled)
+		c.emitResult(CallResult{
+			AttemptID:       session.AttemptID,
+			CallID:          session.CallID,
+			SelfPhone:       c.config.SelfPhone,
+			PeerPhone:       session.PeerPhone,
+			PeerURI:         session.PeerURI,
+			Direction:       session.Direction,
+			ProtocolEnabled: session.ProtocolEnabled,
+			Outcome:         "error",
+			Error:           err.Error(),
+		})
+		session.SetState(StateClosed)
+		session.Cleanup()
+		c.callMgr.RemoveSession(session)
+		return session.AttemptID, err
+	}
 
 	// Create outgoing attempt (call-id not known yet)
 	session := c.callMgr.NewOutgoingAttempt(peerPhone, "", protocolEnabled)
@@ -173,7 +261,42 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 
 	// Dial via Baresip
 	resp, sentAt, err := c.baresip.DialWithSentAt(phoneNumber)
+	if resp != nil {
+		log.Printf("[Baresip] dial ok=%v data=%q", resp.OK, resp.Data)
+	}
 	session.DialSentAt = sentAt
+	// Non-blocking diagnostics: if we never observe a call-id event, capture
+	// listcalls snapshots shortly after dial. This helps distinguish:
+	// - ctrl_tcp dial accepted but baresip did not create a call
+	// - call created but events not arriving / delayed
+	go func(attemptID string) {
+		snapshot := func(delay time.Duration) {
+			t := time.NewTimer(delay)
+			defer t.Stop()
+			select {
+			case <-c.ctx.Done():
+				return
+			case <-t.C:
+			}
+			s := c.callMgr.GetByAttemptID(attemptID)
+			if s == nil {
+				return
+			}
+			state := s.GetState()
+			if state == StateClosed || s.CallID != "" {
+				return
+			}
+			log.Printf("[Controller] No call-id yet for attempt=%s peer=%s state=%s after=%s", attemptID, s.PeerPhone, state.String(), delay)
+			if lr, lerr := c.baresip.ListCalls(); lerr == nil {
+				log.Printf("[Baresip] listcalls ok=%v data=%q", lr.OK, lr.Data)
+			} else {
+				log.Printf("[Baresip] listcalls failed: %v", lerr)
+			}
+		}
+		snapshot(300 * time.Millisecond)
+		snapshot(1500 * time.Millisecond)
+	}(session.AttemptID)
+
 	// If the call already reached ANSWERED/ESTABLISHED before the dial command response
 	// was processed, we may already have AnsweredAt. Emit the answered metric now.
 	c.maybeEmitAnsweredResult(session)
@@ -339,6 +462,21 @@ func (c *Controller) handleIncomingCall(event BaresipEvent) {
 	peerPhone := ExtractPhoneFromURI(event.PeerURI)
 	log.Printf("[Controller] Incoming call from %s (call-id: %s)", peerPhone, event.ID)
 
+	// Integrated mode uses a deterministic DIA topic per peer. Running multiple
+	// concurrent sessions against the same peer can cause duplicate protocol
+	// responses and AKE finalize errors. If we already have an active session
+	// for this peer, reject as Busy.
+	if c.config.IncomingMode != "baseline" {
+		if existing := c.callMgr.GetActiveSessionByPeer(peerPhone); existing != nil {
+			log.Printf("[Controller] Rejecting incoming call %s from %s: active session exists (attempt=%s call-id=%s state=%s)",
+				event.ID, peerPhone, existing.AttemptID, existing.CallID, existing.GetState().String())
+			if event.ID != "" {
+				_, _ = c.baresip.Hangup(event.ID, 486, "Busy Here")
+			}
+			return
+		}
+	}
+
 	// Create session
 	session := c.callMgr.NewIncomingSession(event.ID, event.PeerURI, event.PeerName, event.AccountAOR)
 
@@ -430,6 +568,18 @@ func (c *Controller) runIncomingDIA(session *CallSession) {
 
 // handleDIAMessage handles incoming DIA protocol messages
 func (c *Controller) handleDIAMessage(session *CallSession, data []byte) {
+	if session == nil {
+		return
+	}
+	// Drop late/stray DIA messages after the SIP call has ended. This prevents
+	// closed sessions from responding on the shared topic.
+	if session.GetState() == StateClosed {
+		return
+	}
+	if session.DIAState == nil || session.DIAController == nil {
+		return
+	}
+
 	if len(data) == 0 {
 		log.Printf("[Controller] Ignoring empty DIA payload")
 		return
@@ -965,8 +1115,12 @@ func (c *Controller) scheduleBaselineHangup(session *CallSession) {
 func (c *Controller) handleCallClosed(event BaresipEvent) {
 	session := c.callMgr.GetByCallID(event.ID)
 	if session == nil {
-		log.Printf("[Controller] Call %s closed (no session)", event.ID)
-		return
+		peerPhone := ExtractPhoneFromURI(event.PeerURI)
+		session = c.callMgr.BindOutgoingCallID(peerPhone, event.ID, event.PeerURI, event.AccountAOR)
+		if session == nil {
+			log.Printf("[Controller] Call %s closed (no session)", event.ID)
+			return
+		}
 	}
 
 	// This often contains low-level socket text (e.g., ECONNRESET from media) even
@@ -982,8 +1136,15 @@ func (c *Controller) handleCallClosed(event BaresipEvent) {
 
 	// Send DIA BYE message if DIA is active
 	if session.DIAController != nil && session.DIAState != nil {
-		// TODO: Send BYE message via DIA protocol
-		log.Printf("[Controller] Sending DIA BYE for %s", session.PeerPhone)
+		bye, err := session.DIAState.CreateByeMessage()
+		if err != nil {
+			log.Printf("[Controller] Failed to create DIA BYE for %s: %v", session.PeerPhone, err)
+		} else {
+			log.Printf("[Controller] Sending DIA BYE for %s", session.PeerPhone)
+			if err := session.DIAController.Send(bye); err != nil {
+				log.Printf("[Controller] Failed to send DIA BYE for %s: %v", session.PeerPhone, err)
+			}
+		}
 	}
 
 	session.SetState(StateClosed)

@@ -150,7 +150,17 @@ func (s *CallSession) Cleanup() {
 	defer s.mu.Unlock()
 
 	if s.DIAController != nil {
-		_ = s.DIAController.Close()
+		done := make(chan struct{})
+		go func(ctrl *subscriber.Controller) {
+			_ = ctrl.Close()
+			close(done)
+		}(s.DIAController)
+		select {
+		case <-done:
+			// closed
+		case <-time.After(500 * time.Millisecond):
+			// Don't block shutdown on network teardown.
+		}
 		s.DIAController = nil
 	}
 	if s.DIAState != nil {
@@ -172,6 +182,28 @@ type CallManager struct {
 	pendingByPeer map[string][]*CallSession // peerPhone -> FIFO queue of sessions
 
 	mu sync.RWMutex
+}
+
+// GetActiveSessionByPeer returns the first non-closed session for a peer.
+// This is used to avoid running multiple concurrent protocol sessions on the
+// same deterministic DIA topic.
+func (m *CallManager) GetActiveSessionByPeer(peerPhone string) *CallSession {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, s := range m.byAttempt {
+		if s == nil {
+			continue
+		}
+		if s.PeerPhone != peerPhone {
+			continue
+		}
+		if s.GetState() == StateClosed {
+			continue
+		}
+		return s
+	}
+	return nil
 }
 
 // NewCallManager creates a new call manager

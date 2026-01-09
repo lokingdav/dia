@@ -135,6 +135,17 @@ func (rs *RedisStore) CreateTopic(ctx context.Context, topic string) error {
 	return nil
 }
 
+// DeleteTopic removes all stored state for a topic (history + tracking key).
+// This is used to ensure a fresh start for the next call when a DIA BYE is observed.
+func (rs *RedisStore) DeleteTopic(ctx context.Context, topic string) error {
+	listKey := fmt.Sprintf("topic:%s:messages", topic)
+	topicKey := fmt.Sprintf("topic:%s:exists", topic)
+	if err := rs.client.Del(ctx, listKey, topicKey).Err(); err != nil {
+		return fmt.Errorf("failed to delete topic: %w", err)
+	}
+	return nil
+}
+
 // CleanupExpiredTopics: TTL cleanup is handled by Redis; no-op for now.
 func (rs *RedisStore) CleanupExpiredTopics(ctx context.Context) error { return nil }
 

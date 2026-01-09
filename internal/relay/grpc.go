@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 
 	pb "github.com/dense-identity/denseid/api/go/relay/v1"
 	dia "github.com/lokingdav/libdia/bindings/go/v2"
@@ -220,9 +221,14 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 	}
 	s.mu.RUnlock()
 
-	// Store message in Redis with TTL
-	if err := s.store.StoreMessage(sess.ctx, topic, payload, senderId); err != nil {
-		log.Printf("Warning: StoreMessage(%s) failed: %v", topic, err)
+	msg, parseErr := dia.ParseMessage(payload)
+	isTerminal := parseErr == nil && msg != nil && (msg.Type() == dia.MsgAKEComplete || msg.Type() == dia.MsgBye)
+
+	// Persist history for non-terminal frames only.
+	if !isTerminal {
+		if err := s.store.StoreMessage(sess.ctx, topic, payload, senderId); err != nil {
+			log.Printf("Warning: StoreMessage(%s) failed: %v", topic, err)
+		}
 	}
 
 	// Fan-out EVENT to subscribers, suppressing self by comparing stream identity:
@@ -237,6 +243,17 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 			Payload: payload,
 		}
 		s.tryEnqueue(sb, resp)
+	}
+
+	// Clear stored history after delivering terminal frames to live subscribers.
+	if isTerminal {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := s.store.DeleteTopic(ctx, topic); err != nil {
+			log.Printf("Warning: DeleteTopic(%s) failed: %v", topic, err)
+		} else {
+			log.Printf("DIA term %s type=%d: cleared topic history", topic, msg.Type())
+		}
 	}
 	log.Printf("PUBLISH %s: ok (fanned to %d)", topic, len(recipients))
 }
