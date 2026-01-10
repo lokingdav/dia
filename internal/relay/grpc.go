@@ -5,6 +5,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pb "github.com/dense-identity/denseid/api/go/relay/v1"
@@ -19,6 +20,8 @@ type session struct {
 	activeTopic string
 	sendQ       chan *pb.RelayResponse
 	closeOnce   sync.Once
+	dropCount   atomic.Uint64
+	replaying   atomic.Bool
 }
 
 func (s *session) closeQ() { s.closeOnce.Do(func() { close(s.sendQ) }) }
@@ -216,6 +219,11 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 		if sb == sess {
 			continue
 		}
+		// If a subscriber is currently replaying history for this topic, skip live delivery.
+		// It will catch up from Redis after replay completes.
+		if sb.replaying.Load() {
+			continue
+		}
 		resp := &pb.RelayResponse{
 			Type:    pb.RelayResponse_EVENT,
 			Topic:   topic,
@@ -234,7 +242,7 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 			log.Printf("DIA term %s type=%d: cleared topic history", topic, msg.Type())
 		}
 	}
-	log.Printf("PUBLISH %s: ok (fanned to %d)", topic, len(recipients))
+	log.Printf("PUBLISH %s: ok (sender=%q sess=%p fanned to %d)", topic, senderId, sess, len(recipients))
 }
 
 func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
@@ -279,14 +287,23 @@ func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 		s.removeFromActive(sess)
 	}
 
-	// REPLAY history (skip sender's own messages)
+	// REPLAY history. To avoid missing messages published concurrently with replay,
+	// we temporarily suppress live delivery to this session and do a catch-up
+	// fetch after replay completes.
+	sess.replaying.Store(true)
+
+	// Snapshot history before joining live delivery.
 	hist, err := s.store.GetMessageHistory(sess.ctx, target)
 	if err != nil {
 		log.Printf("Warning: GetMessageHistory(%s): %v", target, err)
 		hist = nil
 	}
+
+	// Join live delivery
+	s.addToTopic(target, sess)
+
 	for _, m := range hist {
-		if m.SenderID == req.GetSenderId() {
+		if req.GetSenderId() != "" && m.SenderID == req.GetSenderId() {
 			continue
 		}
 		s.tryEnqueue(sess, &pb.RelayResponse{
@@ -296,9 +313,29 @@ func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 		})
 	}
 
-	// Join live delivery
-	s.addToTopic(target, sess)
-	log.Printf("SUBSCRIBE %s: ok", target)
+	// Catch up any messages that were stored while we were replaying and before
+	// we re-enabled live delivery.
+	hist2, err2 := s.store.GetMessageHistory(sess.ctx, target)
+	if err2 != nil {
+		log.Printf("Warning: GetMessageHistory(catchup %s): %v", target, err2)
+		hist2 = nil
+	}
+	if len(hist2) > len(hist) {
+		for _, m := range hist2[len(hist):] {
+			if req.GetSenderId() != "" && m.SenderID == req.GetSenderId() {
+				continue
+			}
+			s.tryEnqueue(sess, &pb.RelayResponse{
+				Type:    pb.RelayResponse_EVENT,
+				Topic:   target,
+				Payload: m.Payload,
+			})
+		}
+	}
+
+	sess.replaying.Store(false)
+
+	log.Printf("SUBSCRIBE %s: ok (sender=%q sess=%p)", target, req.GetSenderId(), sess)
 
 	// Piggy-back publish if payload present
 	if hasPayload {
@@ -313,6 +350,11 @@ func (s *Server) tryEnqueue(sess *session, resp *pb.RelayResponse) {
 	case sess.sendQ <- resp:
 	default:
 		// POC backpressure: drop instead of blocking
+		cnt := sess.dropCount.Add(1)
+		// Log early drops to diagnose protocol-critical message loss without spamming.
+		if cnt <= 10 || cnt%1000 == 0 {
+			log.Printf("Warning: drop resp type=%v topic=%s sess=%p (dropCount=%d)", resp.GetType(), resp.GetTopic(), sess, cnt)
+		}
 	}
 }
 

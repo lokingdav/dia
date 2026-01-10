@@ -33,10 +33,11 @@ type Config struct {
 	Verbose bool
 
 	// Experiments (optional, non-interactive)
-	ExperimentMode        string
-	ExperimentPhone       string
-	ExperimentRuns        int
-	ExperimentConcurrency int
+	ExperimentMode                string
+	ExperimentPhone               string
+	ExperimentRuns                int
+	ExperimentConcurrency         int
+	ExperimentInterAttemptDelayMs int
 
 	// Output
 	OutputCSV string
@@ -60,6 +61,7 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.ExperimentPhone, "phone", "", "Phone number/URI to dial for -experiment")
 	flag.IntVar(&cfg.ExperimentRuns, "runs", 1, "Number of calls to place in -experiment")
 	flag.IntVar(&cfg.ExperimentConcurrency, "concurrency", 1, "Max in-flight calls for -experiment")
+	flag.IntVar(&cfg.ExperimentInterAttemptDelayMs, "inter-attempt-ms", 0, "Optional delay (ms) before starting the next experiment attempt after an attempt closes")
 	flag.StringVar(&cfg.OutputCSV, "csv", "", "Write experiment results to a CSV file")
 
 	flag.Parse()

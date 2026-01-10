@@ -8,6 +8,7 @@ BARESIP_PORT="${BARESIP_PORT:-4444}"
 RELAY_PORT="${RELAY_PORT:-50052}"
 DEFAULT_ODA_ATTRS="${ODA_ATTRS:-name,issuer}"
 DEFAULT_CSV_DIR="${CSV_DIR:-$ROOT_DIR/results}"
+DEFAULT_INTER_ATTEMPT_MS="${INTER_ATTEMPT_MS:-1000}"
 
 usage() {
   cat <<EOF
@@ -177,6 +178,17 @@ has_csv_flag() {
   return 1
 }
 
+has_inter_attempt_flag() {
+  for a in "$@"; do
+    case "$a" in
+      -inter-attempt-ms|-inter-attempt-ms=*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 default_csv_path() {
   local mode="$1"
   local account="$2"
@@ -271,11 +283,17 @@ case "$cmd" in
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path baseline "$account")\""
     fi
+
+    delay_arg=""
+    if ! has_inter_attempt_flag "$@"; then
+      delay_arg="-inter-attempt-ms $DEFAULT_INTER_ATTEMPT_MS"
+    fi
+
     read -r before after < <(split_passthrough "$@")
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
+    run_allow_sigint "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
     ;;
 
   call-int)
@@ -289,11 +307,17 @@ case "$cmd" in
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path integrated "$account")\""
     fi
+
+    delay_arg=""
+    if ! has_inter_attempt_flag "$@"; then
+      delay_arg="-inter-attempt-ms $DEFAULT_INTER_ATTEMPT_MS"
+    fi
+
     read -r before after < <(split_passthrough "$@")
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $csv_arg $before $after"
+    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
     ;;
 
   pair)

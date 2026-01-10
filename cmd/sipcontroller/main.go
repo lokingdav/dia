@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dense-identity/denseid/internal/sipcontroller"
 )
@@ -423,6 +424,9 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 			completed++
 
 			if started < runs {
+				if cfg != nil && cfg.ExperimentInterAttemptDelayMs > 0 {
+					time.Sleep(time.Duration(cfg.ExperimentInterAttemptDelayMs) * time.Millisecond)
+				}
 				if err := startOne(); err != nil {
 					return err
 				}
