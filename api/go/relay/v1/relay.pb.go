@@ -27,8 +27,6 @@ const (
 	RelayRequest_TYPE_UNSPECIFIED RelayRequest_Type = 0
 	RelayRequest_PUBLISH          RelayRequest_Type = 1
 	RelayRequest_SUBSCRIBE        RelayRequest_Type = 2
-	RelayRequest_UNSUBSCRIBE      RelayRequest_Type = 3
-	RelayRequest_SWAP             RelayRequest_Type = 4
 )
 
 // Enum value maps for RelayRequest_Type.
@@ -37,15 +35,11 @@ var (
 		0: "TYPE_UNSPECIFIED",
 		1: "PUBLISH",
 		2: "SUBSCRIBE",
-		3: "UNSUBSCRIBE",
-		4: "SWAP",
 	}
 	RelayRequest_Type_value = map[string]int32{
 		"TYPE_UNSPECIFIED": 0,
 		"PUBLISH":          1,
 		"SUBSCRIBE":        2,
-		"UNSUBSCRIBE":      3,
-		"SWAP":             4,
 	}
 )
 
@@ -129,11 +123,10 @@ func (RelayResponse_Type) EnumDescriptor() ([]byte, []int) {
 type RelayRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SenderId      string                 `protobuf:"bytes,1,opt,name=sender_id,json=senderId,proto3" json:"sender_id,omitempty"`                  // required; used for self-echo suppression and replay filtering
-	Type          RelayRequest_Type      `protobuf:"varint,2,opt,name=type,proto3,enum=denseid.relay.v1.RelayRequest_Type" json:"type,omitempty"` // PUBLISH | SUBSCRIBE | UNSUBSCRIBE | SWAP
+	Type          RelayRequest_Type      `protobuf:"varint,2,opt,name=type,proto3,enum=denseid.relay.v1.RelayRequest_Type" json:"type,omitempty"` // PUBLISH | SUBSCRIBE
 	Topic         string                 `protobuf:"bytes,3,opt,name=topic,proto3" json:"topic,omitempty"`                                        // target topic (all ops)
-	ToTopic       string                 `protobuf:"bytes,4,opt,name=to_topic,json=toTopic,proto3" json:"to_topic,omitempty"`                     // SWAP only (new topic)
-	Payload       []byte                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`                                    // body for PUBLISH; optional one-shot publish on SUBSCRIBE/SWAP
-	Ticket        []byte                 `protobuf:"bytes,6,opt,name=ticket,proto3" json:"ticket,omitempty"`                                      // required only if a publish would create a new topic
+	Payload       []byte                 `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`                                    // body for PUBLISH; optional one-shot publish on SUBSCRIBE
+	Ticket        []byte                 `protobuf:"bytes,6,opt,name=ticket,proto3" json:"ticket,omitempty"`                                      // required for SUBSCRIBE (costs 1 token); ignored for PUBLISH
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -185,13 +178,6 @@ func (x *RelayRequest) GetType() RelayRequest_Type {
 func (x *RelayRequest) GetTopic() string {
 	if x != nil {
 		return x.Topic
-	}
-	return ""
-}
-
-func (x *RelayRequest) GetToTopic() string {
-	if x != nil {
-		return x.ToTopic
 	}
 	return ""
 }
@@ -291,20 +277,17 @@ var File_relay_v1_relay_proto protoreflect.FileDescriptor
 
 const file_relay_v1_relay_proto_rawDesc = "" +
 	"\n" +
-	"\x14relay/v1/relay.proto\x12\x10denseid.relay.v1\"\x9c\x02\n" +
+	"\x14relay/v1/relay.proto\x12\x10denseid.relay.v1\"\xe6\x01\n" +
 	"\fRelayRequest\x12\x1b\n" +
 	"\tsender_id\x18\x01 \x01(\tR\bsenderId\x127\n" +
 	"\x04type\x18\x02 \x01(\x0e2#.denseid.relay.v1.RelayRequest.TypeR\x04type\x12\x14\n" +
-	"\x05topic\x18\x03 \x01(\tR\x05topic\x12\x19\n" +
-	"\bto_topic\x18\x04 \x01(\tR\atoTopic\x12\x18\n" +
+	"\x05topic\x18\x03 \x01(\tR\x05topic\x12\x18\n" +
 	"\apayload\x18\x05 \x01(\fR\apayload\x12\x16\n" +
-	"\x06ticket\x18\x06 \x01(\fR\x06ticket\"S\n" +
+	"\x06ticket\x18\x06 \x01(\fR\x06ticket\"8\n" +
 	"\x04Type\x12\x14\n" +
 	"\x10TYPE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aPUBLISH\x10\x01\x12\r\n" +
-	"\tSUBSCRIBE\x10\x02\x12\x0f\n" +
-	"\vUNSUBSCRIBE\x10\x03\x12\b\n" +
-	"\x04SWAP\x10\x04\"\xdb\x01\n" +
+	"\tSUBSCRIBE\x10\x02\"\xdb\x01\n" +
 	"\rRelayResponse\x128\n" +
 	"\x04type\x18\x01 \x01(\x0e2$.denseid.relay.v1.RelayResponse.TypeR\x04type\x12\x14\n" +
 	"\x05topic\x18\x02 \x01(\tR\x05topic\x12\x18\n" +

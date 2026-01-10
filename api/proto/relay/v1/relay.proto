@@ -10,19 +10,16 @@ service RelayService {
 /************** CLIENT → SERVER **************/
 message RelayRequest {
   string sender_id = 1;  // required; used for self-echo suppression and replay filtering
-  Type   type      = 2;  // PUBLISH | SUBSCRIBE | UNSUBSCRIBE | SWAP
+  Type   type      = 2;  // PUBLISH | SUBSCRIBE
 
   string topic     = 3;  // target topic (all ops)
-  string to_topic  = 4;  // SWAP only (new topic)
-  bytes  payload   = 5;  // body for PUBLISH; optional one-shot publish on SUBSCRIBE/SWAP
-  bytes  ticket    = 6;  // required only if a publish would create a new topic
+  bytes  payload   = 5;  // body for PUBLISH; optional one-shot publish on SUBSCRIBE
+  bytes  ticket    = 6;  // required for SUBSCRIBE (costs 1 token); ignored for PUBLISH
 
   enum Type {
     TYPE_UNSPECIFIED = 0;
     PUBLISH          = 1;
     SUBSCRIBE        = 2;
-    UNSUBSCRIBE      = 3;
-    SWAP             = 4;
   }
 }
 

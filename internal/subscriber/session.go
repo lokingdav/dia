@@ -38,8 +38,8 @@ type Session struct {
 	stream   relaypb.RelayService_TunnelClient
 
 	// single-writer pump for outbound frames
-	sendQ   chan *relaypb.RelayRequest
-	sendWg  sync.WaitGroup
+	sendQ  chan *relaypb.RelayRequest
+	sendWg sync.WaitGroup
 }
 
 // NewSession prepares a session. Call Start(...) to begin receiving.
@@ -82,12 +82,12 @@ func (s *Session) Send(payload []byte) error {
 		Type:     relaypb.RelayRequest_PUBLISH,
 		Topic:    s.topic,
 		Payload:  payload,
-		Ticket:   s.ticket,
 	}
 	return s.enqueue(req)
 }
 
-// SendToTopic publishes payload to a specific topic (can include a ticket).
+// SendToTopic publishes payload to a specific topic.
+// Note: PUBLISH does not consume a ticket; topics are created via SUBSCRIBE.
 func (s *Session) SendToTopic(topic string, payload []byte, ticket []byte) error {
 	if s.closed.Load() {
 		return errors.New("session closed")
@@ -100,29 +100,7 @@ func (s *Session) SendToTopic(topic string, payload []byte, ticket []byte) error
 		Type:     relaypb.RelayRequest_PUBLISH,
 		Topic:    topic,
 		Payload:  payload,
-		Ticket:   ticket,
 	}
-	return s.enqueue(req)
-}
-
-// SwapToTopic is a convenience for Bob's side (old -> new) with optional hello.
-func (s *Session) SwapToTopic(toTopic string, hello []byte, ticket []byte) error {
-	if s.closed.Load() {
-		return errors.New("session closed")
-	}
-	if toTopic == "" {
-		return errors.New("empty toTopic")
-	}
-	req := &relaypb.RelayRequest{
-		SenderId: s.senderID,
-		Type:     relaypb.RelayRequest_SWAP,
-		Topic:    s.topic,   // from
-		ToTopic:  toTopic,   // to
-		Payload:  hello,     // optional one-shot publish to the new topic
-		Ticket:   ticket,    // only required if hello would create the topic
-	}
-	// update local active topic optimistically
-	s.topic = toTopic
 	return s.enqueue(req)
 }
 
@@ -136,9 +114,12 @@ func (s *Session) SubscribeToNewTopicWithPayload(newTopic string, payload []byte
 	if newTopic == "" {
 		return errors.New("empty topic")
 	}
+	if len(ticket) == 0 {
+		return errors.New("missing ticket")
+	}
 	// Optimistically set the intended active topic. If the server rejects the SUBSCRIBE
-    // (e.g., missing/invalid ticket when piggy-backing), it will send an ERROR and keep
-    // you on the previous topic server-side; the client can choose to retry or swap.
+	// (e.g., missing/invalid ticket), it will send an ERROR and keep you on the
+	// previous topic server-side; the client can choose to retry.
 	s.topic = newTopic
 
 	req := &relaypb.RelayRequest{
@@ -146,17 +127,10 @@ func (s *Session) SubscribeToNewTopicWithPayload(newTopic string, payload []byte
 		Type:     relaypb.RelayRequest_SUBSCRIBE,
 		Topic:    newTopic,
 		Payload:  payload, // nil or empty => subscribe-only (no piggy-back)
-		Ticket:   ticket,  // only needed if payload would create the topic
+		Ticket:   ticket,  // always required for SUBSCRIBE (costs 1 token)
 	}
 	return s.enqueue(req)
 }
-
-// Back-compat: subscribe without piggy-back (old API).
-// Deprecated: prefer SubscribeToNewTopicWithPayload.
-func (s *Session) SubscribeToNewTopic(newTopic string) error {
-	return s.SubscribeToNewTopicWithPayload(newTopic, nil, nil)
-}
-
 
 // Close stops the Tunnel and waits for cleanup.
 func (s *Session) Close() {
@@ -202,6 +176,7 @@ func (s *Session) tunnelLoop() {
 			SenderId: s.senderID,
 			Type:     relaypb.RelayRequest_SUBSCRIBE,
 			Topic:    s.topic,
+			Ticket:   s.ticket,
 		}
 		if err := stream.Send(sub); err != nil {
 			_ = stream.CloseSend()

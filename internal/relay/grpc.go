@@ -161,10 +161,6 @@ func (s *Server) Tunnel(stream pb.RelayService_TunnelServer) error {
 			s.handlePublish(sess, req)
 		case pb.RelayRequest_SUBSCRIBE:
 			s.handleSubscribe(sess, req)
-		case pb.RelayRequest_UNSUBSCRIBE:
-			s.handleUnsubscribe(sess, req)
-		case pb.RelayRequest_SWAP:
-			s.handleSwap(sess, req)
 		default:
 			s.sendError(sess, codes.InvalidArgument, "unknown request type", req.GetTopic())
 		}
@@ -182,27 +178,10 @@ func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
 		return
 	}
 
-	// Check existence; require ticket only if topic doesn't exist.
+	// PUBLISH never creates a topic. Topics are created via SUBSCRIBE (ticketed).
 	if !s.topicExists(sess.ctx, topic) {
-		ticket := req.GetTicket()
-		if len(ticket) == 0 {
-			s.sendError(sess, codes.PermissionDenied, "ticket required to create new topic", topic)
-			return
-		}
-		ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
-		if err != nil {
-			s.sendError(sess, codes.Internal, "ticket verification failed", topic)
-			return
-		}
-		if !ok {
-			s.sendError(sess, codes.Unauthenticated, "invalid ticket for topic creation", topic)
-			return
-		}
-		// Mark existence: create in-memory bucket and Redis tracking.
-		s.ensureTopicBucket(topic)
-		if err := s.store.CreateTopic(sess.ctx, topic); err != nil {
-			log.Printf("Warning: CreateTopic(%s): %v", topic, err)
-		}
+		s.sendError(sess, codes.PermissionDenied, "topic does not exist; subscribe first", topic)
+		return
 	}
 
 	// Snapshot recipients (except the originator) WITHOUT holding the lock during sends.
@@ -266,34 +245,36 @@ func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 		return
 	}
 
-	// If payload is present AND topic doesn't exist, require valid ticket; on failure, do nothing else.
+	// Every SUBSCRIBE consumes a ticket/token.
+	ticket := req.GetTicket()
+	if len(ticket) == 0 {
+		s.sendError(sess, codes.PermissionDenied, "ticket required to subscribe", target)
+		return
+	}
+	ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
+	if err != nil {
+		s.sendError(sess, codes.Internal, "ticket verification failed", target)
+		return
+	}
+	if !ok {
+		s.sendError(sess, codes.Unauthenticated, "invalid ticket for subscribe", target)
+		return
+	}
+
 	hasPayload := len(req.GetPayload()) > 0
-	if hasPayload && !s.topicExists(sess.ctx, target) {
-		ticket := req.GetTicket()
-		if len(ticket) == 0 {
-			s.sendError(sess, codes.PermissionDenied, "ticket required for publish on new topic", target)
-			return
-		}
-		ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
-		if err != nil {
-			s.sendError(sess, codes.Internal, "ticket verification failed", target)
-			return
-		}
-		if !ok {
-			s.sendError(sess, codes.Unauthenticated, "invalid ticket for topic creation", target)
-			return
-		}
-		// Mark existence ahead of replay and piggy-back publish
+
+	// If this is the first time the topic is seen, create it (ticket already verified).
+	if !s.topicExists(sess.ctx, target) {
 		s.ensureTopicBucket(target)
 		if err := s.store.CreateTopic(sess.ctx, target); err != nil {
 			log.Printf("Warning: CreateTopic(%s): %v", target, err)
 		}
 	} else {
-		// Ensure in-memory bucket exists (subscribe without payload can create topic without ticket)
+		// Ensure in-memory bucket exists for live fan-out.
 		s.ensureTopicBucket(target)
 	}
 
-	// Implicitly unsubscribe from previous active topic (local to this session)
+	// Implicitly detach from previous active topic (local to this session)
 	if sess.activeTopic != "" && sess.activeTopic != target {
 		s.removeFromActive(sess)
 	}
@@ -322,94 +303,6 @@ func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 	// Piggy-back publish if payload present
 	if hasPayload {
 		s.handlePublish(sess, req)
-	}
-}
-
-func (s *Server) handleUnsubscribe(sess *session, req *pb.RelayRequest) {
-	// Only affects this session
-	if sess.activeTopic == "" {
-		return
-	}
-	if req.GetTopic() != "" && req.GetTopic() != sess.activeTopic {
-		// If a topic is provided and doesn't match current, treat as invalid.
-		s.sendError(sess, codes.InvalidArgument, "not subscribed to the specified topic", req.GetTopic())
-		return
-	}
-	s.removeFromActive(sess)
-}
-
-func (s *Server) handleSwap(sess *session, req *pb.RelayRequest) {
-	from := req.GetTopic()
-	to := req.GetToTopic()
-	if from == "" || to == "" {
-		s.sendError(sess, codes.InvalidArgument, "missing from/to topic", "")
-		return
-	}
-	// Require from == current active topic
-	if sess.activeTopic == "" || sess.activeTopic != from {
-		s.sendError(sess, codes.InvalidArgument, "swap from-topic does not match current subscription", from)
-		return
-	}
-
-	// Ticket only if payload present AND target doesn't exist
-	hasPayload := len(req.GetPayload()) > 0
-	if hasPayload && !s.topicExists(sess.ctx, to) {
-		ticket := req.GetTicket()
-		if len(ticket) == 0 {
-			s.sendError(sess, codes.PermissionDenied, "ticket required for publish on new topic", to)
-			return
-		}
-		ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
-		if err != nil {
-			s.sendError(sess, codes.Internal, "ticket verification failed", to)
-			return
-		}
-		if !ok {
-			s.sendError(sess, codes.Unauthenticated, "invalid ticket for topic creation", to)
-			return
-		}
-		// Mark existence
-		s.ensureTopicBucket(to)
-		if err := s.store.CreateTopic(sess.ctx, to); err != nil {
-			log.Printf("Warning: CreateTopic(%s): %v", to, err)
-		}
-	} else {
-		// Ensure in-memory bucket exists so the topic now "exists"
-		s.ensureTopicBucket(to)
-	}
-
-	// REPLAY new topic
-	hist, err := s.store.GetMessageHistory(sess.ctx, to)
-	if err != nil {
-		log.Printf("Warning: GetMessageHistory(%s): %v", to, err)
-		hist = nil
-	}
-	for _, m := range hist {
-		if m.SenderID == req.GetSenderId() {
-			continue
-		}
-		s.tryEnqueue(sess, &pb.RelayResponse{
-			Type:    pb.RelayResponse_EVENT,
-			Topic:   to,
-			Payload: m.Payload,
-		})
-	}
-
-	// Atomically move: remove from old, add to new
-	s.addToTopic(to, sess)
-	log.Printf("SWAP %s→%s: ok", from, to)
-
-	// Piggy-back publish (to the new topic) if provided
-	if hasPayload {
-		// reuse handlePublish with topic=to
-		pub := &pb.RelayRequest{
-			SenderId: req.GetSenderId(),
-			Type:     pb.RelayRequest_PUBLISH,
-			Topic:    to,
-			Payload:  req.GetPayload(),
-			Ticket:   req.GetTicket(),
-		}
-		s.handlePublish(sess, pub)
 	}
 }
 

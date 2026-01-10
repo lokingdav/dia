@@ -630,6 +630,14 @@ func (c *Controller) handleCallerDIAMessage(session *CallSession, msg *dia.Messa
 			return
 		}
 
+		// Send AKE complete ASAP on the AKE topic so the recipient can finalize.
+		// Topic switching is still required for security; we just avoid putting it
+		// in front of the message that unblocks the other side.
+		if err := session.DIAController.SendToTopic(oldTopic, complete, nil); err != nil {
+			log.Printf("[Controller] Send AKE complete failed for %s: %v", session.PeerPhone, err)
+			return
+		}
+
 		// Derive RUA topic
 		ruaTopic, err := session.DIAState.RUADeriveTopic()
 		if err != nil {
@@ -644,6 +652,9 @@ func (c *Controller) handleCallerDIAMessage(session *CallSession, msg *dia.Messa
 			return
 		}
 
+		// Get ticket for topic creation
+		ticket, _ := session.DIAState.Ticket()
+
 		// Transition to RUA
 		if err := session.DIAState.TransitionToRUA(); err != nil {
 			log.Printf("[Controller] Transition to RUA failed for %s: %v", session.PeerPhone, err)
@@ -652,22 +663,13 @@ func (c *Controller) handleCallerDIAMessage(session *CallSession, msg *dia.Messa
 
 		session.SetState(StateDIARUAInProgress)
 
-		// Get ticket for topic creation
-		ticket, _ := session.DIAState.Ticket()
-
-		// Subscribe to RUA topic
+		// Subscribe to RUA and piggy-back the first RUA request in the same request.
 		if err := session.DIAController.SubscribeToNewTopicWithPayload(ruaTopic, ruaRequest, ticket); err != nil {
 			log.Printf("[Controller] Subscribe to RUA topic failed for %s: %v", session.PeerPhone, err)
 			return
 		}
 
-		// Send AKE complete on old topic
-		if err := session.DIAController.SendToTopic(oldTopic, complete, nil); err != nil {
-			log.Printf("[Controller] Send AKE complete failed for %s: %v", session.PeerPhone, err)
-			return
-		}
-
-		log.Printf("[Controller] AKE complete, moved to RUA for %s", session.PeerPhone)
+		log.Printf("[Controller] AKE complete, subscribed to RUA for %s", session.PeerPhone)
 
 	case dia.MsgRUAResponse:
 		log.Printf("[Controller] Handling RUA Response for outgoing %s", session.PeerPhone)
@@ -689,10 +691,7 @@ func (c *Controller) handleCallerDIAMessage(session *CallSession, msg *dia.Messa
 				session.PeerPhone, remoteParty.Name, remoteParty.Verified, remoteParty.Logo)
 		}
 
-		// Auto-trigger ODA if configured
-		if c.config.AutoODA && len(c.config.ODAAttributes) > 0 {
-			go c.triggerODA(session, c.config.ODAAttributes)
-		}
+		// ODA is triggered after answer in integrated incoming mode only.
 
 	case dia.MsgODARequest:
 		c.handleODARequest(session, rawData)
@@ -747,10 +746,16 @@ func (c *Controller) handleRecipientDIAMessage(session *CallSession, msg *dia.Me
 			return
 		}
 
-		// Swap to RUA topic
-		if err := session.DIAController.SwapToTopic(ruaTopic, nil, nil); err != nil {
-			log.Printf("[Controller] Swap to RUA topic failed for %s: %v", session.PeerPhone, err)
-			c.rejectCall(session, 500, "RUA Topic Swap Failed")
+		// Recipient subscribes to the RUA topic (ticketed) so it can receive the RUA request.
+		ticket, err := session.DIAState.Ticket()
+		if err != nil {
+			log.Printf("[Controller] Ticket derivation failed for %s: %v", session.PeerPhone, err)
+			c.rejectCall(session, 500, "RUA Ticket Failed")
+			return
+		}
+		if err := session.DIAController.SubscribeToNewTopicWithPayload(ruaTopic, nil, ticket); err != nil {
+			log.Printf("[Controller] Subscribe to RUA topic failed for %s: %v", session.PeerPhone, err)
+			c.rejectCall(session, 500, "RUA Topic Subscribe Failed")
 			return
 		}
 
@@ -877,9 +882,6 @@ func (c *Controller) handleODAResponse(session *CallSession, rawData []byte) {
 
 func (c *Controller) startODAAfterAnswerIfConfigured(session *CallSession) {
 	if c.config.IncomingMode != "integrated" {
-		return
-	}
-	if !c.config.ODAAfterAnswer {
 		return
 	}
 	if !session.IsIncoming() {
@@ -1074,10 +1076,7 @@ func (c *Controller) handleCallEstablished(event BaresipEvent) {
 			log.Printf("[Controller] ============================")
 		}
 
-		// Auto-trigger ODA for incoming calls if configured
-		if session.IsIncoming() && c.config.AutoODA && len(c.config.ODAAttributes) > 0 {
-			go c.triggerODA(session, c.config.ODAAttributes)
-		}
+		// Integrated incoming mode triggers ODA after answer.
 
 		// Baseline incoming flow: answer then end the call.
 		if session.IsIncoming() && c.config.IncomingMode == "baseline" {

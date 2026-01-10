@@ -154,16 +154,23 @@ func main() {
 		}()
 
 		go func() {
+			seenProtocolOutcome := make(map[string]bool)
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case res := <-controller.Results():
-					// Receiver CSVs (e.g., recv-int-oda) are intended to capture protocol
-					// outcomes like oda_done/oda_timeout. The controller also emits a
-					// synthetic "closed" result for lifecycle gating, which is noisy here.
-					if cfg.IncomingMode != "" && res.Outcome == "closed" {
-						continue
+					// Receiver CSVs (e.g., recv-int-oda) primarily care about protocol outcomes
+					// like oda_done/oda_timeout, but we still want to keep failed attempts.
+					// The controller emits a lifecycle "closed" row for every attempt; suppress it
+					// only when we've already recorded a protocol outcome for the same attempt.
+					if res.AttemptID != "" {
+						if res.Outcome == "oda_done" || res.Outcome == "oda_timeout" {
+							seenProtocolOutcome[res.AttemptID] = true
+						}
+						if cfg.IncomingMode != "" && res.Outcome == "closed" && seenProtocolOutcome[res.AttemptID] {
+							continue
+						}
 					}
 					if err := writeCSVRecord(csvWriter, res); err != nil {
 						log.Printf("[CSV] write failed: %v", err)
@@ -177,8 +184,7 @@ func main() {
 	log.Printf("  Baresip: %s", cfg.BaresipAddr)
 	log.Printf("  Relay:   %s (TLS: %v)", cfg.RelayAddr, cfg.RelayTLS)
 	log.Printf("  Timeout: %ds", cfg.TimeoutSec)
-	log.Printf("  AutoODA: %v", cfg.AutoODA)
-	if cfg.AutoODA {
+	if len(cfg.ODAAttributes) > 0 {
 		log.Printf("  ODA Attrs: %v", cfg.ODAAttributes)
 	}
 	log.Println("==================================")

@@ -245,12 +245,18 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 			return
 		}
 
-		// Swap to RUA topic (with replay)
-		if err := controller.SwapToTopic(ruaTopic, nil, nil); err != nil {
-			log.Printf("Failed to swap to RUA topic: %v", err)
+		ticket, err := callState.Ticket()
+		if err != nil {
+			log.Printf("Failed to get ticket: %v", err)
 			return
 		}
-		log.Printf("Swapped to RUA topic: %s", ruaTopic)
+
+		// Subscribe to RUA topic (with replay)
+		if err := controller.SubscribeToNewTopicWithPayload(ruaTopic, nil, ticket); err != nil {
+			log.Printf("Failed to subscribe to RUA topic: %v", err)
+			return
+		}
+		log.Printf("Subscribed to RUA topic: %s", ruaTopic)
 
 		// Initialize RUA
 		if err := callState.RUAInit(); err != nil {

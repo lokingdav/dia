@@ -111,11 +111,11 @@ Fields (typical):
 - If calls never reach `CALL_ANSWERED`: the remote may not be answering, or baresip may be emitting `CALL_ESTABLISHED` only (check baresip logs).
 - If you see dropped events: run with `-verbose` to inspect raw ctrl messages.
 
-## Integrated incoming + ODA-after-answer
+## Integrated incoming + ODA after answer
 
 To run the **recipient** in integrated mode (answer after DIA verification, then trigger ODA after `CALL_ANSWERED`, then hang up):
 
-- `-incoming-mode integrated -oda-after-answer -oda-attrs <attrs> [-oda-timeout <seconds>]`
+- `-incoming-mode integrated -oda-attrs <attrs> [-oda-timeout <seconds>]`
 
 Baseline incoming auto-answer (no DIA):
 
@@ -136,7 +136,7 @@ Examples:
 
 - Interactive controller (REPL + logs): `./controller.sh it 1001`
 - Recipient baseline (auto-answer): `./controller.sh recv-base 2002`
-- Recipient integrated + ODA-after-answer: `./controller.sh recv-int-oda 2002`
+- Recipient integrated + ODA after answer: `./controller.sh recv-int-oda 2002`
 - Caller baseline batch: `./controller.sh call-base 1001 +15551234567 50 5`
 - Caller integrated batch: `./controller.sh call-int 1001 +15551234567 50 5`
 - Print resolved IPs: `./controller.sh ips`

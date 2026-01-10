@@ -69,19 +69,9 @@ func (c *Controller) SendToTopic(topic string, payload []byte, ticket []byte) er
 	return c.Session.SendToTopic(topic, payload, ticket)
 }
 
-// SubscribeToNewTopic keeps the old signature (no piggy-back).
-func (c *Controller) SubscribeToNewTopic(newTopic string) error {
-	return c.Session.SubscribeToNewTopic(newTopic)
-}
-
 // SubscribeToNewTopicWithPayload lets you piggy-back a one-shot publish on subscribe.
 func (c *Controller) SubscribeToNewTopicWithPayload(newTopic string, payload []byte, ticket []byte) error {
 	return c.Session.SubscribeToNewTopicWithPayload(newTopic, payload, ticket)
-}
-
-// Optional convenience for Bob's flow (swap with replay and optional hello).
-func (c *Controller) SwapToTopic(toTopic string, hello []byte, ticket []byte) error {
-	return c.Session.SwapToTopic(toTopic, hello, ticket)
 }
 
 // Close shuts down the session and the underlying client connection.

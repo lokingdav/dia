@@ -116,8 +116,6 @@ resolve_client_from_account() {
 sipcontroller_cmd_base() {
   local account="$1"
 
-  require_file "$HOSTS_YML"
-
   local env_file="$ROOT_DIR/.env.${account}"
   require_file "$env_file"
 
@@ -125,15 +123,27 @@ sipcontroller_cmd_base() {
   client="$(resolve_client_from_account "$account")"
 
   local client_ip server_ip
-  client_ip="$(get_ansible_host "$client")"
-  server_ip="$(get_ansible_host server)"
+  client_ip=""
+  server_ip=""
+  if [[ -f "$HOSTS_YML" ]]; then
+    client_ip="$(get_ansible_host "$client" || true)"
+    server_ip="$(get_ansible_host server || true)"
+  else
+    echo "[controller.sh] warning: $HOSTS_YML not found; falling back to localhost" >&2
+  fi
 
-  [[ -n "$client_ip" ]] || die "failed to resolve $client ansible_host from $HOSTS_YML"
-  [[ -n "$server_ip" ]] || die "failed to resolve server ansible_host from $HOSTS_YML"
+  if [[ -z "$client_ip" ]]; then
+    echo "[controller.sh] warning: missing '$client.ansible_host' in $HOSTS_YML; using localhost" >&2
+    client_ip="localhost"
+  fi
+  if [[ -z "$server_ip" ]]; then
+    echo "[controller.sh] warning: missing 'server.ansible_host' in $HOSTS_YML; using localhost" >&2
+    server_ip="localhost"
+  fi
 
   local baresip_addr relay_addr
   baresip_addr="${client_ip}:${BARESIP_PORT}"
-  relay_addr="localhost:${RELAY_PORT}"
+  relay_addr="${server_ip}:${RELAY_PORT}"
 
   echo "go run ./cmd/sipcontroller/main.go -account \"$account\" -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$relay_addr\""
 }
@@ -185,10 +195,16 @@ case "$cmd" in
     ;;
 
   ips)
-    require_file "$HOSTS_YML"
-    c1="$(get_ansible_host client-1)" || true
-    c2="$(get_ansible_host client-2)" || true
-    srv="$(get_ansible_host server)" || true
+    if [[ -f "$HOSTS_YML" ]]; then
+      c1="$(get_ansible_host client-1)" || true
+      c2="$(get_ansible_host client-2)" || true
+      srv="$(get_ansible_host server)" || true
+    else
+      c1=""
+      c2=""
+      srv=""
+      echo "[controller.sh] warning: $HOSTS_YML not found" >&2
+    fi
     echo "client-1: ${c1:-<missing>} (baresip: ${c1:-?}:${BARESIP_PORT})"
     echo "client-2: ${c2:-<missing>} (baresip: ${c2:-?}:${BARESIP_PORT})"
     echo "server:   ${srv:-<missing>} (relay:   ${srv:-?}:${RELAY_PORT})"
@@ -241,7 +257,7 @@ case "$cmd" in
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path oda "$account")\""
     fi
-    run_allow_sigint "$base_cmd -incoming-mode integrated -oda-after-answer -oda-attrs \"$attrs\" $csv_arg" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated -oda-attrs \"$attrs\" $csv_arg" < /dev/null
     ;;
 
   call-base)

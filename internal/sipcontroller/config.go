@@ -23,13 +23,11 @@ type Config struct {
 
 	// Policy
 	TimeoutSec    int
-	AutoODA       bool
 	ODAAttributes []string
 
 	// Incoming call behavior
-	IncomingMode   string // baseline|integrated
-	ODAAfterAnswer bool
-	ODATimeoutSec  int
+	IncomingMode  string // baseline|integrated
+	ODATimeoutSec int
 
 	// Debug
 	Verbose bool
@@ -54,10 +52,8 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.RelayAddr, "relay", "localhost:50052", "DIA relay server address")
 	flag.BoolVar(&cfg.RelayTLS, "relay-tls", false, "Use TLS for relay connection")
 	flag.IntVar(&cfg.TimeoutSec, "timeout", 5, "DIA protocol timeout in seconds")
-	flag.BoolVar(&cfg.AutoODA, "auto-oda", false, "Automatically trigger ODA after RUA")
 	odaAttrs := flag.String("oda-attrs", "", "Comma-separated ODA attributes to request")
 	flag.StringVar(&cfg.IncomingMode, "incoming-mode", "baseline", "Incoming call mode: baseline|integrated")
-	flag.BoolVar(&cfg.ODAAfterAnswer, "oda-after-answer", false, "In integrated incoming mode, trigger ODA after CALL_ANSWERED")
 	flag.IntVar(&cfg.ODATimeoutSec, "oda-timeout", 10, "ODA timeout in seconds (integrated incoming)")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging")
 	flag.StringVar(&cfg.ExperimentMode, "experiment", "", "Run experiment mode: baseline|integrated")
