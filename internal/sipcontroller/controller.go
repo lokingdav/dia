@@ -104,10 +104,13 @@ func (c *Controller) Start() error {
 	}
 
 	// Best-effort registration snapshot. This avoids guessing based on periodic REGISTER_OK.
-	if resp, err := c.baresip.RegInfo(); err == nil {
-		log.Printf("[Baresip] reginfo ok=%v data=%q", resp.OK, resp.Data)
-	} else {
-		log.Printf("[Baresip] reginfo failed: %v", err)
+	// Gate behind verbose to avoid frequent large log lines during experiments.
+	if c.config.Verbose {
+		if resp, err := c.baresip.RegInfo(); err == nil {
+			log.Printf("[Baresip] reginfo ok=%v data=%q", resp.OK, resp.Data)
+		} else {
+			log.Printf("[Baresip] reginfo failed: %v", err)
+		}
 	}
 
 	// Start event processing
@@ -154,13 +157,28 @@ func (c *Controller) eventLoop() {
 
 // handleBaresipEvent routes Baresip events to appropriate handlers
 func (c *Controller) handleBaresipEvent(event BaresipEvent) {
-	// Avoid printing large SDP bodies in logs.
-	if event.Type == EventCallLocalSDP || event.Type == EventCallRemoteSDP {
-		log.Printf("[Controller] Event: type=%s class=%s dir=%s aor=%s id=%s peer=%s",
-			event.Type, event.Class, event.Direction, event.AccountAOR, event.ID, event.PeerURI)
-	} else {
-		log.Printf("[Controller] Event: type=%s class=%s dir=%s aor=%s id=%s peer=%s param=%q",
-			event.Type, event.Class, event.Direction, event.AccountAOR, event.ID, event.PeerURI, event.Param)
+	// Log events sparingly by default to avoid perturbing measurements and overwhelming logs.
+	logEvent := c.config.Verbose
+	if !logEvent {
+		switch event.Type {
+		case EventCallIncoming, EventCallOutgoing, EventCallRinging, EventCallAnswered, EventCallEstablished, EventCallClosed,
+			EventRegisterOK, EventRegisterFail:
+			logEvent = true
+		default:
+			logEvent = false
+		}
+	}
+	if logEvent {
+		// Avoid printing large SDP bodies in logs unless verbose.
+		if (event.Type == EventCallLocalSDP || event.Type == EventCallRemoteSDP) && !c.config.Verbose {
+			// Skip SDP events entirely when not verbose.
+		} else if event.Type == EventCallLocalSDP || event.Type == EventCallRemoteSDP {
+			log.Printf("[Controller] Event: type=%s class=%s dir=%s aor=%s id=%s peer=%s",
+				event.Type, event.Class, event.Direction, event.AccountAOR, event.ID, event.PeerURI)
+		} else {
+			log.Printf("[Controller] Event: type=%s class=%s dir=%s aor=%s id=%s peer=%s param=%q",
+				event.Type, event.Class, event.Direction, event.AccountAOR, event.ID, event.PeerURI, event.Param)
+		}
 	}
 
 	switch event.Type {
@@ -222,8 +240,13 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 	log.Printf("[Controller] Initiating outgoing call to %s (protocol=%v)", phoneNumber, protocolEnabled)
 
 	// Best-effort registration snapshot before placing an outgoing call.
-	if resp, err := c.baresip.RegInfo(); err == nil {
-		log.Printf("[Baresip] reginfo ok=%v data=%q", resp.OK, resp.Data)
+	// Gate behind verbose to avoid large/frequent logs during experiments.
+	if c.config.Verbose {
+		if resp, err := c.baresip.RegInfo(); err == nil {
+			log.Printf("[Baresip] reginfo ok=%v data=%q", resp.OK, resp.Data)
+		} else {
+			log.Printf("[Baresip] reginfo failed: %v", err)
+		}
 	}
 
 	peerPhone := ExtractPhoneFromURI(phoneNumber)
@@ -269,33 +292,35 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 	// listcalls snapshots shortly after dial. This helps distinguish:
 	// - ctrl_tcp dial accepted but baresip did not create a call
 	// - call created but events not arriving / delayed
-	go func(attemptID string) {
-		snapshot := func(delay time.Duration) {
-			t := time.NewTimer(delay)
-			defer t.Stop()
-			select {
-			case <-c.ctx.Done():
-				return
-			case <-t.C:
+	if c.config.Verbose {
+		go func(attemptID string) {
+			snapshot := func(delay time.Duration) {
+				t := time.NewTimer(delay)
+				defer t.Stop()
+				select {
+				case <-c.ctx.Done():
+					return
+				case <-t.C:
+				}
+				s := c.callMgr.GetByAttemptID(attemptID)
+				if s == nil {
+					return
+				}
+				state := s.GetState()
+				if state == StateClosed || s.CallID != "" {
+					return
+				}
+				log.Printf("[Controller] No call-id yet for attempt=%s peer=%s state=%s after=%s", attemptID, s.PeerPhone, state.String(), delay)
+				if lr, lerr := c.baresip.ListCalls(); lerr == nil {
+					log.Printf("[Baresip] listcalls ok=%v data=%q", lr.OK, lr.Data)
+				} else {
+					log.Printf("[Baresip] listcalls failed: %v", lerr)
+				}
 			}
-			s := c.callMgr.GetByAttemptID(attemptID)
-			if s == nil {
-				return
-			}
-			state := s.GetState()
-			if state == StateClosed || s.CallID != "" {
-				return
-			}
-			log.Printf("[Controller] No call-id yet for attempt=%s peer=%s state=%s after=%s", attemptID, s.PeerPhone, state.String(), delay)
-			if lr, lerr := c.baresip.ListCalls(); lerr == nil {
-				log.Printf("[Baresip] listcalls ok=%v data=%q", lr.OK, lr.Data)
-			} else {
-				log.Printf("[Baresip] listcalls failed: %v", lerr)
-			}
-		}
-		snapshot(300 * time.Millisecond)
-		snapshot(1500 * time.Millisecond)
-	}(session.AttemptID)
+			snapshot(300 * time.Millisecond)
+			snapshot(1500 * time.Millisecond)
+		}(session.AttemptID)
+	}
 
 	// If the call already reached ANSWERED/ESTABLISHED before the dial command response
 	// was processed, we may already have AnsweredAt. Emit the answered metric now.
