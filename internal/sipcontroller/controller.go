@@ -708,6 +708,10 @@ func (c *Controller) handleCallerDIAMessage(session *CallSession, msg *dia.Messa
 		session.DIAComplete = true
 		session.SetState(StateDIAComplete)
 
+		// Caller-side optional ODA measurement: trigger ODA after the call is answered.
+		// RUA may complete before SIP answer; whichever happens last should start ODA.
+		c.startODAAfterAnswerForOutgoingIfConfigured(session)
+
 		// Get remote party info
 		remoteParty, err := session.DIAState.RemoteParty()
 		if err == nil && remoteParty != nil {
@@ -716,7 +720,7 @@ func (c *Controller) handleCallerDIAMessage(session *CallSession, msg *dia.Messa
 				session.PeerPhone, remoteParty.Name, remoteParty.Verified, remoteParty.Logo)
 		}
 
-		// ODA is triggered after answer in integrated incoming mode only.
+		// ODA for incoming calls is triggered after answer in integrated incoming mode only.
 
 	case dia.MsgODARequest:
 		c.handleODARequest(session, rawData)
@@ -875,34 +879,86 @@ func (c *Controller) handleODAResponse(session *CallSession, rawData []byte) {
 		log.Printf("[Controller]   %s: %s", name, value)
 	}
 
-	// If this controller initiated ODA (integrated incoming flow), record latency and hang up.
-	if !session.ODARequestedAt.IsZero() && session.ODACompletedAt.IsZero() {
+	// If this controller initiated ODA, record terminal timing and (later) emit a result row.
+	session.mu.Lock()
+	shouldRecord := !session.ODARequestedAt.IsZero() && session.ODACompletedAt.IsZero()
+	if shouldRecord {
 		now := time.Now()
 		session.ODACompletedAt = now
-		session.CancelODATimeout()
+		session.ODATerminalOutcome = "oda_done"
+		session.ODATerminalError = ""
+	}
+	session.mu.Unlock()
+	if !shouldRecord {
+		return
+	}
 
-		odaLat := now.Sub(session.ODARequestedAt).Milliseconds()
-		c.emitResult(CallResult{
-			AttemptID:       session.AttemptID,
-			CallID:          session.CallID,
-			SelfPhone:       c.config.SelfPhone,
-			PeerPhone:       session.PeerPhone,
-			PeerURI:         session.PeerURI,
-			Direction:       session.Direction,
-			ProtocolEnabled: session.ProtocolEnabled,
-			ODAReqUnixMs:    session.ODARequestedAt.UnixMilli(),
-			ODADoneUnixMs:   now.UnixMilli(),
-			ODALatencyMs:    odaLat,
-			Outcome:         "oda_done",
-		})
+	session.CancelODATimeout()
+	c.maybeEmitODATerminalResult(session)
 
-		if session.CallID != "" {
-			_, err := c.baresip.Hangup(session.CallID, 0, "")
-			if err != nil {
-				log.Printf("[Controller] Hangup after ODA failed for %s: %v", session.CallID, err)
-			}
+	if session.CallID != "" {
+		_, err := c.baresip.Hangup(session.CallID, 0, "")
+		if err != nil {
+			log.Printf("[Controller] Hangup after ODA failed for %s: %v", session.CallID, err)
+		}
+	} else {
+		// ODA may complete before the SIP call-id is known on the caller.
+		// Hang up once we learn the call-id (e.g., on CALL_ANSWERED/ESTABLISHED).
+		session.mu.Lock()
+		session.HangupAfterODARequested = true
+		session.mu.Unlock()
+	}
+}
+
+func (c *Controller) maybeEmitODATerminalResult(session *CallSession) {
+	if session == nil {
+		return
+	}
+
+	session.mu.Lock()
+	if session.ODATerminalEmitted || session.ODATerminalOutcome == "" {
+		session.mu.Unlock()
+		return
+	}
+	if session.ODARequestedAt.IsZero() || session.ODACompletedAt.IsZero() {
+		session.mu.Unlock()
+		return
+	}
+	// Require call-id for correlation.
+	if session.CallID == "" {
+		session.mu.Unlock()
+		return
+	}
+
+	// Snapshot fields while holding the lock.
+	res := CallResult{
+		AttemptID:       session.AttemptID,
+		CallID:          session.CallID,
+		SelfPhone:       c.config.SelfPhone,
+		PeerPhone:       session.PeerPhone,
+		PeerURI:         session.PeerURI,
+		Direction:       session.Direction,
+		ProtocolEnabled: session.ProtocolEnabled,
+		ODAReqUnixMs:    session.ODARequestedAt.UnixMilli(),
+		ODADoneUnixMs:   session.ODACompletedAt.UnixMilli(),
+		ODALatencyMs:    session.ODACompletedAt.Sub(session.ODARequestedAt).Milliseconds(),
+		Outcome:         session.ODATerminalOutcome,
+		Error:           session.ODATerminalError,
+	}
+	if !session.DialSentAt.IsZero() {
+		res.DialSentAtUnixMs = session.DialSentAt.UnixMilli()
+	}
+	if !session.AnsweredAt.IsZero() {
+		res.AnsweredAtUnixMs = session.AnsweredAt.UnixMilli()
+		if !session.DialSentAt.IsZero() {
+			res.LatencyMs = session.AnsweredAt.Sub(session.DialSentAt).Milliseconds()
 		}
 	}
+
+	session.ODATerminalEmitted = true
+	session.mu.Unlock()
+
+	c.emitResult(res)
 }
 
 func (c *Controller) startODAAfterAnswerIfConfigured(session *CallSession) {
@@ -929,30 +985,122 @@ func (c *Controller) startODAAfterAnswerIfConfigured(session *CallSession) {
 	// Start timeout guard
 	if c.config.ODATimeoutSec > 0 {
 		session.ODATimeout = time.AfterFunc(time.Duration(c.config.ODATimeoutSec)*time.Second, func() {
-			if !session.ODARequestedAt.IsZero() && session.ODACompletedAt.IsZero() {
+			session.mu.Lock()
+			shouldRecord := !session.ODARequestedAt.IsZero() && session.ODACompletedAt.IsZero()
+			if shouldRecord {
 				now := time.Now()
-				c.emitResult(CallResult{
-					AttemptID:       session.AttemptID,
-					CallID:          session.CallID,
-					SelfPhone:       c.config.SelfPhone,
-					PeerPhone:       session.PeerPhone,
-					PeerURI:         session.PeerURI,
-					Direction:       session.Direction,
-					ProtocolEnabled: session.ProtocolEnabled,
-					ODAReqUnixMs:    session.ODARequestedAt.UnixMilli(),
-					ODADoneUnixMs:   now.UnixMilli(),
-					ODALatencyMs:    now.Sub(session.ODARequestedAt).Milliseconds(),
-					Outcome:         "oda_timeout",
-					Error:           "oda timeout",
-				})
-				if session.CallID != "" {
-					_, _ = c.baresip.Hangup(session.CallID, 0, "")
-				}
+				session.ODACompletedAt = now
+				session.ODATerminalOutcome = "oda_timeout"
+				session.ODATerminalError = "oda timeout"
+			}
+			callID := session.CallID
+			callIDKnown := callID != ""
+			if shouldRecord && !callIDKnown {
+				session.HangupAfterODARequested = true
+			}
+			session.mu.Unlock()
+			if !shouldRecord {
+				return
+			}
+
+			c.maybeEmitODATerminalResult(session)
+			if callIDKnown {
+				_, _ = c.baresip.Hangup(callID, 0, "")
 			}
 		})
 	}
 
 	go c.triggerODA(session, c.config.ODAAttributes)
+}
+
+func (c *Controller) startODAAfterAnswerForOutgoingIfConfigured(session *CallSession) {
+	if session == nil {
+		return
+	}
+	if session.IsIncoming() {
+		return
+	}
+	if c.config.OutgoingODADelaySec < 0 {
+		return
+	}
+	if len(c.config.ODAAttributes) == 0 {
+		return
+	}
+	if !session.ProtocolEnabled {
+		return
+	}
+	if !session.DIAComplete {
+		return
+	}
+	// Only trigger after the call is answered/established. RUA may complete earlier.
+	if session.AnsweredAt.IsZero() {
+		return
+	}
+	// Avoid double-scheduling if we receive repeated events.
+	session.mu.Lock()
+	if session.ODARequestScheduled || !session.ODARequestedAt.IsZero() {
+		session.mu.Unlock()
+		return
+	}
+	session.ODARequestScheduled = true
+	session.mu.Unlock()
+
+	go func() {
+		defer func() {
+			// If we never actually sent an ODA request, allow a retry.
+			if session.ODARequestedAt.IsZero() {
+				session.mu.Lock()
+				session.ODARequestScheduled = false
+				session.mu.Unlock()
+			}
+		}()
+
+		if c.config.OutgoingODADelaySec > 0 {
+			t := time.NewTimer(time.Duration(c.config.OutgoingODADelaySec) * time.Second)
+			defer t.Stop()
+			select {
+			case <-c.ctx.Done():
+				return
+			case <-t.C:
+			}
+		}
+
+		now := time.Now()
+		session.mu.Lock()
+		session.ODARequestedAt = now
+		session.mu.Unlock()
+		log.Printf("[Controller] Starting outgoing ODA after answer for %s", session.PeerPhone)
+
+		// Start timeout guard
+		if c.config.ODATimeoutSec > 0 {
+			session.ODATimeout = time.AfterFunc(time.Duration(c.config.ODATimeoutSec)*time.Second, func() {
+				session.mu.Lock()
+				shouldRecord := !session.ODARequestedAt.IsZero() && session.ODACompletedAt.IsZero()
+				if shouldRecord {
+					now := time.Now()
+					session.ODACompletedAt = now
+					session.ODATerminalOutcome = "oda_timeout"
+					session.ODATerminalError = "oda timeout"
+				}
+				callID := session.CallID
+				callIDKnown := callID != ""
+				if shouldRecord && !callIDKnown {
+					session.HangupAfterODARequested = true
+				}
+				session.mu.Unlock()
+				if !shouldRecord {
+					return
+				}
+
+				c.maybeEmitODATerminalResult(session)
+				if callIDKnown {
+					_, _ = c.baresip.Hangup(callID, 0, "")
+				}
+			})
+		}
+
+		c.triggerODA(session, c.config.ODAAttributes)
+	}()
 }
 
 // triggerODA initiates an ODA request
@@ -1062,8 +1210,28 @@ func (c *Controller) handleCallAnswered(event BaresipEvent) {
 	// Emit answered metric if we have both timestamps.
 	c.maybeEmitAnsweredResult(session)
 
+	// Caller-side ODA measurement: trigger after answer (but requires RUA completion too).
+	c.startODAAfterAnswerForOutgoingIfConfigured(session)
+
 	// Recipient-side ODA measurement: start ODA after CALL_ANSWERED in integrated mode.
 	c.startODAAfterAnswerIfConfigured(session)
+
+	// If ODA completed earlier (e.g., caller-side) and was waiting for call-id, emit it now.
+	c.maybeEmitODATerminalResult(session)
+
+	// If ODA already completed before we had a call-id (caller-side), hang up now.
+	session.mu.Lock()
+	shouldHangup := session.HangupAfterODARequested && session.CallID != ""
+	if shouldHangup {
+		session.HangupAfterODARequested = false
+	}
+	session.mu.Unlock()
+	if shouldHangup {
+		_, err := c.baresip.Hangup(session.CallID, 0, "")
+		if err != nil {
+			log.Printf("[Controller] Hangup-after-ODA failed for %s: %v", session.CallID, err)
+		}
+	}
 }
 
 // handleCallEstablished handles call established event
@@ -1086,8 +1254,28 @@ func (c *Controller) handleCallEstablished(event BaresipEvent) {
 		}
 		// Emit answered metric if we have both timestamps.
 		c.maybeEmitAnsweredResult(session)
+		// Caller-side ODA measurement: also allow triggering on ESTABLISHED when ANSWERED isn't emitted.
+		c.startODAAfterAnswerForOutgoingIfConfigured(session)
 		// Recipient-side ODA measurement: also allow ODA-after-answer on ESTABLISHED.
 		c.startODAAfterAnswerIfConfigured(session)
+		// Outgoing ODA is triggered after SIP answer/established (and requires RUA completion).
+
+		// If ODA completed earlier and was waiting for call-id, emit it now.
+		c.maybeEmitODATerminalResult(session)
+
+		// If ODA already completed before we had a call-id (caller-side), hang up now.
+		session.mu.Lock()
+		shouldHangup := session.HangupAfterODARequested && session.CallID != ""
+		if shouldHangup {
+			session.HangupAfterODARequested = false
+		}
+		session.mu.Unlock()
+		if shouldHangup {
+			_, err := c.baresip.Hangup(session.CallID, 0, "")
+			if err != nil {
+				log.Printf("[Controller] Hangup-after-ODA failed for %s: %v", session.CallID, err)
+			}
+		}
 
 		// Display remote party info if available
 		if session.RemoteParty != nil {

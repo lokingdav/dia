@@ -24,12 +24,17 @@ Usage:
   # Recipient baseline: auto-answer immediately (no DIA/ODA)
   $0 recv-base <account>
 
+  # Recipient integrated: DIA gate, answer after verified (no ODA)
+  $0 recv-int <account> [-- <extra sipcontroller flags>]
+
   # Recipient integrated: DIA gate, answer after verified, then ODA after CALL_ANSWERED, then hangup
   $0 recv-int-oda <account> [attrs]
 
   # Caller batch experiments (prints JSONL results)
   $0 call-base <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
   $0 call-int  <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
+  $0 call-int-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- <extra sipcontroller flags>]
+  $0 caller-int-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_sec] [-- <extra sipcontroller flags>]
 
   # Start two interactive controllers (tries tmux; otherwise prints commands)
   $0 pair <accountA> <accountB>
@@ -38,7 +43,7 @@ Notes:
   - Account selects client automatically: 1XXX -> client-1, 2XXX -> client-2
   - Env file is inferred as: .env.<account> (e.g. .env.1001)
   - Addresses are read from: infras/hosts.yml
-  - call-* writes CSV by default to: results/<mode>_<account>_<timestamp>.csv (override with -csv)
+  - call-* and recv-int-oda write CSV by default to: results/dia_<account>_<timestamp>.csv (override with -csv)
 
 Examples:
   $0 it 1001
@@ -46,6 +51,7 @@ Examples:
   $0 recv-int-oda 2002
   $0 call-base 1001 +15551234567 50 5
   $0 call-int  1001 +15551234567 50 5
+  $0 caller-int-oda 1001 +15551234567 50 5 2
   $0 pair 1001 2002
 EOF
 }
@@ -189,12 +195,23 @@ has_inter_attempt_flag() {
   return 1
 }
 
+has_oda_attrs_flag() {
+  for a in "$@"; do
+    case "$a" in
+      -oda-attrs|-oda-attrs=*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 default_csv_path() {
   local mode="$1"
   local account="$2"
   local ts
   ts="$(date +%Y%m%d-%H%M%S)"
-  echo "$DEFAULT_CSV_DIR/${mode}_${account}_${ts}.csv"
+  echo "$DEFAULT_CSV_DIR/dia_${account}_${ts}.csv"
 }
 
 cmd=${1:-}
@@ -258,6 +275,21 @@ case "$cmd" in
     run_allow_sigint "$base_cmd -incoming-mode baseline" < /dev/null
     ;;
 
+  recv-int)
+    account=${1:-}
+    [[ -n "$account" ]] || die "usage: $0 recv-int <account> [-- extra flags]"
+    shift || true
+    read -r before after < <(split_passthrough "$@")
+    base_cmd="$(sipcontroller_cmd_base "$account")"
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
+    fi
+    run_allow_sigint "$base_cmd -incoming-mode integrated $csv_arg $before $after" < /dev/null
+    ;;
+
   recv-int-oda)
     account=${1:-}
     [[ -n "$account" ]] || die "usage: $0 recv-int-oda <account> [attrs]"
@@ -272,13 +304,47 @@ case "$cmd" in
     run_allow_sigint "$base_cmd -incoming-mode integrated -oda-attrs \"$attrs\" $csv_arg" < /dev/null
     ;;
 
+  call-int-oda|caller-int-oda)
+    if [[ "$cmd" == "caller-int-oda" ]]; then
+      echo "[controller.sh] warning: 'caller-int-oda' is deprecated; use 'call-int-oda'" >&2
+    fi
+    account=${1:-}
+    phone=${2:-}
+    runs=${3:-1}
+    conc=${4:-1}
+    oda_delay_sec=${5:-0}
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-int-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- extra flags]"
+    if [[ $# -ge 5 ]]; then shift 5; else shift $#; fi
+
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
+    fi
+
+    delay_arg=""
+    if ! has_inter_attempt_flag "$@"; then
+      delay_arg="-inter-attempt-ms $DEFAULT_INTER_ATTEMPT_MS"
+    fi
+
+    oda_attrs_arg=""
+    if ! has_oda_attrs_flag "$@"; then
+      oda_attrs_arg="-oda-attrs \"$DEFAULT_ODA_ATTRS\""
+    fi
+
+    read -r before after < <(split_passthrough "$@")
+    base_cmd="$(sipcontroller_cmd_base "$account")"
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc -outgoing-oda $oda_delay_sec $oda_attrs_arg $delay_arg $csv_arg $before $after"
+    ;;
+
   call-base)
     account=${1:-}
     phone=${2:-}
     runs=${3:-1}
     conc=${4:-1}
     [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-base <account> <phone_or_uri> [runs] [concurrency] [-- extra flags]"
-    shift 4 || true
+    if [[ $# -ge 4 ]]; then shift 4; else shift $#; fi
     csv_arg=""
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path baseline "$account")\""
@@ -302,7 +368,7 @@ case "$cmd" in
     runs=${3:-1}
     conc=${4:-1}
     [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-int <account> <phone_or_uri> [runs] [concurrency] [-- extra flags]"
-    shift 4 || true
+    if [[ $# -ge 4 ]]; then shift 4; else shift $#; fi
     csv_arg=""
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path integrated "$account")\""

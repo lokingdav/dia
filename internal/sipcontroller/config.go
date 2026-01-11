@@ -29,6 +29,12 @@ type Config struct {
 	IncomingMode  string // baseline|integrated
 	ODATimeoutSec int
 
+	// Outgoing call behavior
+	// If >= 0, triggers ODA for outgoing integrated calls after the call is
+	// answered/established (and after RUA completes), waiting the specified
+	// number of seconds.
+	OutgoingODADelaySec int
+
 	// Debug
 	Verbose bool
 
@@ -55,7 +61,8 @@ func ParseFlags() *Config {
 	flag.IntVar(&cfg.TimeoutSec, "timeout", 5, "DIA protocol timeout in seconds")
 	odaAttrs := flag.String("oda-attrs", "", "Comma-separated ODA attributes to request")
 	flag.StringVar(&cfg.IncomingMode, "incoming-mode", "baseline", "Incoming call mode: baseline|integrated")
-	flag.IntVar(&cfg.ODATimeoutSec, "oda-timeout", 10, "ODA timeout in seconds (integrated incoming)")
+	flag.IntVar(&cfg.ODATimeoutSec, "oda-timeout", 10, "ODA timeout in seconds (automatic ODA flows)")
+	flag.IntVar(&cfg.OutgoingODADelaySec, "outgoing-oda", -1, "If >=0, wait N seconds after outgoing call is answered/established (and RUA completes) then trigger ODA")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging")
 	flag.StringVar(&cfg.ExperimentMode, "experiment", "", "Run experiment mode: baseline|integrated")
 	flag.StringVar(&cfg.ExperimentPhone, "phone", "", "Phone number/URI to dial for -experiment")

@@ -352,8 +352,12 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 	completed := 0
 	var mu sync.Mutex
 	type attemptState struct {
-		printed bool
-		closed  bool
+		printed     bool
+		closed      bool
+		csvAnswered bool
+		csvODA      bool
+		csvTerminal bool
+		pendingODA  *sipcontroller.CallResult
 	}
 	inFlight := make(map[string]*attemptState)
 
@@ -396,12 +400,62 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 				if data, err := json.Marshal(res); err == nil {
 					fmt.Println(string(data))
 				}
-				if csvWriter != nil {
+				st.printed = true
+			}
+		}
+
+		// CSV: write call setup and ODA results as separate rows.
+		if csvWriter != nil {
+			switch res.Outcome {
+			case "answered":
+				if !st.csvAnswered {
 					if err := writeCSVRecord(csvWriter, res); err != nil {
 						return fmt.Errorf("writing csv record: %w", err)
 					}
+					st.csvAnswered = true
+					if st.pendingODA != nil && !st.csvODA {
+						if err := writeCSVRecord(csvWriter, *st.pendingODA); err != nil {
+							return fmt.Errorf("writing csv record: %w", err)
+						}
+						st.csvODA = true
+						st.pendingODA = nil
+					}
 				}
-				st.printed = true
+			case "oda_done", "oda_timeout":
+				if !st.csvODA {
+					if st.csvAnswered {
+						if err := writeCSVRecord(csvWriter, res); err != nil {
+							return fmt.Errorf("writing csv record: %w", err)
+						}
+						st.csvODA = true
+					} else {
+						// Ensure the call setup row is written first.
+						copy := res
+						st.pendingODA = &copy
+					}
+				}
+			case "error":
+				if !st.csvTerminal {
+					if err := writeCSVRecord(csvWriter, res); err != nil {
+						return fmt.Errorf("writing csv record: %w", err)
+					}
+					st.csvTerminal = true
+				}
+			case "closed":
+				// Only write "closed" if we didn't capture anything else for the attempt.
+				if st.pendingODA != nil && !st.csvODA {
+					if err := writeCSVRecord(csvWriter, *st.pendingODA); err != nil {
+						return fmt.Errorf("writing csv record: %w", err)
+					}
+					st.csvODA = true
+					st.pendingODA = nil
+				}
+				if !st.csvAnswered && !st.csvODA && !st.csvTerminal {
+					if err := writeCSVRecord(csvWriter, res); err != nil {
+						return fmt.Errorf("writing csv record: %w", err)
+					}
+					st.csvTerminal = true
+				}
 			}
 		}
 

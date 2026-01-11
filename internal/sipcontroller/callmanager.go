@@ -68,6 +68,11 @@ type CallSession struct {
 	// Control flags
 	BaselineHangupScheduled bool
 	AnsweredResultEmitted   bool
+	ODARequestScheduled     bool
+	HangupAfterODARequested bool
+	ODATerminalEmitted      bool
+	ODATerminalOutcome      string
+	ODATerminalError        string
 
 	// DIA components
 	DIAState      *dia.CallState
