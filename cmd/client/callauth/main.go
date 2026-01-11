@@ -19,6 +19,7 @@ type AppConfig struct {
 	UseTLS          bool
 	ODAAfterRUA     bool
 	ODAAttrs        []string
+	SendByeOnDone   bool
 }
 
 type RuntimeState struct {
@@ -36,6 +37,7 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 	useTLS := flag.Bool("tls", false, "Use TLS for relay connection")
 	odaAfterRUA := flag.Bool("oda-after-rua", false, "Trigger ODA after RUA completes")
 	odaAttrs := flag.String("oda-attrs", "name,issuer", "Comma-separated list of ODA attribute names to request (used with --oda-after-rua)")
+	sendByeOnDone := flag.Bool("send-bye-on-done", false, "Send DIA BYE and exit after protocol completion")
 	flag.Parse()
 
 	if *dial == "" && *receive == "" {
@@ -61,6 +63,7 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 		UseTLS:          *useTLS,
 		ODAAfterRUA:     *odaAfterRUA,
 		ODAAttrs:        parseCommaList(*odaAttrs),
+		SendByeOnDone:   *sendByeOnDone,
 	}
 
 	return *envfile, phone, outgoing, appCfg
@@ -233,7 +236,7 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 		)
 		runtime.odaHandled.Store(true)
 		// If we triggered ODA, we're done after verifying the response.
-		if runtime.odaTriggered.Load() {
+		if runtime.odaTriggered.Load() && cfg != nil && cfg.SendByeOnDone {
 			sendByeThenStop(runtime, callState, controller, stop)
 		}
 		return
@@ -332,7 +335,7 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 		// Session termination is BYE-driven.
 		// In the common dev setup, only the recipient ends the session after RUA
 		// when no ODA is configured.
-		if cfg != nil && !cfg.ODAAfterRUA {
+		if cfg != nil && cfg.SendByeOnDone && !cfg.ODAAfterRUA {
 			sendByeThenStop(runtime, callState, controller, stop)
 		}
 	}

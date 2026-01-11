@@ -38,7 +38,7 @@ func main() {
 		log.Fatal("--phone is required")
 	}
 	if *logoUrl == "" {
-		*logoUrl = fmt.Sprintf("https://avatar.iran.liara.run/public/%d", mr.IntN(55))
+		*logoUrl = fmt.Sprintf("https://i.pravatar.cc/150?img=%d", mr.IntN(55))
 	}
 
 	// Create DIA enrollment request (handles all crypto internally)
