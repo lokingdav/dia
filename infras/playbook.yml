@@ -170,6 +170,17 @@
       when: type in ['client', 'server']
       tags: [checkout_branch]
 
+    - name: Copy dia users details
+      ansible.builtin.template:
+        src: dia/accounts.j2
+        dest: "{{ repo_dest }}/accounts.json"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0644"
+      no_log: true
+      when: type == 'client'
+      tags: [setup]
+
     - name: Copy environment file
       ansible.builtin.copy:
         src: "../{{ env_files[inventory_hostname] }}"
@@ -177,7 +188,7 @@
         owner: ubuntu
         group: ubuntu
         mode: "0644"
-      when: type in ['client', 'server']
+      when: type == 'server'
       tags: [setup, copy_env]
 
     - name: Pull dia Docker image

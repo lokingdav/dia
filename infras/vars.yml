@@ -14,8 +14,6 @@ redis_image: redis:7-alpine
 
 # Environment files mapping
 env_files:
-  client-1: .env.alice
-  client-2: .env.bob
   server: .env
 
 # Service settings

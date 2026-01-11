@@ -1,0 +1,1 @@
+create a copy of vars.env.yml as .vars.yml and edit it appropriately. 

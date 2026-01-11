@@ -1,0 +1,8 @@
+[
+{% for ext in asterisk_extensions if ext.client == inventory_hostname -%}
+	{
+		"name": {{ (ext.full_name | default(ext.id)) | to_json }},
+		"phone": {{ ext.id | to_json }}
+	}{% if not loop.last %},{% endif %}
+{%- endfor %}
+]
