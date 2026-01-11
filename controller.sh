@@ -283,11 +283,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    csv_arg=""
-    if ! has_csv_flag "$@"; then
-      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
-    fi
-    run_allow_sigint "$base_cmd -incoming-mode integrated $csv_arg $before $after" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated $before $after" < /dev/null
     ;;
 
   recv-int-oda)
