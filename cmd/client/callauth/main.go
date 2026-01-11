@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/dense-identity/denseid/internal/subscriber"
 	dia "github.com/lokingdav/libdia/bindings/go/v2"
@@ -17,9 +18,9 @@ import (
 type AppConfig struct {
 	RelayServerAddr string
 	UseTLS          bool
-	ODAAfterRUA     bool
+	ODADelaySec     int
 	ODAAttrs        []string
-	SendByeOnDone   bool
+	Bye             bool
 }
 
 type RuntimeState struct {
@@ -35,9 +36,9 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 	envfile := flag.String("env", "", ".env file containing DIA subscriber credentials")
 	relayAddr := flag.String("relay", "localhost:50052", "Relay server address")
 	useTLS := flag.Bool("tls", false, "Use TLS for relay connection")
-	odaAfterRUA := flag.Bool("oda-after-rua", false, "Trigger ODA after RUA completes")
-	odaAttrs := flag.String("oda-attrs", "name,issuer", "Comma-separated list of ODA attribute names to request (used with --oda-after-rua)")
-	sendByeOnDone := flag.Bool("send-bye-on-done", false, "Send DIA BYE and exit after protocol completion")
+	odaDelay := flag.Int("oda", -1, "Seconds to wait after RUA before initiating ODA (>=0 enables; default -1 disables)")
+	odaAttrs := flag.String("oda-attrs", "name,issuer", "Comma-separated list of ODA attribute names to request (used with --oda)")
+	bye := flag.Bool("bye", false, "Send DIA BYE and exit when done")
 	flag.Parse()
 
 	if *dial == "" && *receive == "" {
@@ -61,9 +62,9 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 	appCfg = &AppConfig{
 		RelayServerAddr: *relayAddr,
 		UseTLS:          *useTLS,
-		ODAAfterRUA:     *odaAfterRUA,
+		ODADelaySec:     *odaDelay,
 		ODAAttrs:        parseCommaList(*odaAttrs),
-		SendByeOnDone:   *sendByeOnDone,
+		Bye:             *bye,
 	}
 
 	return *envfile, phone, outgoing, appCfg
@@ -236,7 +237,7 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 		)
 		runtime.odaHandled.Store(true)
 		// If we triggered ODA, we're done after verifying the response.
-		if runtime.odaTriggered.Load() && cfg != nil && cfg.SendByeOnDone {
+		if runtime.odaTriggered.Load() && cfg != nil && cfg.Bye {
 			sendByeThenStop(runtime, callState, controller, stop)
 		}
 		return
@@ -329,13 +330,13 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 			logRemoteParty(remoteParty)
 		}
 
-		maybeTriggerODA(cfg, runtime, callState, controller)
+		maybeScheduleODA(cfg, runtime, callState, controller)
 		runtime.ruaComplete.Store(true)
 
 		// Session termination is BYE-driven.
 		// In the common dev setup, only the recipient ends the session after RUA
 		// when no ODA is configured.
-		if cfg != nil && cfg.SendByeOnDone && !cfg.ODAAfterRUA {
+		if cfg != nil && cfg.Bye && cfg.ODADelaySec < 0 {
 			sendByeThenStop(runtime, callState, controller, stop)
 		}
 	}
@@ -413,34 +414,41 @@ func handleCallerMessage(callState *dia.CallState, controller *subscriber.Contro
 			logRemoteParty(remoteParty)
 		}
 
-		maybeTriggerODA(cfg, runtime, callState, controller)
+		maybeScheduleODA(cfg, runtime, callState, controller)
 		runtime.ruaComplete.Store(true)
 		// Caller waits for recipient BYE.
 	}
 }
 
-func maybeTriggerODA(cfg *AppConfig, runtime *RuntimeState, callState *dia.CallState, controller *subscriber.Controller) {
+func maybeScheduleODA(cfg *AppConfig, runtime *RuntimeState, callState *dia.CallState, controller *subscriber.Controller) {
 	if cfg == nil || runtime == nil || callState == nil || controller == nil {
 		return
 	}
-	if !cfg.ODAAfterRUA || len(cfg.ODAAttrs) == 0 {
+	if cfg.ODADelaySec < 0 || len(cfg.ODAAttrs) == 0 {
 		return
 	}
 	if runtime.odaTriggered.Swap(true) {
 		return
 	}
 
-	log.Printf("Triggering ODA after RUA with attrs=%v", cfg.ODAAttrs)
-	request, err := callState.ODARequest(cfg.ODAAttrs)
-	if err != nil {
-		log.Printf("Failed to create ODA request: %v", err)
-		return
-	}
-	if err := controller.Send(request); err != nil {
-		log.Printf("Failed to send ODA request: %v", err)
-		return
-	}
-	log.Println("Sent ODA Request")
+	delay := time.Duration(cfg.ODADelaySec) * time.Second
+	log.Printf("Scheduling ODA after RUA: delay=%s attrs=%v", delay, cfg.ODAAttrs)
+
+	go func() {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		request, err := callState.ODARequest(cfg.ODAAttrs)
+		if err != nil {
+			log.Printf("Failed to create ODA request: %v", err)
+			return
+		}
+		if err := controller.Send(request); err != nil {
+			log.Printf("Failed to send ODA request: %v", err)
+			return
+		}
+		log.Println("Sent ODA Request")
+	}()
 }
 
 func sendByeThenStop(runtime *RuntimeState, callState *dia.CallState, controller *subscriber.Controller, stop context.CancelFunc) {
