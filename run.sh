@@ -2,7 +2,9 @@
 set -euo pipefail
 
 cmd=${1:-}
-profile=${2:-}
+shift || true
+
+profile=${1:-}
 
 # list of valid profiles
 PROFILES=(es rs)
@@ -24,6 +26,8 @@ case "$cmd" in
       echo "Error: no profile specified."
       usage
     fi
+
+    shift || true
 
     if [[ "$profile" == "all" ]]; then
       docker compose "${ALL_PROFILE_ARGS[@]}" up -d --build
@@ -56,6 +60,8 @@ case "$cmd" in
       usage
     fi
 
+    shift || true
+
     # First, bring down the services
     if [[ "$profile" == "all" ]]; then
       docker compose "${ALL_PROFILE_ARGS[@]}" down
@@ -77,13 +83,10 @@ case "$cmd" in
     ;;
 
   alice)
-    go run cmd/client/callauth/main.go --dial bob --env .env.alice --relay localhost:50052
+    go run cmd/client/callauth/main.go --dial 2001 --env .env.1001 --relay localhost:50052 "$@"
     ;;
   bob)
-    go run cmd/client/callauth/main.go --receive alice --env .env.bob --relay localhost:50052
-    ;;
-  david)
-    go run cmd/client/callauth/main.go --receive bob --env .env.david --relay localhost:50052
+    go run cmd/client/callauth/main.go --receive 1001 --env .env.2001 --relay localhost:50052 "$@"
     ;;
   *)
     echo "Error: unknown command '$cmd'."

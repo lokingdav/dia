@@ -64,6 +64,11 @@ func (c *Controller) Send(payload []byte) error {
 	return c.Session.Send(payload)
 }
 
+// SendImmediate attempts a direct stream send (no queue), falling back to enqueue.
+func (c *Controller) SendImmediate(payload []byte) error {
+	return c.Session.SendImmediate(payload)
+}
+
 // SendToTopic publishes payload to a specific topic (optionally with ticket).
 func (c *Controller) SendToTopic(topic string, payload []byte, ticket []byte) error {
 	return c.Session.SendToTopic(topic, payload, ticket)

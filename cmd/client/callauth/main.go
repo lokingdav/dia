@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
+	"sync/atomic"
 
 	"github.com/dense-identity/denseid/internal/subscriber"
 	dia "github.com/lokingdav/libdia/bindings/go/v2"
@@ -15,6 +17,15 @@ import (
 type AppConfig struct {
 	RelayServerAddr string
 	UseTLS          bool
+	ODAAfterRUA     bool
+	ODAAttrs        []string
+}
+
+type RuntimeState struct {
+	odaTriggered atomic.Bool
+	odaHandled   atomic.Bool
+	ruaComplete  atomic.Bool
+	byeSent      atomic.Bool
 }
 
 func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
@@ -23,6 +34,8 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 	envfile := flag.String("env", "", ".env file containing DIA subscriber credentials")
 	relayAddr := flag.String("relay", "localhost:50052", "Relay server address")
 	useTLS := flag.Bool("tls", false, "Use TLS for relay connection")
+	odaAfterRUA := flag.Bool("oda-after-rua", false, "Trigger ODA after RUA completes")
+	odaAttrs := flag.String("oda-attrs", "name,issuer", "Comma-separated list of ODA attribute names to request (used with --oda-after-rua)")
 	flag.Parse()
 
 	if *dial == "" && *receive == "" {
@@ -46,9 +59,30 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 	appCfg = &AppConfig{
 		RelayServerAddr: *relayAddr,
 		UseTLS:          *useTLS,
+		ODAAfterRUA:     *odaAfterRUA,
+		ODAAttrs:        parseCommaList(*odaAttrs),
 	}
 
 	return *envfile, phone, outgoing, appCfg
+}
+
+func parseCommaList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func loadDIAConfig(envFile string) (*dia.Config, error) {
@@ -87,7 +121,6 @@ func main() {
 
 	fmt.Println("===== Call Details =====")
 	fmt.Printf("--> Outgoing: %v\n", outgoing)
-	fmt.Printf("--> Other Party: %s\n", phone)
 	fmt.Printf("--> Sender ID: %s\n", senderID)
 	fmt.Printf("--> AKE Topic: %s\n\n", akeTopic)
 
@@ -100,9 +133,11 @@ func main() {
 		log.Fatalf("Failed to create controller: %v", err)
 	}
 
+	runtime := &RuntimeState{}
+
 	// Start the tunnel and handle incoming messages
 	controller.Start(func(data []byte) {
-		handleMessage(callState, controller, data, stop)
+		handleMessage(callState, controller, appCfg, runtime, data, stop)
 	})
 
 	// For outgoing calls, send AKE request
@@ -125,7 +160,7 @@ func main() {
 	log.Println("Shutting down...")
 }
 
-func handleMessage(callState *dia.CallState, controller *subscriber.Controller, data []byte, stop context.CancelFunc) {
+func handleMessage(callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, data []byte, stop context.CancelFunc) {
 	msg, err := dia.ParseMessage(data)
 	if err != nil {
 		log.Printf("Failed to parse message (%d bytes): %v - data[0:min(20,len)]: %x", len(data), err, data[:min(20, len(data))])
@@ -145,16 +180,16 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 		return
 	}
 
-	// Filter by current active topic
-	if msgTopic != currentTopic {
-		log.Printf("Ignoring message from inactive topic: %s (current: %s)", msgTopic, currentTopic)
-		return
-	}
-
-	// Handle bye message
+	// Handle bye message (always honor, even if topic mismatches due to in-flight switching)
 	if msg.Type() == dia.MsgBye {
 		log.Println("Received BYE message - shutting down")
 		stop()
+		return
+	}
+
+	// Filter by current active topic
+	if msgTopic != currentTopic {
+		log.Printf("Ignoring message from inactive topic: %s (current: %s)", msgTopic, currentTopic)
 		return
 	}
 
@@ -177,6 +212,8 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 			return
 		}
 		log.Println("Sent ODA Response")
+		runtime.odaHandled.Store(true)
+		// Do not exit here. The ODA initiator will terminate the session by sending BYE.
 		return
 	}
 
@@ -187,27 +224,31 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 			log.Printf("Failed to verify ODA response: %v", err)
 			return
 		}
-		log.Printf("ODA Verification successful!")
-		log.Printf("  Verified: %v", verification.Verified)
-		log.Printf("  Issuer: %s", verification.Issuer)
-		log.Printf("  Credential Type: %s", verification.CredentialType)
-		log.Printf("  Disclosed attributes:")
-		for name, value := range verification.DisclosedAttributes {
-			log.Printf("    %s: %s", name, value)
+		log.Printf(
+			"ODA Verification: verified=%v issuer=%s credential_type=%s disclosed=%v",
+			verification.Verified,
+			verification.Issuer,
+			verification.CredentialType,
+			verification.DisclosedAttributes,
+		)
+		runtime.odaHandled.Store(true)
+		// If we triggered ODA, we're done after verifying the response.
+		if runtime.odaTriggered.Load() {
+			sendByeThenStop(runtime, callState, controller, stop)
 		}
 		return
 	}
 
 	// Route based on role
 	if callState.IsRecipient() {
-		handleRecipientMessage(callState, controller, msg, data)
+		handleRecipientMessage(callState, controller, cfg, runtime, msg, data, stop)
 	} else if callState.IsCaller() {
-		handleCallerMessage(callState, controller, msg, data)
+		handleCallerMessage(callState, controller, cfg, runtime, msg, data, stop)
 	}
 }
 
 // handleRecipientMessage handles messages for the recipient (Bob)
-func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Controller, msg *dia.Message, rawData []byte) {
+func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, msg *dia.Message, rawData []byte, stop context.CancelFunc) {
 	switch msg.Type() {
 	case dia.MsgAKERequest:
 		log.Println("Handling AKE Request")
@@ -282,13 +323,23 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 
 		remoteParty, err := callState.RemoteParty()
 		if err == nil && remoteParty != nil {
-			log.Printf("Remote party: %s (%s) logo=%s verified=%v", remoteParty.Name, remoteParty.Phone, remoteParty.Logo, remoteParty.Verified)
+			logRemoteParty(remoteParty)
+		}
+
+		maybeTriggerODA(cfg, runtime, callState, controller)
+		runtime.ruaComplete.Store(true)
+
+		// Session termination is BYE-driven.
+		// In the common dev setup, only the recipient ends the session after RUA
+		// when no ODA is configured.
+		if cfg != nil && !cfg.ODAAfterRUA {
+			sendByeThenStop(runtime, callState, controller, stop)
 		}
 	}
 }
 
 // handleCallerMessage handles messages for the caller (Alice)
-func handleCallerMessage(callState *dia.CallState, controller *subscriber.Controller, msg *dia.Message, rawData []byte) {
+func handleCallerMessage(callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, msg *dia.Message, rawData []byte, stop context.CancelFunc) {
 	switch msg.Type() {
 	case dia.MsgAKEResponse:
 		log.Println("Handling AKE Response")
@@ -306,6 +357,14 @@ func handleCallerMessage(callState *dia.CallState, controller *subscriber.Contro
 		sharedKey, _ := callState.SharedKey()
 		log.Printf("AKE Complete! Shared key: %x", sharedKey)
 
+		// Send AKE complete ASAP on the AKE topic so the recipient can finalize.
+		// (Matches sipcontroller ordering: don't put topic switching in front of the unblock message.)
+		if err := controller.SendToTopic(oldTopic, complete, nil); err != nil {
+			log.Printf("Failed to send AKE complete: %v", err)
+			return
+		}
+		log.Println("Sent AKE Complete")
+
 		// Derive RUA topic
 		ruaTopic, err := callState.RUADeriveTopic()
 		if err != nil {
@@ -313,12 +372,15 @@ func handleCallerMessage(callState *dia.CallState, controller *subscriber.Contro
 			return
 		}
 
-		// Create RUA request before transitioning
+		// Create RUA request
 		ruaRequest, err := callState.RUARequest()
 		if err != nil {
 			log.Printf("Failed to create RUA request: %v", err)
 			return
 		}
+
+		// Get ticket for topic creation
+		ticket, _ := callState.Ticket()
 
 		// Transition state to RUA
 		if err := callState.TransitionToRUA(); err != nil {
@@ -326,22 +388,12 @@ func handleCallerMessage(callState *dia.CallState, controller *subscriber.Contro
 			return
 		}
 
-		// Get ticket for topic creation
-		ticket, _ := callState.Ticket()
-
 		// Subscribe to RUA topic with RUA request as payload
 		if err := controller.SubscribeToNewTopicWithPayload(ruaTopic, ruaRequest, ticket); err != nil {
 			log.Printf("Failed to subscribe to RUA topic: %v", err)
 			return
 		}
 		log.Printf("Subscribed to RUA topic: %s", ruaTopic)
-
-		// Send AKE complete on old topic
-		if err := controller.SendToTopic(oldTopic, complete, nil); err != nil {
-			log.Printf("Failed to send AKE complete: %v", err)
-			return
-		}
-		log.Println("Sent AKE Complete")
 
 	case dia.MsgRUAResponse:
 		log.Println("Handling RUA Response")
@@ -355,9 +407,77 @@ func handleCallerMessage(callState *dia.CallState, controller *subscriber.Contro
 
 		remoteParty, err := callState.RemoteParty()
 		if err == nil && remoteParty != nil {
-			log.Printf("Remote party: %s (%s) verified=%v logo=%s",
-				remoteParty.Name, remoteParty.Phone, remoteParty.Verified, remoteParty.Logo,
-			)
+			logRemoteParty(remoteParty)
 		}
+
+		maybeTriggerODA(cfg, runtime, callState, controller)
+		runtime.ruaComplete.Store(true)
+		// Caller waits for recipient BYE.
 	}
+}
+
+func maybeTriggerODA(cfg *AppConfig, runtime *RuntimeState, callState *dia.CallState, controller *subscriber.Controller) {
+	if cfg == nil || runtime == nil || callState == nil || controller == nil {
+		return
+	}
+	if !cfg.ODAAfterRUA || len(cfg.ODAAttrs) == 0 {
+		return
+	}
+	if runtime.odaTriggered.Swap(true) {
+		return
+	}
+
+	log.Printf("Triggering ODA after RUA with attrs=%v", cfg.ODAAttrs)
+	request, err := callState.ODARequest(cfg.ODAAttrs)
+	if err != nil {
+		log.Printf("Failed to create ODA request: %v", err)
+		return
+	}
+	if err := controller.Send(request); err != nil {
+		log.Printf("Failed to send ODA request: %v", err)
+		return
+	}
+	log.Println("Sent ODA Request")
+}
+
+func sendByeThenStop(runtime *RuntimeState, callState *dia.CallState, controller *subscriber.Controller, stop context.CancelFunc) {
+	if stop == nil {
+		return
+	}
+	if runtime == nil || callState == nil || controller == nil {
+		stop()
+		return
+	}
+	if runtime.byeSent.Swap(true) {
+		stop()
+		return
+	}
+
+	bye, err := callState.CreateByeMessage()
+	if err != nil {
+		log.Printf("Failed to create BYE message: %v", err)
+		stop()
+		return
+	}
+	// Send BYE and exit immediately. We don't wait for a re-echo.
+	if err := controller.SendImmediate(bye); err != nil {
+		log.Printf("Failed to send BYE message: %v", err)
+		stop()
+		return
+	}
+	log.Println("Sent BYE")
+	stop()
+}
+
+func logRemoteParty(remoteParty *dia.RemoteParty) {
+	if remoteParty == nil {
+		return
+	}
+	log.Printf(
+		"\nRemote party:\n\tname=%s\n\tphone=%s\n\tverified=%v\n\tlogo=%s",
+		remoteParty.Name,
+		remoteParty.Phone,
+		remoteParty.Verified,
+		remoteParty.Logo,
+	)
 }

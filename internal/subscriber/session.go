@@ -58,6 +58,31 @@ func NewSession(client *RelayClient, topic string, ticket []byte, senderID strin
 	}
 }
 
+// SendImmediate attempts to send directly on the current stream (no queue), falling back
+// to enqueue if the stream isn't established yet.
+func (s *Session) SendImmediate(payload []byte) error {
+	if s.closed.Load() {
+		return errors.New("session closed")
+	}
+	if len(payload) == 0 {
+		return errors.New("empty payload")
+	}
+	req := &relaypb.RelayRequest{
+		SenderId: s.senderID,
+		Type:     relaypb.RelayRequest_PUBLISH,
+		Topic:    s.topic,
+		Payload:  payload,
+	}
+
+	s.streamMu.RLock()
+	stream := s.stream
+	s.streamMu.RUnlock()
+	if stream != nil {
+		return stream.Send(req)
+	}
+	return s.enqueue(req)
+}
+
 // Start begins the Tunnel loop and sets the inbound callback.
 func (s *Session) Start(onMessage func([]byte)) {
 	if s.closed.Load() {
