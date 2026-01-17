@@ -184,6 +184,7 @@ func (s *Session) tunnelLoop() {
 		// (Re)open Tunnel
 		stream, err := s.client.Stub.Tunnel(s.ctx)
 		if err != nil {
+			log.Printf("relay Tunnel dial failed (addr=%s): %v", s.client.addr, err)
 			if s.transient(err) && s.sleepBackoff(backoffIdx) {
 				backoffIdx++
 				continue
@@ -204,6 +205,7 @@ func (s *Session) tunnelLoop() {
 			Ticket:   s.ticket,
 		}
 		if err := stream.Send(sub); err != nil {
+			log.Printf("relay SUBSCRIBE send failed (addr=%s topic=%s): %v", s.client.addr, s.topic, err)
 			_ = stream.CloseSend()
 			if s.transient(err) && s.sleepBackoff(backoffIdx) {
 				backoffIdx++
@@ -211,6 +213,7 @@ func (s *Session) tunnelLoop() {
 			}
 			return
 		}
+		log.Printf("relay Tunnel connected (addr=%s topic=%s)", s.client.addr, s.topic)
 
 		// Start writer pump for queued frames
 		sendCtx, sendCancel := context.WithCancel(s.ctx)

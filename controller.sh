@@ -6,9 +6,18 @@ HOSTS_YML="$ROOT_DIR/infras/hosts.yml"
 
 BARESIP_PORT="${BARESIP_PORT:-4444}"
 RELAY_PORT="${RELAY_PORT:-50052}"
+RELAY_ADDR="${RELAY_ADDR:-localhost:${RELAY_PORT}}"
 DEFAULT_ODA_ATTRS="${ODA_ATTRS:-name,issuer}"
 DEFAULT_CSV_DIR="${CSV_DIR:-$ROOT_DIR/results}"
 DEFAULT_INTER_ATTEMPT_MS="${INTER_ATTEMPT_MS:-1000}"
+
+# Redis-backed peer-session cache defaults (used by *-cache commands)
+REDIS_ADDR="${REDIS_ADDR:-localhost:6379}"
+REDIS_USER="${REDIS_USER:-}"
+REDIS_PASS="${REDIS_PASS:-}"
+REDIS_DB="${REDIS_DB:-0}"
+REDIS_PREFIX="${REDIS_PREFIX:-denseid:dia:peer_session:v1}"
+PEER_SESSION_TTL="${PEER_SESSION_TTL:-0}"
 
 usage() {
   cat <<EOF
@@ -17,24 +26,27 @@ Usage:
 
   # Interactive controller (REPL + logs)
   $0 it <account> [-- <extra sipcontroller flags>]
+  $0 it-cache <account> [-- <extra sipcontroller flags>]
 
   # Recipient-only (no REPL needed; just logs/behavior)
+  # NOTE: recv defaults to integrated.
   $0 recv <account> [-- <extra sipcontroller flags>]
+  $0 recv-cache <account> [-- <extra sipcontroller flags>]
 
   # Recipient baseline: auto-answer immediately (no DIA/ODA)
   $0 recv-base <account>
 
-  # Recipient integrated: DIA gate, answer after verified (no ODA)
-  $0 recv-int <account> [-- <extra sipcontroller flags>]
-
-  # Recipient integrated: DIA gate, answer after verified, then ODA after CALL_ANSWERED, then hangup
-  $0 recv-int-oda <account> [attrs]
+  # Recipient integrated ODA: DIA gate, answer after verified, then ODA after CALL_ANSWERED, then hangup
+  $0 recv-oda <account> [attrs] [-- <extra sipcontroller flags>]
+  $0 recv-oda-cache <account> [attrs] [-- <extra sipcontroller flags>]
 
   # Caller batch experiments (prints JSONL results)
+  # NOTE: call defaults to integrated.
+  $0 call <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
+  $0 call-cache <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
   $0 call-base <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
-  $0 call-int  <account> <phone_or_uri> [runs] [concurrency] [-- <extra sipcontroller flags>]
-  $0 call-int-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- <extra sipcontroller flags>]
-  $0 caller-int-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_sec] [-- <extra sipcontroller flags>]
+  $0 call-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- <extra sipcontroller flags>]
+  $0 call-oda-cache <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- <extra sipcontroller flags>]
 
   # Start two interactive controllers (tries tmux; otherwise prints commands)
   $0 pair <accountA> <accountB>
@@ -42,16 +54,22 @@ Usage:
 Notes:
   - Account selects client automatically: 1XXX -> client-1, 2XXX -> client-2
   - Env file is inferred as: .env.<account> (e.g. .env.1001)
-  - Addresses are read from: infras/hosts.yml
+  - Baresip addresses are read from: infras/hosts.yml
+  - Relay address defaults to: localhost:50052 (override via env var RELAY_ADDR)
   - call-* and recv-int-oda write CSV by default to: results/dia_<account>_<timestamp>.csv (override with -csv)
+  - *-cache commands enable DIA peer-session caching via Redis (sipcontroller flag: -cache)
+  - Redis defaults can be overridden via env vars: REDIS_ADDR, REDIS_USER, REDIS_PASS, REDIS_DB, REDIS_PREFIX, PEER_SESSION_TTL
 
 Examples:
   $0 it 1001
+  $0 it-cache 1001
   $0 recv-base 2002
-  $0 recv-int-oda 2002
+  $0 recv-oda 2002
+  $0 recv-cache 2002
   $0 call-base 1001 +15551234567 50 5
-  $0 call-int  1001 +15551234567 50 5
-  $0 caller-int-oda 1001 +15551234567 50 5 2
+  $0 call  1001 +15551234567 50 5
+  $0 call-cache  1001 +15551234567 50 5
+  $0 call-oda 1001 +15551234567 50 5 2
   $0 pair 1001 2002
 EOF
 }
@@ -108,6 +126,12 @@ get_ansible_host() {
   ' "$HOSTS_YML"
 }
 
+resolve_relay_host() {
+  # Deprecated: relay host is no longer inferred from hosts.yml.
+  # Keep this function only to avoid breaking older scripts sourcing it.
+  return 1
+}
+
 resolve_client_from_account() {
   local account="$1"
   if [[ ! "$account" =~ ^[0-9]{4}$ ]]; then
@@ -129,12 +153,10 @@ sipcontroller_cmd_base() {
   local client
   client="$(resolve_client_from_account "$account")"
 
-  local client_ip server_ip
+  local client_ip
   client_ip=""
-  server_ip=""
   if [[ -f "$HOSTS_YML" ]]; then
     client_ip="$(get_ansible_host "$client" || true)"
-    server_ip="$(get_ansible_host server || true)"
   else
     echo "[controller.sh] warning: $HOSTS_YML not found; falling back to localhost" >&2
   fi
@@ -143,16 +165,23 @@ sipcontroller_cmd_base() {
     echo "[controller.sh] warning: missing '$client.ansible_host' in $HOSTS_YML; using localhost" >&2
     client_ip="localhost"
   fi
-  if [[ -z "$server_ip" ]]; then
-    echo "[controller.sh] warning: missing 'server.ansible_host' in $HOSTS_YML; using localhost" >&2
-    server_ip="localhost"
-  fi
-
   local baresip_addr relay_addr
   baresip_addr="${client_ip}:${BARESIP_PORT}"
-  relay_addr="${server_ip}:${RELAY_PORT}"
+  relay_addr="$RELAY_ADDR"
 
   echo "go run ./cmd/sipcontroller/main.go -account \"$account\" -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$relay_addr\""
+}
+
+cache_flags() {
+  local out
+  out="-cache -redis \"$REDIS_ADDR\" -redis-db $REDIS_DB -redis-prefix \"$REDIS_PREFIX\" -peer-session-ttl $PEER_SESSION_TTL"
+  if [[ -n "$REDIS_USER" ]]; then
+    out+=" -redis-user \"$REDIS_USER\""
+  fi
+  if [[ -n "$REDIS_PASS" ]]; then
+    out+=" -redis-pass \"$REDIS_PASS\""
+  fi
+  echo "$out"
 }
 
 split_passthrough() {
@@ -227,16 +256,14 @@ case "$cmd" in
     if [[ -f "$HOSTS_YML" ]]; then
       c1="$(get_ansible_host client-1)" || true
       c2="$(get_ansible_host client-2)" || true
-      srv="$(get_ansible_host server)" || true
     else
       c1=""
       c2=""
-      srv=""
       echo "[controller.sh] warning: $HOSTS_YML not found" >&2
     fi
     echo "client-1: ${c1:-<missing>} (baresip: ${c1:-?}:${BARESIP_PORT})"
     echo "client-2: ${c2:-<missing>} (baresip: ${c2:-?}:${BARESIP_PORT})"
-    echo "server:   ${srv:-<missing>} (relay:   ${srv:-?}:${RELAY_PORT})"
+    echo "relay:    $RELAY_ADDR"
     ;;
 
   it)
@@ -252,18 +279,46 @@ case "$cmd" in
     run_allow_sigint "$base_cmd $before $after"
     ;;
 
+  it-cache)
+    account=${1:-}
+    [[ -n "$account" ]] || die "usage: $0 it-cache <account> [-- extra flags]"
+    shift || true
+    read -r before after < <(split_passthrough "$@")
+    base_cmd="$(sipcontroller_cmd_base "$account")"
+    cache_arg="$(cache_flags)"
+    echo "[controller.sh] account=$account mode=interactive-cache" >&2
+    echo "[controller.sh] cmd: $base_cmd $cache_arg $before $after" >&2
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    run_allow_sigint "$base_cmd $cache_arg $before $after"
+    ;;
+
   recv)
     account=${1:-}
     [[ -n "$account" ]] || die "usage: $0 recv <account> [-- extra flags]"
     shift || true
     read -r before after < <(split_passthrough "$@")
     base_cmd="$(sipcontroller_cmd_base "$account")"
-    echo "[controller.sh] account=$account mode=recv" >&2
-    echo "[controller.sh] cmd: $base_cmd $before $after" >&2
+    echo "[controller.sh] account=$account mode=recv(integrated)" >&2
+    echo "[controller.sh] cmd: $base_cmd -incoming-mode integrated $before $after" >&2
     cd "$ROOT_DIR"
     # Run with stdin closed so it behaves like a daemon-ish log sink.
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd $before $after" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated $before $after" < /dev/null
+    ;;
+
+  recv-cache)
+    account=${1:-}
+    [[ -n "$account" ]] || die "usage: $0 recv-cache <account> [-- extra flags]"
+    shift || true
+    read -r before after < <(split_passthrough "$@")
+    base_cmd="$(sipcontroller_cmd_base "$account")"
+    cache_arg="$(cache_flags)"
+    echo "[controller.sh] account=$account mode=recv-cache(integrated)" >&2
+    echo "[controller.sh] cmd: $base_cmd -incoming-mode integrated $cache_arg $before $after" >&2
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    run_allow_sigint "$base_cmd -incoming-mode integrated $cache_arg $before $after" < /dev/null
     ;;
 
   recv-base)
@@ -275,21 +330,18 @@ case "$cmd" in
     run_allow_sigint "$base_cmd -incoming-mode baseline" < /dev/null
     ;;
 
-  recv-int)
+  recv-oda)
     account=${1:-}
-    [[ -n "$account" ]] || die "usage: $0 recv-int <account> [-- extra flags]"
+    [[ -n "$account" ]] || die "usage: $0 recv-oda <account> [attrs] [-- extra flags]"
     shift || true
-    read -r before after < <(split_passthrough "$@")
-    base_cmd="$(sipcontroller_cmd_base "$account")"
-    cd "$ROOT_DIR"
-    # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -incoming-mode integrated $before $after" < /dev/null
-    ;;
 
-  recv-int-oda)
-    account=${1:-}
-    [[ -n "$account" ]] || die "usage: $0 recv-int-oda <account> [attrs]"
-    attrs=${2:-$DEFAULT_ODA_ATTRS}
+    attrs="$DEFAULT_ODA_ATTRS"
+    if [[ ${1:-} != "" && ${1:-} != "--" ]]; then
+      attrs="$1"
+      shift || true
+    fi
+
+    read -r before after < <(split_passthrough "$@")
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
@@ -297,19 +349,39 @@ case "$cmd" in
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path oda "$account")\""
     fi
-    run_allow_sigint "$base_cmd -incoming-mode integrated -oda-attrs \"$attrs\" $csv_arg" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated -oda-attrs \"$attrs\" $csv_arg $before $after" < /dev/null
     ;;
 
-  call-int-oda|caller-int-oda)
-    if [[ "$cmd" == "caller-int-oda" ]]; then
-      echo "[controller.sh] warning: 'caller-int-oda' is deprecated; use 'call-int-oda'" >&2
+  recv-oda-cache)
+    account=${1:-}
+    [[ -n "$account" ]] || die "usage: $0 recv-oda-cache <account> [attrs] [-- extra flags]"
+    shift || true
+
+    attrs="$DEFAULT_ODA_ATTRS"
+    if [[ ${1:-} != "" && ${1:-} != "--" ]]; then
+      attrs="$1"
+      shift || true
     fi
+    read -r before after < <(split_passthrough "$@")
+    base_cmd="$(sipcontroller_cmd_base "$account")"
+    cache_arg="$(cache_flags)"
+
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path oda "$account")\""
+    fi
+    run_allow_sigint "$base_cmd -incoming-mode integrated $cache_arg -oda-attrs \"$attrs\" $csv_arg $before $after" < /dev/null
+    ;;
+
+  call-oda)
     account=${1:-}
     phone=${2:-}
     runs=${3:-1}
     conc=${4:-1}
     oda_delay_sec=${5:-0}
-    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-int-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- extra flags]"
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-oda <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- extra flags]"
     if [[ $# -ge 5 ]]; then shift 5; else shift $#; fi
 
     csv_arg=""
@@ -332,6 +404,38 @@ case "$cmd" in
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
     run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc -outgoing-oda $oda_delay_sec $oda_attrs_arg $delay_arg $csv_arg $before $after"
+    ;;
+
+  call-oda-cache)
+    account=${1:-}
+    phone=${2:-}
+    runs=${3:-1}
+    conc=${4:-1}
+    oda_delay_sec=${5:-0}
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-oda-cache <account> <phone_or_uri> [runs] [concurrency] [oda_delay_after_rua_sec] [-- extra flags]"
+    if [[ $# -ge 5 ]]; then shift 5; else shift $#; fi
+
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
+    fi
+
+    delay_arg=""
+    if ! has_inter_attempt_flag "$@"; then
+      delay_arg="-inter-attempt-ms $DEFAULT_INTER_ATTEMPT_MS"
+    fi
+
+    oda_attrs_arg=""
+    if ! has_oda_attrs_flag "$@"; then
+      oda_attrs_arg="-oda-attrs \"$DEFAULT_ODA_ATTRS\""
+    fi
+
+    read -r before after < <(split_passthrough "$@")
+    base_cmd="$(sipcontroller_cmd_base "$account")"
+    cache_arg="$(cache_flags)"
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    run_allow_sigint "$base_cmd $cache_arg -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc -outgoing-oda $oda_delay_sec $oda_attrs_arg $delay_arg $csv_arg $before $after"
     ;;
 
   call-base)
@@ -358,12 +462,12 @@ case "$cmd" in
     run_allow_sigint "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
     ;;
 
-  call-int)
+  call)
     account=${1:-}
     phone=${2:-}
     runs=${3:-1}
     conc=${4:-1}
-    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-int <account> <phone_or_uri> [runs] [concurrency] [-- extra flags]"
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call <account> <phone_or_uri> [runs] [concurrency] [-- extra flags]"
     if [[ $# -ge 4 ]]; then shift 4; else shift $#; fi
     csv_arg=""
     if ! has_csv_flag "$@"; then
@@ -380,6 +484,69 @@ case "$cmd" in
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
     run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
+    ;;
+
+  call-cache)
+    account=${1:-}
+    phone=${2:-}
+    runs=${3:-1}
+    conc=${4:-1}
+    [[ -n "$account" && -n "$phone" ]] || die "usage: $0 call-cache <account> <phone_or_uri> [runs] [concurrency] [-- extra flags]"
+    if [[ $# -ge 4 ]]; then shift 4; else shift $#; fi
+    csv_arg=""
+    if ! has_csv_flag "$@"; then
+      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
+    fi
+
+    delay_arg=""
+    if ! has_inter_attempt_flag "$@"; then
+      delay_arg="-inter-attempt-ms $DEFAULT_INTER_ATTEMPT_MS"
+    fi
+
+    read -r before after < <(split_passthrough "$@")
+    base_cmd="$(sipcontroller_cmd_base "$account")"
+    cache_arg="$(cache_flags)"
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    run_allow_sigint "$base_cmd $cache_arg -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
+    ;;
+
+  # Deprecated aliases (kept for compatibility)
+  recv-int)
+    echo "[controller.sh] warning: 'recv-int' is deprecated; use 'recv'" >&2
+    exec "$0" recv "$@"
+    ;;
+  recv-int-cache)
+    echo "[controller.sh] warning: 'recv-int-cache' is deprecated; use 'recv-cache'" >&2
+    exec "$0" recv-cache "$@"
+    ;;
+  recv-int-oda)
+    echo "[controller.sh] warning: 'recv-int-oda' is deprecated; use 'recv-oda'" >&2
+    exec "$0" recv-oda "$@"
+    ;;
+  recv-int-oda-cache)
+    echo "[controller.sh] warning: 'recv-int-oda-cache' is deprecated; use 'recv-oda-cache'" >&2
+    exec "$0" recv-oda-cache "$@"
+    ;;
+  call-int)
+    echo "[controller.sh] warning: 'call-int' is deprecated; use 'call'" >&2
+    exec "$0" call "$@"
+    ;;
+  call-int-cache)
+    echo "[controller.sh] warning: 'call-int-cache' is deprecated; use 'call-cache'" >&2
+    exec "$0" call-cache "$@"
+    ;;
+  call-int-oda)
+    echo "[controller.sh] warning: 'call-int-oda' is deprecated; use 'call-oda'" >&2
+    exec "$0" call-oda "$@"
+    ;;
+  call-int-oda-cache)
+    echo "[controller.sh] warning: 'call-int-oda-cache' is deprecated; use 'call-oda-cache'" >&2
+    exec "$0" call-oda-cache "$@"
+    ;;
+  caller-int-oda)
+    echo "[controller.sh] warning: 'caller-int-oda' is deprecated; use 'call-oda'" >&2
+    exec "$0" call-oda "$@"
     ;;
 
   pair)

@@ -354,12 +354,18 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 	type attemptState struct {
 		printed     bool
 		closed      bool
+		hangupSent  bool
 		csvAnswered bool
 		csvODA      bool
 		csvTerminal bool
 		pendingODA  *sipcontroller.CallResult
 	}
 	inFlight := make(map[string]*attemptState)
+
+	// If outgoing ODA is configured, completion is gated by ODA terminal outcomes.
+	// Otherwise, keep the historical behavior: complete on CALL_CLOSED (or error),
+	// but proactively hang up after ANSWERED so we reliably reach CLOSED.
+	waitForODA := cfg != nil && cfg.OutgoingODADelaySec >= 0 && len(cfg.ODAAttributes) > 0
 
 	startOne := func() error {
 		attemptID, err := controller.InitiateOutgoingCall(phone, protocolEnabled)
@@ -402,6 +408,13 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 				}
 				st.printed = true
 			}
+		}
+
+		// For non-ODA experiments, end answered calls so the attempt reaches CLOSED and
+		// the process exits after n runs (historical behavior).
+		if !waitForODA && res.Outcome == "answered" && !st.hangupSent && res.CallID != "" {
+			_ = controller.HangupCall(res.CallID)
+			st.hangupSent = true
 		}
 
 		// CSV: write call setup and ODA results as separate rows.
@@ -459,13 +472,19 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 			}
 		}
 
-		// Completion gating: don't start a new attempt until this one is actually closed.
+		// Completion gating: keep historical behavior (complete on CLOSED / ERROR),
+		// and for ODA experiments complete on ODA terminal outcomes.
 		if res.Outcome == "closed" {
 			st.closed = true
 		}
 		if res.Outcome == "error" {
 			// No call to wait for.
 			st.closed = true
+		}
+		if waitForODA {
+			if res.Outcome == "oda_done" || res.Outcome == "oda_timeout" {
+				st.closed = true
+			}
 		}
 
 		if st.closed {
