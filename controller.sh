@@ -187,7 +187,11 @@ cache_flags() {
 split_passthrough() {
   # Splits args into: positional args before --, and pass-through after --.
   # Prints two lines: BEFORE and AFTER (space-joined).
-  local before=() after=() seen=0
+  local -a before
+  local -a after
+  local seen=0
+  before=()
+  after=()
   for a in "$@"; do
     if [[ "$a" == "--" && $seen -eq 0 ]]; then
       seen=1
@@ -199,7 +203,8 @@ split_passthrough() {
       after+=("$a")
     fi
   done
-  printf '%s\n' "${before[*]}" "${after[*]}"
+  # Use default expansions to stay safe under `set -u`.
+  printf '%s\n' "${before[*]-}" "${after[*]-}"
 }
 
 has_csv_flag() {
