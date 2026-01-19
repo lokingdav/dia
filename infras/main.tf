@@ -30,7 +30,7 @@ variable "standard_instance_type" {
 variable "high_spec_instance_type" {
   description = "Instance type for high spec EC2 instance"
   type        = string
-  default     = "t3.medium"
+  default     = "t3.small"
 }
 
 # Regions for the 3 instances
