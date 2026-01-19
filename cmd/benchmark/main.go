@@ -42,7 +42,7 @@ func main() {
 
 	flag.IntVar(&samples, "samples", 30, "Number of samples per benchmark case (>= 1)")
 	flag.IntVar(&iters, "iters", 0, "Override iteration count for each case (0 = use defaults)")
-	flag.StringVar(&modeStr, "mode", string(runBoth), "Which benchmark CSV to run: both|plain|role")
+	flag.StringVar(&modeStr, "mode", string(runRole), "Which benchmark CSV to run: role|plain|both")
 	flag.StringVar(&outPlain, "out-plain", "", "Write BenchProtocolCSV output to this file (default: stdout)")
 	flag.StringVar(&outRole, "out-role", "", "Write BenchProtocolRoleCSV output to this file (default: stdout)")
 	flag.Parse()
@@ -55,7 +55,7 @@ func main() {
 	switch mode {
 	case runBoth, runPlain, runRole:
 	default:
-		log.Fatalf("invalid -mode %q (expected both|plain|role)", modeStr)
+		log.Fatalf("invalid -mode %q (expected role|plain|both)", modeStr)
 	}
 
 	// Default to writing outputs to results/*.csv (overwriting each run)
