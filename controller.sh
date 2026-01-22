@@ -6,7 +6,10 @@ HOSTS_YML="$ROOT_DIR/infras/hosts.yml"
 
 BARESIP_PORT="${BARESIP_PORT:-4444}"
 RELAY_PORT="${RELAY_PORT:-50052}"
-RELAY_ADDR="${RELAY_ADDR:-localhost:${RELAY_PORT}}"
+# If RELAY_ADDR is set in the environment, it always wins.
+# Otherwise we will try to infer it from infras/hosts.yml (host: server/relay).
+RELAY_ADDR_OVERRIDE="${RELAY_ADDR:-}"
+DEFAULT_RELAY_ADDR="localhost:${RELAY_PORT}"
 DEFAULT_ODA_ATTRS="${ODA_ATTRS:-name,issuer}"
 DEFAULT_CSV_DIR="${CSV_DIR:-$ROOT_DIR/results}"
 DEFAULT_INTER_ATTEMPT_MS="${INTER_ATTEMPT_MS:-1000}"
@@ -60,6 +63,7 @@ Notes:
   - Baresip addresses are read from: infras/hosts.yml
   - Relay address defaults to: localhost:50052 (override via env var RELAY_ADDR)
   - call-* and recv-int-oda write CSV by default to: results/dia_<account>_<timestamp>.csv (override with -csv)
+  - *-cache commands that auto-write CSV use: results/dia_cache_<account>_<timestamp>.csv (override with -csv)
   - *-cache commands enable DIA peer-session caching via Redis (sipcontroller flag: -cache)
   - Redis defaults can be overridden via env vars: REDIS_ADDR, REDIS_USER, REDIS_PASS, REDIS_DB, REDIS_PREFIX, PEER_SESSION_TTL
 
@@ -131,9 +135,44 @@ get_ansible_host() {
 }
 
 resolve_relay_host() {
-  # Deprecated: relay host is no longer inferred from hosts.yml.
-  # Keep this function only to avoid breaking older scripts sourcing it.
+  # Backwards-compatible helper: return the inferred relay host IP (no port)
+  # from hosts.yml when present.
+  if [[ -f "$HOSTS_YML" ]]; then
+    local ip
+    ip="$(get_ansible_host server || true)"
+    if [[ -z "$ip" ]]; then
+      ip="$(get_ansible_host relay || true)"
+    fi
+    if [[ -n "$ip" ]]; then
+      echo "$ip"
+      return 0
+    fi
+  fi
   return 1
+}
+
+resolve_relay_addr() {
+  # Prefer explicit override.
+  if [[ -n "${RELAY_ADDR_OVERRIDE:-}" ]]; then
+    echo "$RELAY_ADDR_OVERRIDE"
+    return 0
+  fi
+
+  # Infer from hosts.yml if possible.
+  if [[ -f "$HOSTS_YML" ]]; then
+    local ip
+    ip="$(get_ansible_host server || true)"
+    if [[ -z "$ip" ]]; then
+      ip="$(get_ansible_host relay || true)"
+    fi
+    if [[ -n "$ip" ]]; then
+      echo "${ip}:${RELAY_PORT}"
+      return 0
+    fi
+  fi
+
+  # Fallback.
+  echo "$DEFAULT_RELAY_ADDR"
 }
 
 resolve_client_from_account() {
@@ -171,7 +210,7 @@ sipcontroller_cmd_base() {
   fi
   local baresip_addr relay_addr
   baresip_addr="${client_ip}:${BARESIP_PORT}"
-  relay_addr="$RELAY_ADDR"
+  relay_addr="$(resolve_relay_addr)"
 
   echo "go run ./cmd/sipcontroller/main.go -account \"$account\" -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$relay_addr\""
 }
@@ -247,9 +286,14 @@ has_oda_attrs_flag() {
 default_csv_path() {
   local mode="$1"
   local account="$2"
+  local cache_on="${3:-0}"
   local ts
   ts="$(date +%Y%m%d-%H%M%S)"
-  echo "$DEFAULT_CSV_DIR/dia_${account}_${ts}.csv"
+  if [[ "$cache_on" == "1" ]]; then
+    echo "$DEFAULT_CSV_DIR/dia_cache_${account}_${ts}.csv"
+  else
+    echo "$DEFAULT_CSV_DIR/dia_${account}_${ts}.csv"
+  fi
 }
 
 cmd=${1:-}
@@ -272,7 +316,7 @@ case "$cmd" in
     fi
     echo "client-1: ${c1:-<missing>} (baresip: ${c1:-?}:${BARESIP_PORT})"
     echo "client-2: ${c2:-<missing>} (baresip: ${c2:-?}:${BARESIP_PORT})"
-    echo "relay:    $RELAY_ADDR"
+    echo "relay:    $(resolve_relay_addr)"
     ;;
 
   clear-cache)
@@ -388,7 +432,7 @@ case "$cmd" in
     # shellcheck disable=SC2086
     csv_arg=""
     if ! has_csv_flag "$@"; then
-      csv_arg="-csv \"$(default_csv_path oda "$account")\""
+      csv_arg="-csv \"$(default_csv_path oda "$account" 1)\""
     fi
     run_allow_sigint "$base_cmd -incoming-mode integrated $cache_arg -oda-attrs \"$attrs\" $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/recipient.log\"" < /dev/null
     ;;
@@ -435,7 +479,7 @@ case "$cmd" in
 
     csv_arg=""
     if ! has_csv_flag "$@"; then
-      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
+      csv_arg="-csv \"$(default_csv_path integrated "$account" 1)\""
     fi
 
     delay_arg=""
@@ -513,7 +557,7 @@ case "$cmd" in
     if [[ $# -ge 4 ]]; then shift 4; else shift $#; fi
     csv_arg=""
     if ! has_csv_flag "$@"; then
-      csv_arg="-csv \"$(default_csv_path integrated "$account")\""
+      csv_arg="-csv \"$(default_csv_path integrated "$account" 1)\""
     fi
 
     delay_arg=""
