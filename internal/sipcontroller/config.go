@@ -50,6 +50,11 @@ type Config struct {
 	// If >0, peer-session entries will be written with an expiration.
 	PeerSessionTTLSeconds int
 
+	// Utilities
+	// If true, run a one-shot command to clear all peer-session cache entries
+	// under the configured Redis prefix, then exit.
+	ClearCache bool
+
 	// Experiments (optional, non-interactive)
 	ExperimentMode                string
 	ExperimentPhone               string
@@ -83,6 +88,7 @@ func ParseFlags() *Config {
 	flag.IntVar(&cfg.RedisDB, "redis-db", 0, "Redis DB number")
 	flag.StringVar(&cfg.RedisPrefix, "redis-prefix", "denseid:dia:peer_session:v1", "Redis key prefix for peer session cache")
 	flag.IntVar(&cfg.PeerSessionTTLSeconds, "peer-session-ttl", 0, "Peer session TTL in seconds (0 = no TTL)")
+	flag.BoolVar(&cfg.ClearCache, "clear-cache", false, "Clear all DIA peer-session cache entries (requires Redis flags); exits immediately")
 	flag.StringVar(&cfg.ExperimentMode, "experiment", "", "Run experiment mode: baseline|integrated")
 	flag.StringVar(&cfg.ExperimentPhone, "phone", "", "Phone number/URI to dial for -experiment")
 	flag.IntVar(&cfg.ExperimentRuns, "runs", 1, "Number of calls to place in -experiment")
@@ -91,6 +97,13 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.OutputCSV, "csv", "", "Write experiment results to a CSV file")
 
 	flag.Parse()
+
+	// clear-cache is a utility mode; it does not need DIA env or Baresip.
+	// It does need Redis configuration, so we enable cache-mode semantics.
+	if cfg.ClearCache {
+		cfg.CacheEnabled = true
+		return cfg
+	}
 
 	if cfg.DIAEnvFile == "" {
 		fmt.Fprintln(os.Stderr, "Error: -env flag is required")

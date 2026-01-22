@@ -91,6 +91,18 @@ func main() {
 	// Parse configuration
 	cfg := sipcontroller.ParseFlags()
 
+	if cfg.ClearCache {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer stop()
+
+		deleted, err := sipcontroller.ClearPeerSessionCache(ctx, cfg)
+		if err != nil {
+			log.Fatalf("[Cache] clear failed: %v", err)
+		}
+		log.Printf("[Cache] cleared %d keys (prefix=%s db=%d)", deleted, cfg.RedisPrefix, cfg.RedisDB)
+		return
+	}
+
 	// Load DIA config
 	diaCfg, selfPhone, err := sipcontroller.LoadDIAConfigAndSelfPhone(cfg.DIAEnvFile)
 	if err != nil {
@@ -368,6 +380,11 @@ func runExperiment(ctx context.Context, controller *sipcontroller.Controller, cf
 	waitForODA := cfg != nil && cfg.OutgoingODADelaySec >= 0 && len(cfg.ODAAttributes) > 0
 
 	startOne := func() error {
+		runNo := started + 1
+		log.Printf("")
+		log.Printf("--------------------------------------------------------------------------------")
+		log.Printf("[Experiment] START run=%d/%d mode=%s phone=%s", runNo, runs, mode, phone)
+		log.Printf("--------------------------------------------------------------------------------")
 		attemptID, err := controller.InitiateOutgoingCall(phone, protocolEnabled)
 		if err != nil {
 			return err

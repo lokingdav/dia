@@ -24,6 +24,9 @@ usage() {
 Usage:
   $0 ips
 
+  # Cache utilities
+  $0 clear-cache
+
   # Interactive controller (REPL + logs)
   $0 it <account> [-- <extra sipcontroller flags>]
   $0 it-cache <account> [-- <extra sipcontroller flags>]
@@ -63,6 +66,7 @@ Notes:
 Examples:
   $0 it 1001
   $0 it-cache 1001
+  $0 clear-cache
   $0 recv-base 2002
   $0 recv-oda 2002
   $0 recv-cache 2002
@@ -271,6 +275,15 @@ case "$cmd" in
     echo "relay:    $RELAY_ADDR"
     ;;
 
+  clear-cache)
+    cache_arg="$(cache_flags)"
+    echo "[controller.sh] action=clear-cache" >&2
+    echo "[controller.sh] cmd: go run ./cmd/sipcontroller/main.go -clear-cache $cache_arg" >&2
+    cd "$ROOT_DIR"
+    # shellcheck disable=SC2086
+    run_allow_sigint "go run ./cmd/sipcontroller/main.go -clear-cache $cache_arg"
+    ;;
+
   it)
     account=${1:-}
     [[ -n "$account" ]] || die "usage: $0 it <account> [-- extra flags]"
@@ -309,7 +322,7 @@ case "$cmd" in
     cd "$ROOT_DIR"
     # Run with stdin closed so it behaves like a daemon-ish log sink.
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -incoming-mode integrated $before $after" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated $before $after 2>&1 | tee \"$ROOT_DIR/recipient.log\"" < /dev/null
     ;;
 
   recv-cache)
@@ -323,7 +336,7 @@ case "$cmd" in
     echo "[controller.sh] cmd: $base_cmd -incoming-mode integrated $cache_arg $before $after" >&2
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -incoming-mode integrated $cache_arg $before $after" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated $cache_arg $before $after 2>&1 | tee \"$ROOT_DIR/recipient.log\"" < /dev/null
     ;;
 
   recv-base)
@@ -332,7 +345,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -incoming-mode baseline" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode baseline 2>&1 | tee \"$ROOT_DIR/recipient.log\"" < /dev/null
     ;;
 
   recv-oda)
@@ -354,7 +367,7 @@ case "$cmd" in
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path oda "$account")\""
     fi
-    run_allow_sigint "$base_cmd -incoming-mode integrated -oda-attrs \"$attrs\" $csv_arg $before $after" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated -oda-attrs \"$attrs\" $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/recipient.log\"" < /dev/null
     ;;
 
   recv-oda-cache)
@@ -377,7 +390,7 @@ case "$cmd" in
     if ! has_csv_flag "$@"; then
       csv_arg="-csv \"$(default_csv_path oda "$account")\""
     fi
-    run_allow_sigint "$base_cmd -incoming-mode integrated $cache_arg -oda-attrs \"$attrs\" $csv_arg $before $after" < /dev/null
+    run_allow_sigint "$base_cmd -incoming-mode integrated $cache_arg -oda-attrs \"$attrs\" $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/recipient.log\"" < /dev/null
     ;;
 
   call-oda)
@@ -408,7 +421,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc -outgoing-oda $oda_delay_sec $oda_attrs_arg $delay_arg $csv_arg $before $after"
+    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc -outgoing-oda $oda_delay_sec $oda_attrs_arg $delay_arg $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/caller.log\""
     ;;
 
   call-oda-cache)
@@ -440,7 +453,7 @@ case "$cmd" in
     cache_arg="$(cache_flags)"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd $cache_arg -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc -outgoing-oda $oda_delay_sec $oda_attrs_arg $delay_arg $csv_arg $before $after"
+    run_allow_sigint "$base_cmd $cache_arg -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc -outgoing-oda $oda_delay_sec $oda_attrs_arg $delay_arg $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/caller.log\""
     ;;
 
   call-base)
@@ -464,7 +477,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
+    run_allow_sigint "$base_cmd -experiment baseline -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/caller.log\""
     ;;
 
   call)
@@ -488,7 +501,7 @@ case "$cmd" in
     base_cmd="$(sipcontroller_cmd_base "$account")"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
+    run_allow_sigint "$base_cmd -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/caller.log\""
     ;;
 
   call-cache)
@@ -513,7 +526,7 @@ case "$cmd" in
     cache_arg="$(cache_flags)"
     cd "$ROOT_DIR"
     # shellcheck disable=SC2086
-    run_allow_sigint "$base_cmd $cache_arg -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after"
+    run_allow_sigint "$base_cmd $cache_arg -experiment integrated -phone \"$phone\" -runs $runs -concurrency $conc $delay_arg $csv_arg $before $after 2>&1 | tee \"$ROOT_DIR/caller.log\""
     ;;
 
   # Deprecated aliases (kept for compatibility)

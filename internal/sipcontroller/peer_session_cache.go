@@ -100,3 +100,41 @@ func (c *peerSessionCache) Set(ctx context.Context, selfPhone, peerPhone string,
 	k := c.key(selfPhone, peerPhone)
 	return c.client.Set(ctx, k, blob, c.ttl).Err()
 }
+
+func (c *peerSessionCache) ClearAll(ctx context.Context) (int64, error) {
+	if c == nil || !c.enabled {
+		return 0, nil
+	}
+	pattern := strings.TrimSpace(c.prefix) + ":*"
+	var cursor uint64
+	var deleted int64
+	for {
+		keys, next, err := c.client.Scan(ctx, cursor, pattern, 500).Result()
+		if err != nil {
+			return deleted, err
+		}
+		if len(keys) > 0 {
+			n, err := c.client.Del(ctx, keys...).Result()
+			if err != nil {
+				return deleted, err
+			}
+			deleted += n
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return deleted, nil
+}
+
+// ClearPeerSessionCache clears all peer-session keys under the configured prefix.
+// This is intended for scripting and testing.
+func ClearPeerSessionCache(ctx context.Context, cfg *Config) (int64, error) {
+	cache, err := newPeerSessionCache(cfg)
+	if err != nil {
+		return 0, err
+	}
+	defer cache.Close()
+	return cache.ClearAll(ctx)
+}

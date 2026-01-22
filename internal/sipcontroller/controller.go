@@ -317,7 +317,10 @@ func (c *Controller) handleBaresipEvent(event BaresipEvent) {
 // InitiateOutgoingCall starts an outgoing call. If protocolEnabled is true, DIA is started in parallel.
 // Returns the controller-generated attempt ID.
 func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bool) (string, error) {
-	log.Printf("[Controller] Initiating outgoing call to %s (protocol=%v)", phoneNumber, protocolEnabled)
+	log.Printf("")
+	log.Printf("================================================================================")
+	log.Printf("[Controller] NEW OUTGOING CALL peer=%s protocol=%v", phoneNumber, protocolEnabled)
+	log.Printf("================================================================================")
 
 	// Best-effort registration snapshot before placing an outgoing call.
 	// Gate behind verbose to avoid large/frequent logs during experiments.
@@ -355,6 +358,7 @@ func (c *Controller) InitiateOutgoingCall(phoneNumber string, protocolEnabled bo
 
 	// Create outgoing attempt (call-id not known yet)
 	session := c.callMgr.NewOutgoingAttempt(peerPhone, "", protocolEnabled)
+	log.Printf("[Controller] Attempt %s created for outgoing call to %s", session.AttemptID, session.PeerPhone)
 	session.SetState(StateDIAInitializing)
 
 	// Start DIA protocol in background (only when enabled)
@@ -516,14 +520,15 @@ func (c *Controller) runOutgoingDIA(session *CallSession) {
 	}
 	session.DIAState = diaState
 
-	// Initialize AKE
+	// Initialize AKE state machine. Even on cache-hit (RUA-only), DIA may require
+	// AKE primitives to be initialized before transitioning into RUA.
 	if err := diaState.AKEInit(); err != nil {
 		log.Printf("[Controller] AKE init failed for %s: %v", session.PeerPhone, err)
 		session.LastError = err
 		return
 	}
 
-	// Cache lookup and apply (best-effort). On cache hit we skip sending AKE request
+	// Cache lookup and apply (best-effort). On cache hit we skip *all* AKE-topic
 	// and go straight to RUA-only. On cache miss we continue with AKE+RUA.
 	var cacheHit bool
 	if blob, ok := c.cacheGetPeerSession(c.config.SelfPhone, session.PeerPhone); ok {
@@ -536,9 +541,67 @@ func (c *Controller) runOutgoingDIA(session *CallSession) {
 		}
 	}
 
+	if cacheHit {
+		// Derive RUA topic
+		ruaTopic, err := diaState.RUADeriveTopic()
+		if err != nil {
+			log.Printf("[Controller] RUA topic derivation failed (cache-hit) for %s: %v", session.PeerPhone, err)
+			session.LastError = err
+			return
+		}
+		log.Printf("[Controller] DIA RUA topic for %s: %s", session.PeerPhone, ruaTopic)
+		// Create RUA request
+		ruaRequest, err := diaState.RUARequest()
+		if err != nil {
+			log.Printf("[Controller] RUA request failed (cache-hit) for %s: %v", session.PeerPhone, err)
+			session.LastError = err
+			return
+		}
+		// Transition to RUA
+		if err := diaState.TransitionToRUA(); err != nil {
+			log.Printf("[Controller] Transition to RUA failed (cache-hit) for %s: %v", session.PeerPhone, err)
+			session.LastError = err
+			return
+		}
+		session.SetState(StateDIARUAInProgress)
+		// Ticket for topic creation
+		ticket, err := diaState.Ticket()
+		if err != nil {
+			log.Printf("[Controller] Ticket derivation failed (cache-hit) for %s: %v", session.PeerPhone, err)
+			session.LastError = err
+			return
+		}
+
+		// IMPORTANT: on cache-hit, avoid subscribing to the AKE topic at all.
+		// Start the relay session directly on the derived RUA topic.
+		diaController, err := subscriber.NewController(diaState, &subscriber.ControllerConfig{
+			RelayServerAddr: c.config.RelayAddr,
+			UseTLS:          c.config.RelayTLS,
+			InitialTopic:    ruaTopic,
+			InitialTicket:   ticket,
+		})
+		if err != nil {
+			log.Printf("[Controller] Failed to create DIA controller for %s (cache-hit): %v", session.PeerPhone, err)
+			session.LastError = err
+			return
+		}
+		session.DIAController = diaController
+		diaController.Start(func(data []byte) {
+			c.handleDIAMessage(session, data)
+		})
+
+		if err := diaController.Send(ruaRequest); err != nil {
+			log.Printf("[Controller] Failed to send RUA request for %s (cache-hit): %v", session.PeerPhone, err)
+			session.LastError = err
+			return
+		}
+		log.Printf("[Controller] Cache-hit: subscribed to RUA and sent RUA request for %s", session.PeerPhone)
+		return
+	}
+
 	session.SetState(StateDIAAKEInProgress)
 
-	// Get AKE topic and create DIA controller
+	// Cache miss: start on the AKE topic.
 	akeTopic, _ := diaState.AKETopic()
 	log.Printf("[Controller] DIA AKE topic for %s: %s", session.PeerPhone, akeTopic)
 
@@ -557,44 +620,6 @@ func (c *Controller) runOutgoingDIA(session *CallSession) {
 	diaController.Start(func(data []byte) {
 		c.handleDIAMessage(session, data)
 	})
-
-	if cacheHit {
-		// Derive RUA topic
-		ruaTopic, err := diaState.RUADeriveTopic()
-		if err != nil {
-			log.Printf("[Controller] RUA topic derivation failed (cache-hit) for %s: %v", session.PeerPhone, err)
-			session.LastError = err
-			return
-		}
-		// Create RUA request
-		ruaRequest, err := diaState.RUARequest()
-		if err != nil {
-			log.Printf("[Controller] RUA request failed (cache-hit) for %s: %v", session.PeerPhone, err)
-			session.LastError = err
-			return
-		}
-		// Ticket for topic creation
-		ticket, err := diaState.Ticket()
-		if err != nil {
-			log.Printf("[Controller] Ticket derivation failed (cache-hit) for %s: %v", session.PeerPhone, err)
-			session.LastError = err
-			return
-		}
-		// Transition to RUA
-		if err := diaState.TransitionToRUA(); err != nil {
-			log.Printf("[Controller] Transition to RUA failed (cache-hit) for %s: %v", session.PeerPhone, err)
-			session.LastError = err
-			return
-		}
-		session.SetState(StateDIARUAInProgress)
-		if err := diaController.SubscribeToNewTopicWithPayload(ruaTopic, ruaRequest, ticket); err != nil {
-			log.Printf("[Controller] Subscribe to RUA topic failed (cache-hit) for %s: %v", session.PeerPhone, err)
-			session.LastError = err
-			return
-		}
-		log.Printf("[Controller] Cache-hit: subscribed to RUA and sent RUA request for %s", session.PeerPhone)
-		return
-	}
 
 	// Send AKE request (caller initiates)
 	request, err := diaState.AKERequest()
@@ -616,6 +641,11 @@ func (c *Controller) runOutgoingDIA(session *CallSession) {
 // handleIncomingCall handles an incoming call event from Baresip
 func (c *Controller) handleIncomingCall(event BaresipEvent) {
 	peerPhone := ExtractPhoneFromURI(event.PeerURI)
+
+	log.Printf("")
+	log.Printf("================================================================================")
+	log.Printf("[Controller] NEW INCOMING CALL from=%s call-id=%s", peerPhone, event.ID)
+	log.Printf("================================================================================")
 	log.Printf("[Controller] Incoming call from %s (call-id: %s)", peerPhone, event.ID)
 
 	// Integrated mode uses a deterministic DIA topic per peer. Running multiple
@@ -710,9 +740,61 @@ func (c *Controller) runIncomingDIA(session *CallSession) {
 		}
 	}
 
+	if cacheHit {
+		// Derive RUA topic
+		ruaTopic, err := diaState.RUADeriveTopic()
+		if err != nil {
+			log.Printf("[Controller] RUA topic derivation failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
+			c.rejectCall(session, 500, "RUA Topic Failed")
+			return
+		}
+		log.Printf("[Controller] DIA RUA topic for incoming %s: %s", session.PeerPhone, ruaTopic)
+		// Transition to RUA
+		if err := diaState.TransitionToRUA(); err != nil {
+			log.Printf("[Controller] Transition to RUA failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
+			c.rejectCall(session, 500, "RUA Transition Failed")
+			return
+		}
+		// Ticket for RUA topic subscription
+		ticket, err := diaState.Ticket()
+		if err != nil {
+			log.Printf("[Controller] Ticket derivation failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
+			c.rejectCall(session, 500, "RUA Ticket Failed")
+			return
+		}
+		// Initialize RUA responder
+		if err := diaState.RUAInit(); err != nil {
+			log.Printf("[Controller] RUA init failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
+			c.rejectCall(session, 500, "RUA Init Failed")
+			return
+		}
+		session.SetState(StateDIARUAInProgress)
+
+		// IMPORTANT: on cache-hit, avoid subscribing to the AKE topic at all.
+		// Start the relay session directly on the derived RUA topic.
+		diaController, err := subscriber.NewController(diaState, &subscriber.ControllerConfig{
+			RelayServerAddr: c.config.RelayAddr,
+			UseTLS:          c.config.RelayTLS,
+			InitialTopic:    ruaTopic,
+			InitialTicket:   ticket,
+		})
+		if err != nil {
+			log.Printf("[Controller] Failed to create DIA controller for incoming %s (cache-hit): %v", session.PeerPhone, err)
+			c.rejectCall(session, 500, "DIA Controller Failed")
+			return
+		}
+		session.DIAController = diaController
+		diaController.Start(func(data []byte) {
+			c.handleDIAMessage(session, data)
+		})
+
+		log.Printf("[Controller] Cache-hit: moved to RUA, waiting for RUA request from %s", session.PeerPhone)
+		return
+	}
+
 	session.SetState(StateDIAAKEInProgress)
 
-	// Get AKE topic and create DIA controller
+	// Cache miss: start on the AKE topic.
 	akeTopic, _ := diaState.AKETopic()
 	log.Printf("[Controller] DIA AKE topic for incoming %s: %s", session.PeerPhone, akeTopic)
 
@@ -731,43 +813,6 @@ func (c *Controller) runIncomingDIA(session *CallSession) {
 	diaController.Start(func(data []byte) {
 		c.handleDIAMessage(session, data)
 	})
-
-	if cacheHit {
-		// Derive RUA topic
-		ruaTopic, err := diaState.RUADeriveTopic()
-		if err != nil {
-			log.Printf("[Controller] RUA topic derivation failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
-			c.rejectCall(session, 500, "RUA Topic Failed")
-			return
-		}
-		// Transition to RUA
-		if err := diaState.TransitionToRUA(); err != nil {
-			log.Printf("[Controller] Transition to RUA failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
-			c.rejectCall(session, 500, "RUA Transition Failed")
-			return
-		}
-		// Subscribe to RUA topic (ticketed)
-		ticket, err := diaState.Ticket()
-		if err != nil {
-			log.Printf("[Controller] Ticket derivation failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
-			c.rejectCall(session, 500, "RUA Ticket Failed")
-			return
-		}
-		if err := diaController.SubscribeToNewTopicWithPayload(ruaTopic, nil, ticket); err != nil {
-			log.Printf("[Controller] Subscribe to RUA topic failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
-			c.rejectCall(session, 500, "RUA Topic Subscribe Failed")
-			return
-		}
-		// Initialize RUA responder
-		if err := diaState.RUAInit(); err != nil {
-			log.Printf("[Controller] RUA init failed (cache-hit) for incoming %s: %v", session.PeerPhone, err)
-			c.rejectCall(session, 500, "RUA Init Failed")
-			return
-		}
-		session.SetState(StateDIARUAInProgress)
-		log.Printf("[Controller] Cache-hit: moved to RUA, waiting for RUA request from %s", session.PeerPhone)
-		return
-	}
 
 	log.Printf("[Controller] Waiting for AKE request from %s", session.PeerPhone)
 }
@@ -987,6 +1032,15 @@ func (c *Controller) handleRecipientDIAMessage(session *CallSession, msg *dia.Me
 		log.Printf("[Controller] Moved to RUA, waiting for RUA request from %s", session.PeerPhone)
 
 	case dia.MsgRUARequest:
+		// In cache-hit (RUA-only) mode we can occasionally observe duplicate delivery
+		// of the same RUA request on the relay topic. RUA processing is not
+		// re-entrant: a second RUAResponse attempt after completion returns a
+		// protocol error. Treat duplicates as no-ops once we have completed DIA.
+		if session.GetState() == StateDIAComplete {
+			log.Printf("[Controller] Ignoring duplicate RUA Request for incoming %s (already complete)", session.PeerPhone)
+			return
+		}
+
 		log.Printf("[Controller] Handling RUA Request for incoming %s", session.PeerPhone)
 
 		response, err := session.DIAState.RUAResponse(rawData)
