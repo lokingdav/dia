@@ -7,10 +7,13 @@ shift || true
 profile=${1:-}
 
 # list of valid profiles
-PROFILES=(es rs)
+PROFILES=(es rs expctrl)
 
 usage() {
-  echo "Usage: $0 {up|down|restart} [all|${PROFILES[*]}]"
+  echo "Usage:"
+  echo "  $0 {up|down|restart} [all|${PROFILES[*]}]"
+  echo "  $0 {alice|bob|alice-cache|bob-cache} [-- extra callauth flags]"
+  echo "  $0 clear-cache [-- extra redis flags]"
   exit 1
 }
 
@@ -85,8 +88,24 @@ case "$cmd" in
   alice)
     go run cmd/client/callauth/main.go --dial 2001 --env .env.1001 --relay localhost:50052 "$@"
     ;;
+  alice-cache)
+    go run cmd/client/callauth/main.go --dial 2001 --env .env.1001 --relay localhost:50052 \
+      --cache --self 1001 \
+      "$@"
+    ;;
   bob)
     go run cmd/client/callauth/main.go --receive 1001 --env .env.2001 --relay localhost:50052 "$@"
+    ;;
+  bob-cache)
+    go run cmd/client/callauth/main.go --receive 1001 --env .env.2001 --relay localhost:50052 \
+      --cache --self 2001 \
+      "$@"
+    ;;
+
+  clear-cache)
+    # One-shot: clears *all* peer-session cache entries under the configured Redis prefix.
+    # Defaults: redis=localhost:6379 db=0 prefix=denseid:dia:peer_session:v1
+    go run cmd/sipcontroller/main.go --clear-cache "$@"
     ;;
   *)
     echo "Error: unknown command '$cmd'."

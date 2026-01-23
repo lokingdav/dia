@@ -16,6 +16,13 @@ type Controller struct {
 type ControllerConfig struct {
 	RelayServerAddr string
 	UseTLS          bool
+	// InitialTopic overrides the call state's CurrentTopic() when non-empty.
+	// This is useful when the caller wants to avoid subscribing to the AKE
+	// topic (e.g., cache-hit RUA-only flows).
+	InitialTopic string
+	// InitialTicket overrides callState.Ticket() when non-nil and non-empty.
+	// Must be compatible with InitialTopic.
+	InitialTicket []byte
 }
 
 // NewController builds a Client and Session in one step using DIA CallState.
@@ -29,16 +36,24 @@ func NewController(callState *dia.CallState, cfg *ControllerConfig) (*Controller
 		return nil, err
 	}
 
-	initialTopic, err := callState.CurrentTopic()
-	if err != nil {
-		c.Close()
-		return nil, fmt.Errorf("failed to get current topic: %w", err)
+	initialTopic := cfg.InitialTopic
+	if initialTopic == "" {
+		var err error
+		initialTopic, err = callState.CurrentTopic()
+		if err != nil {
+			c.Close()
+			return nil, fmt.Errorf("failed to get current topic: %w", err)
+		}
 	}
 
-	ticket, err := callState.Ticket()
-	if err != nil {
-		c.Close()
-		return nil, fmt.Errorf("failed to get ticket: %w", err)
+	ticket := cfg.InitialTicket
+	if len(ticket) == 0 {
+		var err error
+		ticket, err = callState.Ticket()
+		if err != nil {
+			c.Close()
+			return nil, fmt.Errorf("failed to get ticket: %w", err)
+		}
 	}
 
 	senderID, err := callState.SenderID()

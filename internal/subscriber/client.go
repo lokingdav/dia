@@ -12,6 +12,7 @@ import (
 
 // Client owns the gRPC connection and RelayService stub.
 type RelayClient struct {
+	addr string
 	conn *grpc.ClientConn
 	Stub relaypb.RelayServiceClient
 }
@@ -46,6 +47,7 @@ func NewRelayClient(addr string, useTLS bool, extraOpts ...grpc.DialOption) (*Re
 		return nil, err
 	}
 	return &RelayClient{
+		addr: addr,
 		conn: conn,
 		Stub: relaypb.NewRelayServiceClient(conn),
 	}, nil

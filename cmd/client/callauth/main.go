@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dense-identity/denseid/internal/peersessioncache"
 	"github.com/dense-identity/denseid/internal/subscriber"
 	dia "github.com/lokingdav/libdia/bindings/go/v2"
 )
@@ -21,6 +22,15 @@ type AppConfig struct {
 	ODADelaySec     int
 	ODAAttrs        []string
 	Bye             bool
+
+	CacheEnabled bool
+	SelfPhone    string
+	RedisAddr    string
+	RedisUser    string
+	RedisPass    string
+	RedisDB      int
+	RedisPrefix  string
+	PeerTTL      time.Duration
 }
 
 type RuntimeState struct {
@@ -28,6 +38,7 @@ type RuntimeState struct {
 	odaHandled   atomic.Bool
 	ruaComplete  atomic.Bool
 	byeSent      atomic.Bool
+	cacheHit     atomic.Bool
 }
 
 func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
@@ -39,6 +50,15 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 	odaDelay := flag.Int("oda", -1, "Seconds to wait after RUA before initiating ODA (>=0 enables; default -1 disables)")
 	odaAttrs := flag.String("oda-attrs", "name,issuer", "Comma-separated list of ODA attribute names to request (used with --oda)")
 	bye := flag.Bool("bye", false, "Send DIA BYE and exit when done")
+
+	cacheEnabled := flag.Bool("cache", false, "Enable Redis-backed DIA peer-session cache (RUA-only on hit)")
+	selfPhone := flag.String("self", "", "Self phone number (required when --cache is enabled; used for cache keying)")
+	redisAddr := flag.String("redis", "localhost:6379", "Redis address (used with --cache)")
+	redisUser := flag.String("redis-user", "", "Redis username (optional)")
+	redisPass := flag.String("redis-pass", "", "Redis password (optional)")
+	redisDB := flag.Int("redis-db", 0, "Redis DB (used with --cache)")
+	redisPrefix := flag.String("redis-prefix", "denseid:dia:peer_session:v1", "Redis key prefix (used with --cache)")
+	peerTTLSeconds := flag.Int("peer-session-ttl", 0, "Peer-session TTL in seconds (0 = no expiry)")
 	flag.Parse()
 
 	if *dial == "" && *receive == "" {
@@ -65,6 +85,19 @@ func parseFlags() (envFile, phone string, outgoing bool, appCfg *AppConfig) {
 		ODADelaySec:     *odaDelay,
 		ODAAttrs:        parseCommaList(*odaAttrs),
 		Bye:             *bye,
+		CacheEnabled:    *cacheEnabled,
+		SelfPhone:       strings.TrimSpace(*selfPhone),
+		RedisAddr:       strings.TrimSpace(*redisAddr),
+		RedisUser:       strings.TrimSpace(*redisUser),
+		RedisPass:       *redisPass,
+		RedisDB:         *redisDB,
+		RedisPrefix:     strings.TrimSpace(*redisPrefix),
+	}
+	if *peerTTLSeconds > 0 {
+		appCfg.PeerTTL = time.Duration(*peerTTLSeconds) * time.Second
+	}
+	if appCfg.CacheEnabled && appCfg.SelfPhone == "" {
+		log.Fatal("--self is required when --cache is enabled")
 	}
 
 	return *envfile, phone, outgoing, appCfg
@@ -120,40 +153,126 @@ func main() {
 		log.Fatalf("Failed to init AKE: %v", err)
 	}
 
-	akeTopic, _ := callState.AKETopic()
-	senderID, _ := callState.SenderID()
+	runtime := &RuntimeState{}
 
+	// Optional peer-session cache
+	var cache *peersessioncache.Cache
+	if appCfg.CacheEnabled {
+		cache, err = peersessioncache.New(ctx, peersessioncache.Options{
+			Enabled:  true,
+			Addr:     appCfg.RedisAddr,
+			Username: appCfg.RedisUser,
+			Password: appCfg.RedisPass,
+			DB:       appCfg.RedisDB,
+			Prefix:   appCfg.RedisPrefix,
+			TTL:      appCfg.PeerTTL,
+		})
+		if err != nil {
+			log.Fatalf("[Cache] init failed: %v", err)
+		}
+		defer cache.Close()
+		log.Printf("[Cache] enabled redis=%s db=%d prefix=%s ttl=%s", appCfg.RedisAddr, appCfg.RedisDB, appCfg.RedisPrefix, appCfg.PeerTTL)
+	}
+
+	// Cache lookup/apply (best-effort). On hit we transition directly to RUA and
+	// start the relay session on the RUA topic (no AKE-topic subscription).
+	var cacheHit bool
+	if cache != nil {
+		blob, ok, err := cache.Get(ctx, appCfg.SelfPhone, phone)
+		if err != nil {
+			log.Printf("[Cache] get failed self=%s peer=%s: %v (treating as miss)", appCfg.SelfPhone, phone, err)
+		} else if ok {
+			if err := callState.ApplyPeerSession(blob); err != nil {
+				log.Printf("[Cache] apply failed self=%s peer=%s: %v (treating as miss)", appCfg.SelfPhone, phone, err)
+			} else {
+				cacheHit = true
+				runtime.cacheHit.Store(true)
+				log.Printf("[Cache] HIT self=%s peer=%s bytes=%d", appCfg.SelfPhone, phone, len(blob))
+			}
+		} else {
+			log.Printf("[Cache] MISS self=%s peer=%s", appCfg.SelfPhone, phone)
+		}
+	}
+
+	senderID, _ := callState.SenderID()
 	fmt.Println("===== Call Details =====")
 	fmt.Printf("--> Outgoing: %v\n", outgoing)
 	fmt.Printf("--> Sender ID: %s\n", senderID)
-	fmt.Printf("--> AKE Topic: %s\n\n", akeTopic)
+	fmt.Printf("--> Cache: %v\n", cacheHit)
 
-	// Create controller (will subscribe to AKE topic)
-	controller, err := subscriber.NewController(callState, &subscriber.ControllerConfig{
+	controllerCfg := &subscriber.ControllerConfig{
 		RelayServerAddr: appCfg.RelayServerAddr,
 		UseTLS:          appCfg.UseTLS,
-	})
+	}
+
+	var cachedRUATopic string
+	var cachedRUATicket []byte
+	var cachedRUARequest []byte
+
+	if cacheHit {
+		ruaTopic, err := callState.RUADeriveTopic()
+		if err != nil {
+			log.Fatalf("[Cache] RUA topic derivation failed: %v", err)
+		}
+		if outgoing {
+			cachedRUARequest, err = callState.RUARequest()
+			if err != nil {
+				log.Fatalf("[Cache] Failed to create RUA request: %v", err)
+			}
+		}
+		if err := callState.TransitionToRUA(); err != nil {
+			log.Fatalf("[Cache] Transition to RUA failed: %v", err)
+		}
+		ticket, err := callState.Ticket()
+		if err != nil {
+			log.Fatalf("[Cache] Ticket derivation failed: %v", err)
+		}
+		cachedRUATopic = ruaTopic
+		cachedRUATicket = ticket
+		controllerCfg.InitialTopic = cachedRUATopic
+		controllerCfg.InitialTicket = cachedRUATicket
+		fmt.Printf("--> RUA Topic (cache-hit): %s\n\n", ruaTopic)
+	} else {
+		akeTopic, _ := callState.AKETopic()
+		fmt.Printf("--> AKE Topic: %s\n\n", akeTopic)
+	}
+
+	// Create controller (subscribes to InitialTopic if set; otherwise callState.CurrentTopic())
+	controller, err := subscriber.NewController(callState, controllerCfg)
 	if err != nil {
 		log.Fatalf("Failed to create controller: %v", err)
 	}
 
-	runtime := &RuntimeState{}
-
 	// Start the tunnel and handle incoming messages
 	controller.Start(func(data []byte) {
-		handleMessage(callState, controller, appCfg, runtime, data, stop)
+		handleMessage(ctx, callState, controller, appCfg, runtime, cache, phone, data, stop)
 	})
 
-	// For outgoing calls, send AKE request
-	if outgoing {
-		request, err := callState.AKERequest()
-		if err != nil {
-			log.Fatalf("Failed to create AKE request: %v", err)
+	if cacheHit {
+		// Cache-hit behavior: RUA-only.
+		if outgoing {
+			if err := controller.Send(cachedRUARequest); err != nil {
+				log.Fatalf("[Cache] Failed to send RUA request: %v", err)
+			}
+			log.Println("[Cache] Sent RUA Request (RUA-only)")
+		} else {
+			if err := callState.RUAInit(); err != nil {
+				log.Fatalf("[Cache] Failed to init RUA: %v", err)
+			}
+			log.Println("[Cache] RUA initialized, waiting for RUA request...")
 		}
-		if err := controller.Send(request); err != nil {
-			log.Fatalf("Failed to send AKE request: %v", err)
+	} else {
+		// For outgoing calls, send AKE request
+		if outgoing {
+			request, err := callState.AKERequest()
+			if err != nil {
+				log.Fatalf("Failed to create AKE request: %v", err)
+			}
+			if err := controller.Send(request); err != nil {
+				log.Fatalf("Failed to send AKE request: %v", err)
+			}
+			log.Println("Sent AKE Request")
 		}
-		log.Println("Sent AKE Request")
 	}
 
 	currentTopic, _ := callState.CurrentTopic()
@@ -164,7 +283,7 @@ func main() {
 	log.Println("Shutting down...")
 }
 
-func handleMessage(callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, data []byte, stop context.CancelFunc) {
+func handleMessage(ctx context.Context, callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, cache *peersessioncache.Cache, peerPhone string, data []byte, stop context.CancelFunc) {
 	msg, err := dia.ParseMessage(data)
 	if err != nil {
 		log.Printf("Failed to parse message (%d bytes): %v - data[0:min(20,len)]: %x", len(data), err, data[:min(20, len(data))])
@@ -195,6 +314,15 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 	if msgTopic != currentTopic {
 		log.Printf("Ignoring message from inactive topic: %s (current: %s)", msgTopic, currentTopic)
 		return
+	}
+
+	// On cache-hit sessions we intentionally ignore all AKE traffic.
+	if runtime != nil && runtime.cacheHit.Load() {
+		switch msg.Type() {
+		case dia.MsgAKERequest, dia.MsgAKEResponse, dia.MsgAKEComplete:
+			log.Printf("Ignoring AKE message on cache-hit session (type=%d)", msg.Type())
+			return
+		}
 	}
 
 	// Handle heartbeat message
@@ -245,14 +373,14 @@ func handleMessage(callState *dia.CallState, controller *subscriber.Controller, 
 
 	// Route based on role
 	if callState.IsRecipient() {
-		handleRecipientMessage(callState, controller, cfg, runtime, msg, data, stop)
+		handleRecipientMessage(ctx, callState, controller, cfg, runtime, cache, peerPhone, msg, data, stop)
 	} else if callState.IsCaller() {
-		handleCallerMessage(callState, controller, cfg, runtime, msg, data, stop)
+		handleCallerMessage(ctx, callState, controller, cfg, runtime, cache, peerPhone, msg, data, stop)
 	}
 }
 
 // handleRecipientMessage handles messages for the recipient (Bob)
-func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, msg *dia.Message, rawData []byte, stop context.CancelFunc) {
+func handleRecipientMessage(ctx context.Context, callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, cache *peersessioncache.Cache, peerPhone string, msg *dia.Message, rawData []byte, stop context.CancelFunc) {
 	switch msg.Type() {
 	case dia.MsgAKERequest:
 		log.Println("Handling AKE Request")
@@ -311,6 +439,10 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 		log.Println("RUA initialized, waiting for RUA request...")
 
 	case dia.MsgRUARequest:
+		if runtime != nil && runtime.ruaComplete.Load() {
+			log.Println("Ignoring duplicate RUA Request (already complete)")
+			return
+		}
 		log.Println("Handling RUA Request")
 		response, err := callState.RUAResponse(rawData)
 		if err != nil {
@@ -333,6 +465,17 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 		maybeScheduleODA(cfg, runtime, callState, controller)
 		runtime.ruaComplete.Store(true)
 
+		if cache != nil && cfg != nil && cfg.SelfPhone != "" {
+			blob, err := callState.ExportPeerSession()
+			if err != nil {
+				log.Printf("[Cache] export failed self=%s peer=%s: %v", cfg.SelfPhone, peerPhone, err)
+			} else if err := cache.Set(ctx, cfg.SelfPhone, peerPhone, blob); err != nil {
+				log.Printf("[Cache] store failed self=%s peer=%s: %v", cfg.SelfPhone, peerPhone, err)
+			} else {
+				log.Printf("[Cache] STORED self=%s peer=%s bytes=%d", cfg.SelfPhone, peerPhone, len(blob))
+			}
+		}
+
 		// Session termination is BYE-driven.
 		// In the common dev setup, only the recipient ends the session after RUA
 		// when no ODA is configured.
@@ -343,7 +486,7 @@ func handleRecipientMessage(callState *dia.CallState, controller *subscriber.Con
 }
 
 // handleCallerMessage handles messages for the caller (Alice)
-func handleCallerMessage(callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, msg *dia.Message, rawData []byte, stop context.CancelFunc) {
+func handleCallerMessage(ctx context.Context, callState *dia.CallState, controller *subscriber.Controller, cfg *AppConfig, runtime *RuntimeState, cache *peersessioncache.Cache, peerPhone string, msg *dia.Message, rawData []byte, stop context.CancelFunc) {
 	switch msg.Type() {
 	case dia.MsgAKEResponse:
 		log.Println("Handling AKE Response")
@@ -416,6 +559,17 @@ func handleCallerMessage(callState *dia.CallState, controller *subscriber.Contro
 
 		maybeScheduleODA(cfg, runtime, callState, controller)
 		runtime.ruaComplete.Store(true)
+
+		if cache != nil && cfg != nil && cfg.SelfPhone != "" {
+			blob, err := callState.ExportPeerSession()
+			if err != nil {
+				log.Printf("[Cache] export failed self=%s peer=%s: %v", cfg.SelfPhone, peerPhone, err)
+			} else if err := cache.Set(ctx, cfg.SelfPhone, peerPhone, blob); err != nil {
+				log.Printf("[Cache] store failed self=%s peer=%s: %v", cfg.SelfPhone, peerPhone, err)
+			} else {
+				log.Printf("[Cache] STORED self=%s peer=%s bytes=%d", cfg.SelfPhone, peerPhone, len(blob))
+			}
+		}
 		// Caller waits for recipient BYE.
 	}
 }

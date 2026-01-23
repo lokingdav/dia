@@ -35,6 +35,8 @@ create() {
     echo "Creating Cloud Infrastructure..."
     run_in_docker "cd $HOME_DIR && terraform apply"
     echo "Infrastructure created successfully."
+    echo "Generating controller environment (.env.ctrl)..."
+    ./scripts/create-ctrl-env.sh --force
 }
 
 destroy() {

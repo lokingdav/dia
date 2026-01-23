@@ -48,6 +48,25 @@ services:
       redis:
         condition: service_healthy
 
+  expctrl:
+    <<: *dia-server-base
+    container_name: expctrl
+    # Long-running container so you can `docker exec -it controller ...`
+    # to run ad-hoc commands (e.g. ./controller.sh, go run, etc.).
+    entrypoint: ["/bin/sh", "-lc"]
+    command: ["sleep infinity"]
+    healthcheck:
+      disable: true
+    stdin_open: true
+    tty: true
+    env_file:
+      - .env
+      - .env.ctrl
+    profiles: [expctrl]
+    depends_on:
+      redis:
+        condition: service_healthy
+
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -56,7 +75,7 @@ services:
     volumes:
       - redis-data:/data
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    profiles: [rs]
+    profiles: [rs, expctrl]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
