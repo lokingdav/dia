@@ -7,7 +7,7 @@ shift || true
 profile=${1:-}
 
 # list of valid profiles
-PROFILES=(es rs)
+PROFILES=(es rs expctrl)
 
 usage() {
   echo "Usage:"

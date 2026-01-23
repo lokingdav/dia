@@ -204,7 +204,7 @@
         name: "{{ redis_image }}"
         source: pull
         force_source: yes
-      when: type == 'server'
+      when: type in ['client', 'server']
       tags: [setup, pull_images]
 
     - name: Verify Docker is running

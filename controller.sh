@@ -2,25 +2,34 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOSTS_YML="$ROOT_DIR/infras/hosts.yml"
+CTRL_ENV="$ROOT_DIR/.env.ctrl"
 
-BARESIP_PORT="${BARESIP_PORT:-4444}"
-RELAY_PORT="${RELAY_PORT:-50052}"
-# If RELAY_ADDR is set in the environment, it always wins.
-# Otherwise we will try to infer it from infras/hosts.yml (host: server/relay).
-RELAY_ADDR_OVERRIDE="${RELAY_ADDR:-}"
-DEFAULT_RELAY_ADDR="localhost:${RELAY_PORT}"
-DEFAULT_ODA_ATTRS="${ODA_ATTRS:-name,issuer}"
-DEFAULT_CSV_DIR="${CSV_DIR:-$ROOT_DIR/results}"
-DEFAULT_INTER_ATTEMPT_MS="${INTER_ATTEMPT_MS:-1000}"
+# Auto-generate .env.ctrl if missing
+if [[ ! -f "$CTRL_ENV" ]]; then
+  echo "[controller.sh] .env.ctrl not found, generating..." >&2
+  "$ROOT_DIR/scripts/create-ctrl-env.sh"
+fi
 
-# Redis-backed peer-session cache defaults (used by *-cache commands)
+# Load controller environment
+if [[ -f "$CTRL_ENV" ]]; then
+  # shellcheck disable=SC1090
+  source "$CTRL_ENV"
+else
+  echo "[controller.sh] Error: failed to load $CTRL_ENV" >&2
+  exit 1
+fi
+
+# Allow environment overrides for key variables
+RELAY_ADDR="${RELAY_ADDR:-localhost:50052}"
 REDIS_ADDR="${REDIS_ADDR:-localhost:6379}"
 REDIS_USER="${REDIS_USER:-}"
 REDIS_PASS="${REDIS_PASS:-}"
 REDIS_DB="${REDIS_DB:-0}"
 REDIS_PREFIX="${REDIS_PREFIX:-denseid:dia:peer_session:v1}"
 PEER_SESSION_TTL="${PEER_SESSION_TTL:-0}"
+DEFAULT_ODA_ATTRS="${DEFAULT_ODA_ATTRS:-name,issuer}"
+DEFAULT_CSV_DIR="${DEFAULT_CSV_DIR:-$ROOT_DIR/results}"
+DEFAULT_INTER_ATTEMPT_MS="${DEFAULT_INTER_ATTEMPT_MS:-1000}"
 
 usage() {
   cat <<EOF
@@ -60,12 +69,12 @@ Usage:
 Notes:
   - Account selects client automatically: 1XXX -> client-1, 2XXX -> client-2
   - Env file is inferred as: .env.<account> (e.g. .env.1001)
-  - Baresip addresses are read from: infras/hosts.yml
-  - Relay address defaults to: localhost:50052 (override via env var RELAY_ADDR)
+  - Baresip/relay addresses loaded from: .env.ctrl (auto-generated from infras/hosts.yml)
+  - To regenerate .env.ctrl: ./scripts/create-ctrl-env.sh --force
   - call-* and recv-int-oda write CSV by default to: results/dia_<account>_<timestamp>.csv (override with -csv)
   - *-cache commands that auto-write CSV use: results/dia_cache_<account>_<timestamp>.csv (override with -csv)
   - *-cache commands enable DIA peer-session caching via Redis (sipcontroller flag: -cache)
-  - Redis defaults can be overridden via env vars: REDIS_ADDR, REDIS_USER, REDIS_PASS, REDIS_DB, REDIS_PREFIX, PEER_SESSION_TTL
+  - Override env vars: RELAY_ADDR, REDIS_ADDR, REDIS_USER, REDIS_PASS, REDIS_DB, REDIS_PREFIX, PEER_SESSION_TTL
 
 Examples:
   $0 it 1001
@@ -121,60 +130,6 @@ require_file() {
   [[ -f "$1" ]] || die "missing file: $1"
 }
 
-# Extract ansible_host for a given host name from hosts.yml.
-# This assumes the current shallow structure:
-#   <name>:
-#     ansible_host: <ip>
-get_ansible_host() {
-  local host_name="$1"
-  awk -v host="$host_name" '
-    $1 == host":" { in_block=1; next }
-    in_block && $1 == "ansible_host:" { print $2; exit }
-    in_block && $1 ~ /^[a-zA-Z0-9_-]+:$/ { in_block=0 }
-  ' "$HOSTS_YML"
-}
-
-resolve_relay_host() {
-  # Backwards-compatible helper: return the inferred relay host IP (no port)
-  # from hosts.yml when present.
-  if [[ -f "$HOSTS_YML" ]]; then
-    local ip
-    ip="$(get_ansible_host server || true)"
-    if [[ -z "$ip" ]]; then
-      ip="$(get_ansible_host relay || true)"
-    fi
-    if [[ -n "$ip" ]]; then
-      echo "$ip"
-      return 0
-    fi
-  fi
-  return 1
-}
-
-resolve_relay_addr() {
-  # Prefer explicit override.
-  if [[ -n "${RELAY_ADDR_OVERRIDE:-}" ]]; then
-    echo "$RELAY_ADDR_OVERRIDE"
-    return 0
-  fi
-
-  # Infer from hosts.yml if possible.
-  if [[ -f "$HOSTS_YML" ]]; then
-    local ip
-    ip="$(get_ansible_host server || true)"
-    if [[ -z "$ip" ]]; then
-      ip="$(get_ansible_host relay || true)"
-    fi
-    if [[ -n "$ip" ]]; then
-      echo "${ip}:${RELAY_PORT}"
-      return 0
-    fi
-  fi
-
-  # Fallback.
-  echo "$DEFAULT_RELAY_ADDR"
-}
-
 resolve_client_from_account() {
   local account="$1"
   if [[ ! "$account" =~ ^[0-9]{4}$ ]]; then
@@ -196,23 +151,15 @@ sipcontroller_cmd_base() {
   local client
   client="$(resolve_client_from_account "$account")"
 
-  local client_ip
-  client_ip=""
-  if [[ -f "$HOSTS_YML" ]]; then
-    client_ip="$(get_ansible_host "$client" || true)"
-  else
-    echo "[controller.sh] warning: $HOSTS_YML not found; falling back to localhost" >&2
-  fi
+  # Select baresip address based on client
+  local baresip_addr
+  case "$client" in
+    client-1) baresip_addr="${CLIENT_1_ADDR:-localhost:4444}" ;;
+    client-2) baresip_addr="${CLIENT_2_ADDR:-localhost:4444}" ;;
+    *) baresip_addr="localhost:4444" ;;
+  esac
 
-  if [[ -z "$client_ip" ]]; then
-    echo "[controller.sh] warning: missing '$client.ansible_host' in $HOSTS_YML; using localhost" >&2
-    client_ip="localhost"
-  fi
-  local baresip_addr relay_addr
-  baresip_addr="${client_ip}:${BARESIP_PORT}"
-  relay_addr="$(resolve_relay_addr)"
-
-  echo "go run ./cmd/sipcontroller/main.go -account \"$account\" -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$relay_addr\""
+  echo "go run ./cmd/sipcontroller/main.go -account \"$account\" -env \"$env_file\" -baresip \"$baresip_addr\" -relay \"$RELAY_ADDR\""
 }
 
 cache_flags() {
@@ -306,17 +253,11 @@ case "$cmd" in
     ;;
 
   ips)
-    if [[ -f "$HOSTS_YML" ]]; then
-      c1="$(get_ansible_host client-1)" || true
-      c2="$(get_ansible_host client-2)" || true
-    else
-      c1=""
-      c2=""
-      echo "[controller.sh] warning: $HOSTS_YML not found" >&2
-    fi
-    echo "client-1: ${c1:-<missing>} (baresip: ${c1:-?}:${BARESIP_PORT})"
-    echo "client-2: ${c2:-<missing>} (baresip: ${c2:-?}:${BARESIP_PORT})"
-    echo "relay:    $(resolve_relay_addr)"
+    echo "client-1: ${CLIENT_1_ADDR:-<missing>}"
+    echo "client-2: ${CLIENT_2_ADDR:-<missing>}"
+    echo "relay:    ${RELAY_ADDR:-<missing>}"
+    echo ""
+    echo "(Loaded from $CTRL_ENV)"
     ;;
 
   clear-cache)

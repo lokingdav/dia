@@ -2,7 +2,8 @@
 {% for ext in sip_accounts if ext.client == inventory_hostname -%}
 	{
 		"name": {{ (ext.name | default(ext.id)) | to_json }},
-		"phone": {{ ext.id | to_json }}
+		"phone": {{ ext.phone | to_json }},
+		"logo": {{ ext.logo | to_json }}
 	}{% if not loop.last %},{% endif %}
 {%- endfor %}
 ]

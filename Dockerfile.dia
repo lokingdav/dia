@@ -12,7 +12,7 @@ ENV CGO_ENABLED=1
 ARG LIBDIA_VERSION="main"
 
 RUN apk update && \
-    apk add --no-cache git build-base cmake gmp-dev netcat-openbsd
+    apk add --no-cache bash git build-base cmake gmp-dev netcat-openbsd
 
 RUN git clone https://github.com/lokingdav/libdia.git && \
     cd libdia && \
