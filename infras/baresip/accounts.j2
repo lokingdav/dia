@@ -1,3 +1,16 @@
-{% for ext in asterisk_extensions if ext.client == inventory_hostname %}
-<sip:{{ ext.id }}@{{ asterisk_externaddr }}>;auth_user={{ ext.id }};auth_pass={{ ext.password }};outbound=sip:{{ asterisk_externaddr }};regint=600
+{% for ext in sip_accounts if ext.client == inventory_hostname %}
+{% set registrar = ext.registrar | default('dia') %}
+{% if registrar == 'dia' %}
+{% set domain = asterisk_externaddr %}
+{% set outbound = 'sip:' ~ asterisk_externaddr %}
+{% else %}
+{% if registrar.startswith('sip:') %}
+{% set domain = registrar[4:] %}
+{% set outbound = registrar %}
+{% else %}
+{% set domain = registrar %}
+{% set outbound = 'sip:' ~ registrar %}
+{% endif %}
+{% endif %}
+<sip:{{ ext.id }}@{{ domain }}>;auth_user={{ ext.id }};auth_pass={{ ext.password }};outbound={{ outbound }};regint=600
 {% endfor %}

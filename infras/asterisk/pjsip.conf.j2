@@ -33,7 +33,7 @@ rewrite_contact=yes
 ; Keep Asterisk in media path (simpler on EC2)
 direct_media=no
 
-{% for ext in asterisk_extensions %}
+{% for ext in sip_accounts if (ext.registrar | default('dia')) == 'dia' %}
 [{{ ext.id }}]
 type=endpoint
 context=from-internal
