@@ -13,6 +13,7 @@
         state: restarted
       delegate_to: "{{ asterisk_host }}"
       run_once: true
+      when: asterisk_present | default(false)
 
     - name: Reload systemd
       ansible.builtin.systemd:
@@ -30,9 +31,9 @@
         timeout: "{{ user_data_wait_timeout }}"
       tags: [setup, wait]
 
-    - name: Compute asterisk inventory host name
+    - name: Compute asterisk inventory hosts
       ansible.builtin.set_fact:
-        asterisk_host: >-
+        asterisk_hosts: >-
           {{
             (hostvars
               | dict2items
@@ -40,8 +41,24 @@
               | selectattr('value.type', 'equalto', 'asterisk')
               | map(attribute='key')
               | list
-            )[0]
+            )
           }}
+      run_once: true
+      tags: [setup, asterisk]
+
+    - name: Set asterisk host when present
+      ansible.builtin.set_fact:
+        asterisk_host: "{{ asterisk_hosts[0] }}"
+        asterisk_present: true
+      when: (asterisk_hosts | length) > 0
+      run_once: true
+      tags: [setup, asterisk]
+
+    - name: Mark asterisk as absent when not defined
+      ansible.builtin.set_fact:
+        asterisk_present: false
+        asterisk_host: "localhost"
+      when: (asterisk_hosts | length) == 0
       run_once: true
       tags: [setup, asterisk]
 
@@ -58,6 +75,7 @@
         state: present
       delegate_to: "{{ asterisk_host }}"
       run_once: true
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Ensure Asterisk is enabled (do not force stop/start here)
@@ -66,6 +84,7 @@
         enabled: yes
       delegate_to: "{{ asterisk_host }}"
       run_once: true
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Set Asterisk external address on asterisk host from inventory ansible_host
@@ -74,6 +93,7 @@
       delegate_to: "{{ asterisk_host }}"
       delegate_facts: true
       run_once: true
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Deploy Asterisk PJSIP configuration (templated)
@@ -89,6 +109,7 @@
       vars:
         asterisk_externaddr: "{{ hostvars[asterisk_host].ansible_host }}"
       notify: Restart asterisk
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Deploy Asterisk dialplan (extensions.conf)
@@ -102,6 +123,7 @@
       delegate_to: "{{ asterisk_host }}"
       run_once: true
       notify: Restart asterisk
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Deploy Asterisk RTP configuration (rtp.conf)
@@ -115,11 +137,13 @@
       delegate_to: "{{ asterisk_host }}"
       run_once: true
       notify: Restart asterisk
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Flush handlers so Asterisk restarts before clients configure/register
       ansible.builtin.meta: flush_handlers
       run_once: true
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Start Asterisk service
@@ -128,12 +152,13 @@
         state: started
       delegate_to: "{{ asterisk_host }}"
       run_once: true
+      when: asterisk_present | default(false)
       tags: [setup, asterisk]
 
     - name: Set asterisk_externaddr for clients (from inventory asterisk host)
       ansible.builtin.set_fact:
         asterisk_externaddr: "{{ hostvars[asterisk_host].ansible_host }}"
-      when: type == 'client'
+      when: type == 'client' and (asterisk_present | default(false))
       tags: [setup, baresip]
 
     # ============================================================================
