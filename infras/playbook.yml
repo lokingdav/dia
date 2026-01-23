@@ -216,6 +216,20 @@
       when: type == 'server'
       tags: [setup, copy_env]
 
+    - name: Copy all environment files to clients
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ repo_dest }}/"
+        owner: ubuntu
+        group: ubuntu
+        mode: "0644"
+      with_fileglob:
+        - "../.env"
+        - "../.env.[0-9]*"
+        - "../.env.ctrl"
+      when: type == 'client'
+      tags: [setup, copy_env]
+
     - name: Pull dia Docker image
       community.docker.docker_image:
         name: "{{ dia_image }}"
