@@ -10,8 +10,8 @@ type Config struct {
 	Port         string `env:"PORT" envDefault:":50051"`
 	IsProduction bool   `env:"IS_PRODUCTION" envDefault:"false"`
 
-	AtVkStr     string `env:"AT_VK,required"`
-	AtVerifyKey []byte
+	AtSkStr      string `env:"AT_SK,required"`
+	AtPrivateKey []byte
 
 	// Redis configuration
 	RedisAddr     string `env:"REDIS_ADDR" envDefault:"redis:6379"`
@@ -29,7 +29,7 @@ func (cfg *Config) ParseKeysAsBytes() error {
 
 	var err error
 
-	cfg.AtVerifyKey, err = helpers.DecodeHex(cfg.AtVkStr)
+	cfg.AtPrivateKey, err = helpers.DecodeHex(cfg.AtSkStr)
 	if err != nil {
 		return err
 	}

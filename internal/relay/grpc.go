@@ -159,6 +159,9 @@ func (s *Server) Tunnel(stream pb.RelayService_TunnelServer) error {
 			s.detach(sess)
 			return err
 		}
+		if !s.verifyRequestMAC(sess, req) {
+			continue
+		}
 		switch req.GetType() {
 		case pb.RelayRequest_PUBLISH:
 			s.handlePublish(sess, req)
@@ -168,6 +171,46 @@ func (s *Server) Tunnel(stream pb.RelayService_TunnelServer) error {
 			s.sendError(sess, codes.InvalidArgument, "unknown request type", req.GetTopic())
 		}
 	}
+}
+
+const (
+	macTokenPreimageLen = 32
+	macLen              = 32
+)
+
+func (s *Server) macDataForReq(req *pb.RelayRequest) []byte {
+	data := make([]byte, 0, 1+len(req.GetTopic())+len(req.GetPayload()))
+	data = append(data, byte(req.GetType()))
+	data = append(data, []byte(req.GetTopic())...)
+	data = append(data, req.GetPayload()...)
+	return data
+}
+
+func (s *Server) verifyRequestMAC(sess *session, req *pb.RelayRequest) bool {
+	ticket := req.GetTicket()
+	if len(ticket) == 0 {
+		s.sendError(sess, codes.PermissionDenied, "ticket required", req.GetTopic())
+		return false
+	}
+	if len(ticket) != macTokenPreimageLen+macLen {
+		s.sendError(sess, codes.InvalidArgument, "invalid ticket size", req.GetTopic())
+		return false
+	}
+
+	preimage := ticket[:macTokenPreimageLen]
+	mac := ticket[macTokenPreimageLen:]
+	data := s.macDataForReq(req)
+
+	ok, err := dia.VerifyMessageMAC(s.cfg.AtPrivateKey, preimage, data, mac)
+	if err != nil {
+		s.sendError(sess, codes.Internal, "mac verification failed", req.GetTopic())
+		return false
+	}
+	if !ok {
+		s.sendError(sess, codes.Unauthenticated, "invalid mac", req.GetTopic())
+		return false
+	}
+	return true
 }
 
 func (s *Server) handlePublish(sess *session, req *pb.RelayRequest) {
@@ -250,22 +293,6 @@ func (s *Server) handleSubscribe(sess *session, req *pb.RelayRequest) {
 	if target == "" {
 		log.Printf("SUBSCRIBE: missing topic")
 		s.sendError(sess, codes.InvalidArgument, "missing topic", "")
-		return
-	}
-
-	// Every SUBSCRIBE consumes a ticket/token.
-	ticket := req.GetTicket()
-	if len(ticket) == 0 {
-		s.sendError(sess, codes.PermissionDenied, "ticket required to subscribe", target)
-		return
-	}
-	ok, err := dia.VerifyTicket(ticket, s.cfg.AtVerifyKey)
-	if err != nil {
-		s.sendError(sess, codes.Internal, "ticket verification failed", target)
-		return
-	}
-	if !ok {
-		s.sendError(sess, codes.Unauthenticated, "invalid ticket for subscribe", target)
 		return
 	}
 

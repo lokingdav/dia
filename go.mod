@@ -7,7 +7,7 @@ toolchain go1.24.11
 require (
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/joho/godotenv v1.5.1
-	github.com/lokingdav/libdia/bindings/go/v2 v2.0.6
+	github.com/lokingdav/libdia/bindings/go/v2 v2.0.7
 	github.com/redis/go-redis/v9 v9.12.1
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.8

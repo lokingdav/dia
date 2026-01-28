@@ -10,6 +10,7 @@ import (
 	"time"
 
 	relaypb "github.com/dense-identity/denseid/api/go/relay/v1"
+	dia "github.com/lokingdav/libdia/bindings/go/v2"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -67,11 +68,16 @@ func (s *Session) SendImmediate(payload []byte) error {
 	if len(payload) == 0 {
 		return errors.New("empty payload")
 	}
+	ticket, err := s.buildMacTicket(relaypb.RelayRequest_PUBLISH, s.topic, payload, s.ticket)
+	if err != nil {
+		return err
+	}
 	req := &relaypb.RelayRequest{
 		SenderId: s.senderID,
 		Type:     relaypb.RelayRequest_PUBLISH,
 		Topic:    s.topic,
 		Payload:  payload,
+		Ticket:   ticket,
 	}
 
 	s.streamMu.RLock()
@@ -102,11 +108,16 @@ func (s *Session) Send(payload []byte) error {
 	if len(payload) == 0 {
 		return errors.New("empty payload")
 	}
+	ticket, err := s.buildMacTicket(relaypb.RelayRequest_PUBLISH, s.topic, payload, s.ticket)
+	if err != nil {
+		return err
+	}
 	req := &relaypb.RelayRequest{
 		SenderId: s.senderID,
 		Type:     relaypb.RelayRequest_PUBLISH,
 		Topic:    s.topic,
 		Payload:  payload,
+		Ticket:   ticket,
 	}
 	return s.enqueue(req)
 }
@@ -120,11 +131,16 @@ func (s *Session) SendToTopic(topic string, payload []byte, ticket []byte) error
 	if topic == "" || len(payload) == 0 {
 		return errors.New("missing topic or payload")
 	}
+	macTicket, err := s.buildMacTicket(relaypb.RelayRequest_PUBLISH, topic, payload, ticket)
+	if err != nil {
+		return err
+	}
 	req := &relaypb.RelayRequest{
 		SenderId: s.senderID,
 		Type:     relaypb.RelayRequest_PUBLISH,
 		Topic:    topic,
 		Payload:  payload,
+		Ticket:   macTicket,
 	}
 	return s.enqueue(req)
 }
@@ -142,6 +158,10 @@ func (s *Session) SubscribeToNewTopicWithPayload(newTopic string, payload []byte
 	if len(ticket) == 0 {
 		return errors.New("missing ticket")
 	}
+	macTicket, err := s.buildMacTicket(relaypb.RelayRequest_SUBSCRIBE, newTopic, payload, ticket)
+	if err != nil {
+		return err
+	}
 	// Optimistically set the intended active topic. If the server rejects the SUBSCRIBE
 	// (e.g., missing/invalid ticket), it will send an ERROR and keep you on the
 	// previous topic server-side; the client can choose to retry.
@@ -151,8 +171,8 @@ func (s *Session) SubscribeToNewTopicWithPayload(newTopic string, payload []byte
 		SenderId: s.senderID,
 		Type:     relaypb.RelayRequest_SUBSCRIBE,
 		Topic:    newTopic,
-		Payload:  payload, // nil or empty => subscribe-only (no piggy-back)
-		Ticket:   ticket,  // always required for SUBSCRIBE (costs 1 token)
+		Payload:  payload,   // nil or empty => subscribe-only (no piggy-back)
+		Ticket:   macTicket, // token_preimage || mac
 	}
 	return s.enqueue(req)
 }
@@ -168,6 +188,37 @@ func (s *Session) Close() {
 	s.sendWg.Wait()
 	// stop reader/reconnector
 	s.wg.Wait()
+}
+
+const (
+	macTokenPreimageLen = 32
+)
+
+func (s *Session) macDataForReq(reqType relaypb.RelayRequest_Type, topic string, payload []byte) []byte {
+	data := make([]byte, 0, 1+len(topic)+len(payload))
+	data = append(data, byte(reqType))
+	data = append(data, []byte(topic)...)
+	data = append(data, payload...)
+	return data
+}
+
+func (s *Session) buildMacTicket(reqType relaypb.RelayRequest_Type, topic string, payload []byte, token []byte) ([]byte, error) {
+	if len(token) == 0 {
+		token = s.ticket
+	}
+	if len(token) < macTokenPreimageLen {
+		return nil, errors.New("ticket too short")
+	}
+	data := s.macDataForReq(reqType, topic, payload)
+	mac, err := dia.CreateMessageMAC(token, data)
+	if err != nil {
+		return nil, err
+	}
+	preimage := token[:macTokenPreimageLen]
+	macTicket := make([]byte, 0, macTokenPreimageLen+len(mac))
+	macTicket = append(macTicket, preimage...)
+	macTicket = append(macTicket, mac...)
+	return macTicket, nil
 }
 
 // ===== internals =====
@@ -198,11 +249,21 @@ func (s *Session) tunnelLoop() {
 		s.streamMu.Unlock()
 
 		// Immediately SUBSCRIBE to current topic (with replay)
+		macTicket, err := s.buildMacTicket(relaypb.RelayRequest_SUBSCRIBE, s.topic, nil, s.ticket)
+		if err != nil {
+			log.Printf("relay SUBSCRIBE build MAC failed (addr=%s topic=%s): %v", s.client.addr, s.topic, err)
+			_ = stream.CloseSend()
+			if s.transient(err) && s.sleepBackoff(backoffIdx) {
+				backoffIdx++
+				continue
+			}
+			return
+		}
 		sub := &relaypb.RelayRequest{
 			SenderId: s.senderID,
 			Type:     relaypb.RelayRequest_SUBSCRIBE,
 			Topic:    s.topic,
-			Ticket:   s.ticket,
+			Ticket:   macTicket,
 		}
 		if err := stream.Send(sub); err != nil {
 			log.Printf("relay SUBSCRIBE send failed (addr=%s topic=%s): %v", s.client.addr, s.topic, err)
