@@ -642,6 +642,23 @@ func (c *Controller) runOutgoingDIA(session *CallSession) {
 func (c *Controller) handleIncomingCall(event BaresipEvent) {
 	peerPhone := ExtractPhoneFromURI(event.PeerURI)
 
+	// If this call-id already belongs to an outgoing session, ignore the incoming signal.
+	if existing := c.callMgr.GetByCallID(event.ID); existing != nil {
+		if existing.IsOutgoing() {
+			if c.config.Verbose {
+				log.Printf("[Controller] Ignoring CALL_INCOMING for outgoing call-id=%s peer=%s", event.ID, peerPhone)
+			}
+			return
+		}
+	}
+
+	// Some providers emit CALL_INCOMING for outgoing PSTN calls. If we have a
+	// pending outgoing attempt for this peer, bind the call-id and ignore.
+	if pending := c.callMgr.BindOutgoingCallID(peerPhone, event.ID, event.PeerURI, event.AccountAOR); pending != nil {
+		log.Printf("[Controller] CALL_INCOMING treated as outgoing: call-id=%s peer=%s", event.ID, peerPhone)
+		return
+	}
+
 	log.Printf("")
 	log.Printf("================================================================================")
 	log.Printf("[Controller] NEW INCOMING CALL from=%s call-id=%s", peerPhone, event.ID)
