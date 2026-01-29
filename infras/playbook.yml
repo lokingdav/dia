@@ -417,6 +417,28 @@
       tags: [start, start_services, verify]
 
     # ============================================================================
+    # RESULTS DOWNLOAD TASKS (CLIENTS)
+    # ============================================================================
+
+    - name: Find result CSV files on clients
+      ansible.builtin.find:
+        paths: "{{ repo_dest }}/results"
+        patterns: "*.csv"
+        file_type: file
+      register: result_csvs
+      when: type == 'client'
+      tags: [results, download_results]
+
+    - name: Download result CSV files from clients
+      ansible.builtin.fetch:
+        src: "{{ item.path }}"
+        dest: "../results/downloads/{{ inventory_hostname }}/"
+        flat: true
+      loop: "{{ result_csvs.files }}"
+      when: type == 'client' and result_csvs.matched|default(0) > 0
+      tags: [results, download_results]
+
+    # ============================================================================
     # STOP TASKS (duplicate in original; kept as-is for drop-in compatibility)
     # ============================================================================
 
