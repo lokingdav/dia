@@ -12,10 +12,11 @@ terraform {
 variable "ubuntu_ami_map" {
   type = map(string)
   default = {
-    "us-east-1" = "ami-04b4f1a9cf54c11d0"
-    "us-east-2" = "ami-0cb91c7de36eed2cb"
-    "us-west-1" = "ami-07d2649d67dbe8900"
-    "us-west-2" = "ami-05134c8ef96964280"
+    "us-east-1" = "ami-0b6c6ebed2801a5cb"
+    "us-east-2" = "ami-06e3c045d79fd65d9"
+    "us-west-1" = "ami-0290e60ec230db1e4"
+    "us-west-2" = "ami-0786adace1541ca80"
+    "ca-central-1" = "ami-0938a60d87953e820"
   }
 }
 
@@ -35,21 +36,21 @@ variable "high_spec_instance_type" {
 
 # Regions for the 3 instances
 variable "region_1" {
-  description = "First region for client instance (West Coast)"
+  description = "First region for client instance (Northern California)"
   type        = string
   default     = "us-west-1"
 }
 
 variable "region_2" {
-  description = "Second region for client instance (East Coast)"
+  description = "Second region for client instance (Northern Virginia)"
   type        = string
   default     = "us-east-1"
 }
 
 variable "region_3" {
-  description = "Third region for server (Central US)"
+  description = "Third region for server (Mexico Central)"
   type        = string
-  default     = "us-east-2"
+  default     = "ca-central-1"
 }
 
 variable "region_4" {
